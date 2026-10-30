@@ -10,7 +10,10 @@ import com.meteor.memory.core.crypto.AppLock
 import com.meteor.memory.core.crypto.EncryptedPrefsAppLock
 import com.meteor.memory.core.crypto.FileCrypto
 import com.meteor.memory.core.crypto.androidKeystoreFileCrypto
+import com.meteor.memory.core.storage.DiaryQueries
+import com.meteor.memory.core.storage.PrivateDiaryQueries
 import com.meteor.memory.core.storage.PrivateStorageRouter
+import com.meteor.memory.core.storage.StorageLayout
 import com.meteor.memory.core.storage.StorageRouter
 import com.meteor.memory.core.time.SystemTimeModule
 import com.meteor.memory.core.time.TimeModule
@@ -20,6 +23,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import java.io.File
 import javax.inject.Singleton
 
 /**
@@ -53,6 +57,16 @@ object AppModule {
         fileCrypto: FileCrypto,
         timeModule: TimeModule,
     ): StorageRouter = PrivateStorageRouter(context, fileCrypto, timeModule)
+
+    @Provides
+    @Singleton
+    fun provideDiaryQueries(
+        @ApplicationContext context: Context,
+        storageRouter: StorageRouter,
+    ): DiaryQueries = PrivateDiaryQueries(
+        rootDir = File(context.filesDir, StorageLayout.ROOT_NAME),
+        router = storageRouter,
+    )
 
     @Provides
     @Singleton

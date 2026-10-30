@@ -4,5 +4,16 @@
     <string name="home_title">流星</string>
     <string name="home_subtitle">本地加密的个人记忆档案</string>
     <string name="home_open_settings">设置</string>
+    <string name="home_open_diary">日记</string>
     <string name="nav_back">返回</string>
+
+    <string name="diary_title">日记</string>
+    <string name="diary_write_today">写今天</string>
+    <string name="diary_empty">还没有日记，点「写今天」开始。</string>
+    <string name="diary_row_empty">（空白）</string>
+    <string name="diary_hint">今天发生了什么？</string>
+    <string name="diary_save">保存</string>
+    <string name="diary_saving">保存中…</string>
+    <string name="diary_saved">已保存并加密</string>
+    <string name="diary_back">返回</string>
 </resources>

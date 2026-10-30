@@ -6,24 +6,38 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.meteor.memory.R
 import com.meteor.memory.feature.settings.SettingsScreen
+import com.meteor.memory.ui.diary.DiaryEditScreen
+import com.meteor.memory.ui.diary.DiaryEditViewModel
+import com.meteor.memory.ui.diary.DiaryListScreen
+import com.meteor.memory.ui.diary.DiaryListViewModel
 import com.meteor.memory.ui.settings.SettingsViewModel
+import java.time.LocalDate
 
 private const val ROUTE_HOME = "home"
 private const val ROUTE_SETTINGS = "settings"
+private const val ROUTE_DIARY = "diary"
+private const val ROUTE_DIARY_EDIT = "diary/edit"
 
 @Composable
 fun MeteorNavHost(versionName: String) {
@@ -31,8 +45,12 @@ fun MeteorNavHost(versionName: String) {
 
     NavHost(navController = navController, startDestination = ROUTE_HOME) {
         composable(ROUTE_HOME) {
-            HomeScreen(onOpenSettings = { navController.navigate(ROUTE_SETTINGS) })
+            HomeScreen(
+                onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
+                onOpenDiary = { navController.navigate(ROUTE_DIARY) },
+            )
         }
+
         composable(ROUTE_SETTINGS) {
             val viewModel: SettingsViewModel = hiltViewModel()
             val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -45,11 +63,58 @@ fun MeteorNavHost(versionName: String) {
                 onAppLockChanged = viewModel::setAppLockEnabled,
             )
         }
+
+        composable(ROUTE_DIARY) {
+            val viewModel: DiaryListViewModel = hiltViewModel()
+            val rows by viewModel.rows.collectAsStateWithLifecycle()
+            val loading by viewModel.loading.collectAsStateWithLifecycle()
+
+            // Re-read the directory whenever the screen comes back to the front,
+            // so an entry saved in the editor shows up immediately.
+            RefreshOnResume { viewModel.refresh() }
+
+            DiaryListScreen(
+                rows = rows,
+                loading = loading,
+                onOpen = { date -> navController.navigate("$ROUTE_DIARY_EDIT/$date") },
+                onWriteToday = { navController.navigate("$ROUTE_DIARY_EDIT/${LocalDate.now()}") },
+            )
+        }
+
+        composable(
+            route = "$ROUTE_DIARY_EDIT/{${DiaryEditViewModel.ARG_DATE}}",
+            arguments = listOf(navArgument(DiaryEditViewModel.ARG_DATE) { type = NavType.StringType }),
+        ) {
+            val viewModel: DiaryEditViewModel = hiltViewModel()
+            val state by viewModel.state.collectAsStateWithLifecycle()
+
+            DiaryEditScreen(
+                state = state,
+                onTextChanged = viewModel::onTextChanged,
+                onSave = viewModel::save,
+                onBack = { navController.popBackStack() },
+            )
+        }
     }
 }
 
 @Composable
-private fun HomeScreen(onOpenSettings: () -> Unit) {
+private fun RefreshOnResume(block: () -> Unit) {
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) block()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+}
+
+@Composable
+private fun HomeScreen(
+    onOpenSettings: () -> Unit,
+    onOpenDiary: () -> Unit,
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -59,7 +124,11 @@ private fun HomeScreen(onOpenSettings: () -> Unit) {
     ) {
         Text(text = stringResource(R.string.home_title), style = MaterialTheme.typography.headlineLarge)
         Text(text = stringResource(R.string.home_subtitle), style = MaterialTheme.typography.bodyMedium)
-        Button(onClick = onOpenSettings, modifier = Modifier.padding(top = 24.dp)) {
+
+        Button(onClick = onOpenDiary, modifier = Modifier.padding(top = 24.dp)) {
+            Text(text = stringResource(R.string.home_open_diary))
+        }
+        OutlinedButton(onClick = onOpenSettings, modifier = Modifier.padding(top = 8.dp)) {
             Text(text = stringResource(R.string.home_open_settings))
         }
     }
