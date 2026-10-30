@@ -1,0 +1,15 @@
+# Normalize line endings so CI (Linux) always sees LF.
+* text=auto
+
+*.sh   text eol=lf
+*.kts  text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+*.md   text eol=lf
+*.pro  text eol=lf
+gradle.properties text eol=lf
+
+*.apk  binary
+*.jar  binary
+*.jks  binary
