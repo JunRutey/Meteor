@@ -72,9 +72,10 @@ jobs:
           APKSIGNER="$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -n1)"
           "$APKSIGNER" verify --print-certs "$APK" | tee signer.txt
 
-          # apksigner prints the digest as bare hex; normalise both sides.
-          ACTUAL="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' signer.txt \
-            | head -n1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
+          # apksigner prints bare hex, and prefixes the line with "V2 Signer:"
+          # when the APK carries a v2-only signature (minSdk 26 makes that normal).
+          ACTUAL="$(grep -i 'certificate SHA-256 digest:' signer.txt \
+            | head -n1 | sed 's/.*digest: *//' | tr -d ':' | tr '[:lower:]' '[:upper:]')"
           echo "expected=$EXPECTED"
           echo "actual  =$ACTUAL"
 
