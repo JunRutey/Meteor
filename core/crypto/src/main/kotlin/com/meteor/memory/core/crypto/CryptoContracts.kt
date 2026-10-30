@@ -24,4 +24,15 @@ interface AppLock {
     fun setEnabled(enabled: Boolean)
     suspend fun unlock(activity: FragmentActivity): Boolean
     fun requireUnlocked(): Boolean
+
+    /**
+     * Re-arms the lock for this process lifetime, discarding the "already
+     * unlocked in this session" shortcut.
+     *
+     * Added with a default body under archive R2 (additive only): callers that
+     * never re-lock keep compiling unchanged.
+     */
+    fun lock() {
+        // Default: implementations without session state need no action.
+    }
 }

@@ -41,6 +41,10 @@ class EncryptedPrefsAppLock(
 
     override fun requireUnlocked(): Boolean = !isEnabled() || sessionUnlocked
 
+    override fun lock() {
+        sessionUnlocked = false
+    }
+
     override suspend fun unlock(activity: FragmentActivity): Boolean {
         if (!isEnabled()) {
             sessionUnlocked = true

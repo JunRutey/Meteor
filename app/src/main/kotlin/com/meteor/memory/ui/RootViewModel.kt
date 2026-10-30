@@ -44,6 +44,10 @@ class RootViewModel @Inject constructor(
     private val _unlockFailed = MutableStateFlow(false)
     val unlockFailed: StateFlow<Boolean> = _unlockFailed.asStateFlow()
 
+    /** Guards against re-locking while a biometric check is in flight. */
+    @Volatile
+    private var unlocking: Boolean = false
+
     val settings: StateFlow<AppSettings> = settingsRepository.settings.stateIn(
         scope = viewModelScope,
         started = SharingStarted.Eagerly,
@@ -67,24 +71,44 @@ class RootViewModel @Inject constructor(
     }
 
     fun unlock(activity: FragmentActivity) {
+        if (unlocking) return
+        unlocking = true
         viewModelScope.launch {
-            val granted = runCatching { appLock.unlock(activity) }.getOrDefault(false)
-            if (granted) {
-                _unlockFailed.value = false
-                _locked.value = false
-            } else {
-                _unlockFailed.value = true
+            try {
+                val granted = runCatching { appLock.unlock(activity) }.getOrDefault(false)
+                if (granted) {
+                    _unlockFailed.value = false
+                    _locked.value = false
+                } else {
+                    _unlockFailed.value = true
+                }
+            } finally {
+                unlocking = false
             }
         }
     }
 
-    /** Called when the app leaves the foreground, so returning re-arms the gate. */
+    /**
+     * Called when the app leaves the foreground: re-arms the gate so returning
+     * requires a fresh biometric check instead of reusing the session shortcut.
+     */
     fun onEnterBackground() {
+        // A BiometricPrompt can push the activity to STOPPED; never re-lock
+        // while a check is already in flight or the prompt would loop.
+        if (unlocking) return
+
         viewModelScope.launch {
-            val enabled = withContext(Dispatchers.IO) {
-                runCatching { appLock.isEnabled() }.getOrDefault(false)
+            val wasEnabled = withContext(Dispatchers.IO) {
+                runCatching {
+                    if (appLock.isEnabled()) {
+                        appLock.lock()
+                        true
+                    } else {
+                        false
+                    }
+                }.getOrDefault(false)
             }
-            if (enabled) _locked.value = true
+            if (wasEnabled) _locked.value = true
         }
     }
 }

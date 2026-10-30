@@ -8,10 +8,13 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.withResumed
 import com.meteor.memory.R
 
 /**
@@ -23,7 +26,16 @@ fun LockScreen(
     failed: Boolean,
     onUnlock: () -> Unit,
     modifier: Modifier = Modifier,
+    autoPromptOnShow: Boolean = true,
 ) {
+    // Prompt immediately instead of making the user tap first. Waits for RESUMED
+    // because BiometricPrompt cannot attach before the activity is resumed; a
+    // cancelled prompt falls back to the manual button.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(autoPromptOnShow) {
+        if (autoPromptOnShow) lifecycleOwner.lifecycle.withResumed { onUnlock() }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
