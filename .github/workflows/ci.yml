@@ -62,13 +62,15 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Upload reports on failure
-        if: failure()
+      - name: Upload test and lint reports
+        if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: meteor-failure-reports
+          name: meteor-reports
           path: |
-            **/build/reports/**
+            **/build/reports/tests/**
             **/build/test-results/**
+            **/build/reports/lint-results-*.html
+            **/build/reports/lint-results-*.txt
           if-no-files-found: ignore
           retention-days: 14
