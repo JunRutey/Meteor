@@ -147,11 +147,10 @@ class PrivateStorageRouter(
     private fun safeRelativePath(entryName: String): String? {
         val normalized = entryName.replace('\\', '/')
         if (normalized.startsWith("/") || normalized.contains("..") || normalized.contains(':')) return null
+        if (normalized == StorageLayout.ROOT_NAME) return null
+
         val prefix = "${StorageLayout.ROOT_NAME}/"
-        return when {
-            normalized == StorageLayout.ROOT_NAME -> null
-            normalized.startsWith(prefix) -> normalized.removePrefix(prefix)
-            else -> normalized
-        }.takeIf { it.isNotBlank() }
+        val relative = if (normalized.startsWith(prefix)) normalized.removePrefix(prefix) else normalized
+        return relative.takeIf { it.isNotBlank() }
     }
 }
