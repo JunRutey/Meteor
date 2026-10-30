@@ -34,6 +34,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.meteor.memory.R
 import com.meteor.memory.feature.settings.SettingsScreen
+import com.meteor.memory.ui.backup.BackupActions
 import com.meteor.memory.ui.diary.DiaryEditScreen
 import com.meteor.memory.ui.diary.DiaryEditViewModel
 import com.meteor.memory.ui.diary.DiaryListScreen
@@ -85,6 +86,7 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
                 onAnimationsChanged = viewModel::setAnimationsEnabled,
                 onAppLockChanged = viewModel::setAppLockEnabled,
                 onAutoBackupChanged = viewModel::setAutoBackupEnabled,
+                backupActions = { BackupActions() },
             )
         }
 

@@ -36,6 +36,7 @@ fun SettingsScreen(
     onAppLockChanged: (Boolean) -> Unit,
     onAutoBackupChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    backupActions: @Composable () -> Unit = {},
 ) {
     Column(
         modifier = modifier
@@ -98,6 +99,9 @@ fun SettingsScreen(
             text = stringResource(R.string.settings_backup_retention, settings.backupRetention),
             style = MaterialTheme.typography.bodySmall,
         )
+
+        // Injected by :app so this module stays free of Hilt and of the backup service.
+        backupActions()
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
