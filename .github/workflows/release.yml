@@ -61,12 +61,28 @@ jobs:
 
       - name: Verify signer fingerprint
         run: |
+          set -euo pipefail
+          # SHA-256 of Meteor's release certificate. Keep in sync with
+          # JunRutey/android-signing-keys/meteor/README.md.
+          EXPECTED="1EDDA2E5D7B596FF9E27510E271526A02CD08B2EB15EA3D87BB91F4B7B441CF6"
+
           APK="$(find app/build/outputs/apk/release -name '*.apk' | head -n1)"
           if [ -z "$APK" ]; then echo "::error::no release APK produced"; exit 1; fi
+
           APKSIGNER="$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -n1)"
           "$APKSIGNER" verify --print-certs "$APK" | tee signer.txt
-          grep -qi '1E:DD:A2:E5:D7:B5:96:FF:9E:27:51:0E:27:15:26:A0:2C:D0:8B:2E:B1:5E:A3:D8:7B:B9:1F:4B:7B:44:1C:F6' signer.txt \
-            || { echo "::error::APK is not signed with the Meteor release key"; exit 1; }
+
+          # apksigner prints the digest as bare hex; normalise both sides.
+          ACTUAL="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' signer.txt \
+            | head -n1 | tr -d ':' | tr '[:lower:]' '[:upper:]')"
+          echo "expected=$EXPECTED"
+          echo "actual  =$ACTUAL"
+
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::APK is not signed with the Meteor release key"
+            exit 1
+          fi
+          echo "Signer matches the Meteor release key."
 
       - name: Collect APK
         run: |
