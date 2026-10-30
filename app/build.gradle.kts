@@ -34,12 +34,14 @@ android {
             isShrinkResources = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Signed only when CI provides a keystore (see .github/workflows/release.yml).
-            System.getenv("METEOR_KEYSTORE_PATH")?.let { path ->
+            // Secret names are shared across all of my apps — see the private
+            // repository JunRutey/android-signing-keys.
+            System.getenv("SIGNING_KEYSTORE_PATH")?.let { path ->
                 signingConfig = signingConfigs.create("release") {
                     storeFile = file(path)
-                    storePassword = System.getenv("METEOR_KEYSTORE_PASSWORD")
-                    keyAlias = System.getenv("METEOR_KEY_ALIAS")
-                    keyPassword = System.getenv("METEOR_KEY_PASSWORD")
+                    storePassword = System.getenv("SIGNING_STORE_PASSWORD")
+                    keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+                    keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
                 }
             }
         }

@@ -27,9 +27,11 @@ jobs:
         with:
           gradle-version: '8.11.1'
 
+      # Secret names are shared by every app I ship; the material for this one
+      # lives under meteor/ in the private repo JunRutey/android-signing-keys.
       - name: Verify signing secrets are present
         run: |
-          for name in METEOR_KEYSTORE_BASE64 METEOR_KEYSTORE_PASSWORD METEOR_KEY_ALIAS METEOR_KEY_PASSWORD; do
+          for name in SIGNING_KEYSTORE_BASE64 SIGNING_STORE_PASSWORD SIGNING_KEY_ALIAS SIGNING_KEY_PASSWORD; do
             if [ -z "${!name}" ]; then
               echo "::error::Missing repository secret: $name"
               exit 1
@@ -37,25 +39,34 @@ jobs:
           done
           echo "All signing secrets present."
         env:
-          METEOR_KEYSTORE_BASE64: ${{ secrets.METEOR_KEYSTORE_BASE64 }}
-          METEOR_KEYSTORE_PASSWORD: ${{ secrets.METEOR_KEYSTORE_PASSWORD }}
-          METEOR_KEY_ALIAS: ${{ secrets.METEOR_KEY_ALIAS }}
-          METEOR_KEY_PASSWORD: ${{ secrets.METEOR_KEY_PASSWORD }}
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
 
       - name: Decode keystore
         run: |
           mkdir -p "$RUNNER_TEMP/keystore"
-          echo "$METEOR_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/keystore/meteor.jks"
-          echo "METEOR_KEYSTORE_PATH=$RUNNER_TEMP/keystore/meteor.jks" >> "$GITHUB_ENV"
+          echo "$SIGNING_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/keystore/meteor-release.p12"
+          echo "SIGNING_KEYSTORE_PATH=$RUNNER_TEMP/keystore/meteor-release.p12" >> "$GITHUB_ENV"
         env:
-          METEOR_KEYSTORE_BASE64: ${{ secrets.METEOR_KEYSTORE_BASE64 }}
+          SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
 
       - name: Build signed release
         run: gradle :app:assembleRelease --stacktrace --no-daemon
         env:
-          METEOR_KEYSTORE_PASSWORD: ${{ secrets.METEOR_KEYSTORE_PASSWORD }}
-          METEOR_KEY_ALIAS: ${{ secrets.METEOR_KEY_ALIAS }}
-          METEOR_KEY_PASSWORD: ${{ secrets.METEOR_KEY_PASSWORD }}
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+
+      - name: Verify signer fingerprint
+        run: |
+          APK="$(find app/build/outputs/apk/release -name '*.apk' | head -n1)"
+          if [ -z "$APK" ]; then echo "::error::no release APK produced"; exit 1; fi
+          APKSIGNER="$(ls "$ANDROID_HOME"/build-tools/*/apksigner 2>/dev/null | sort -V | tail -n1)"
+          "$APKSIGNER" verify --print-certs "$APK" | tee signer.txt
+          grep -qi '1E:DD:A2:E5:D7:B5:96:FF:9E:27:51:0E:27:15:26:A0:2C:D0:8B:2E:B1:5E:A3:D8:7B:B9:1F:4B:7B:44:1C:F6' signer.txt \
+            || { echo "::error::APK is not signed with the Meteor release key"; exit 1; }
 
       - name: Collect APK
         run: |
