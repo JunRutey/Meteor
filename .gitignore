@@ -24,3 +24,5 @@ captures/
 # Secrets — never commit
 secrets.properties
 *.env
+
+# Local-only tooling (session CA bundle, scratch).tools/
