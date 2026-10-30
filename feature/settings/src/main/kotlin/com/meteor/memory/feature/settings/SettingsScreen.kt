@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -28,9 +30,11 @@ import androidx.compose.ui.unit.dp
 fun SettingsScreen(
     settings: AppSettings,
     versionName: String,
+    onDarkModeChanged: (DarkMode) -> Unit,
+    onFontScaleChanged: (FontScale) -> Unit,
     onAnimationsChanged: (Boolean) -> Unit,
-    onAutoBackupChanged: (Boolean) -> Unit,
     onAppLockChanged: (Boolean) -> Unit,
+    onAutoBackupChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -41,6 +45,29 @@ fun SettingsScreen(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         SectionTitle(stringResource(R.string.settings_section_appearance))
+
+        ChoiceRow(
+            title = stringResource(R.string.settings_dark_mode),
+            options = listOf(
+                DarkMode.FOLLOW_SYSTEM to stringResource(R.string.settings_dark_follow_system),
+                DarkMode.DARK to stringResource(R.string.settings_dark_dark),
+                DarkMode.LIGHT to stringResource(R.string.settings_dark_light),
+            ),
+            selected = settings.darkMode,
+            onSelect = onDarkModeChanged,
+        )
+
+        ChoiceRow(
+            title = stringResource(R.string.settings_font_scale),
+            options = listOf(
+                FontScale.SMALL to stringResource(R.string.settings_font_small),
+                FontScale.NORMAL to stringResource(R.string.settings_font_normal),
+                FontScale.LARGE to stringResource(R.string.settings_font_large),
+            ),
+            selected = settings.fontScale,
+            onSelect = onFontScaleChanged,
+        )
+
         ToggleRow(
             title = stringResource(R.string.settings_animations),
             subtitle = stringResource(R.string.settings_animations_desc),
@@ -85,6 +112,27 @@ fun SettingsScreen(
 @Composable
 private fun SectionTitle(text: String) {
     Text(text = text, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+}
+
+@Composable
+private fun <T> ChoiceRow(
+    title: String,
+    options: List<Pair<T, String>>,
+    selected: T,
+    onSelect: (T) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(text = title, style = MaterialTheme.typography.bodyLarge)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            options.forEach { (value, label) ->
+                if (value == selected) {
+                    Button(onClick = { onSelect(value) }) { Text(text = label) }
+                } else {
+                    OutlinedButton(onClick = { onSelect(value) }) { Text(text = label) }
+                }
+            }
+        }
+    }
 }
 
 @Composable

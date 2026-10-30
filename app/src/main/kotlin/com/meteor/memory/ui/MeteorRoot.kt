@@ -1,0 +1,78 @@
+package com.meteor.memory.ui
+
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.fragment.app.FragmentActivity
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.meteor.memory.feature.settings.DarkMode
+import com.meteor.memory.feature.settings.FontScale
+import com.meteor.memory.ui.theme.MeteorTheme
+
+/**
+ * App shell above the NavHost: themes from [RootViewModel.settings] and shows
+ * the lock gate when the session is locked.
+ */
+@Composable
+fun MeteorRoot(versionName: String) {
+    val viewModel: RootViewModel = hiltViewModel()
+
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val locked by viewModel.locked.collectAsStateWithLifecycle()
+    val unlockFailed by viewModel.unlockFailed.collectAsStateWithLifecycle()
+
+    val darkTheme = when (settings.darkMode) {
+        DarkMode.FOLLOW_SYSTEM -> isSystemInDarkTheme()
+        DarkMode.DARK -> true
+        DarkMode.LIGHT -> false
+    }
+
+    val fontScale = when (settings.fontScale) {
+        FontScale.SYSTEM, FontScale.NORMAL -> 1f
+        FontScale.SMALL -> 0.9f
+        FontScale.LARGE -> 1.15f
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) viewModel.onEnterBackground()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    MeteorTheme(
+        darkTheme = darkTheme,
+        animationsEnabled = settings.animationsEnabled,
+        fontScale = fontScale,
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+        ) {
+            if (locked) {
+                val activity = LocalContext.current as? FragmentActivity
+                LockScreen(
+                    failed = unlockFailed,
+                    onUnlock = { activity?.let(viewModel::unlock) },
+                )
+            } else {
+                MeteorNavHost(
+                    versionName = versionName,
+                    animationsEnabled = settings.animationsEnabled,
+                )
+            }
+        }
+    }
+}

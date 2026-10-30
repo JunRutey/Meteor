@@ -16,4 +16,9 @@
     <string name="diary_saving">保存中…</string>
     <string name="diary_saved">已保存并加密</string>
     <string name="diary_back">返回</string>
+
+    <string name="lock_title">已锁定</string>
+    <string name="lock_subtitle">Meteor 已开启应用锁，请验证身份后继续。</string>
+    <string name="lock_unlock">解锁</string>
+    <string name="lock_failed">身份验证未通过，请重试。</string>
 </resources>

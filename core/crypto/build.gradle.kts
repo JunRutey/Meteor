@@ -23,7 +23,9 @@ android {
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.security.crypto)
-    implementation(libs.androidx.biometric)
+    // `api`, not `implementation`: AppLock.unlock takes a FragmentActivity, so the
+    // type is part of this module's published surface.
+    api(libs.androidx.biometric)
     implementation(libs.kotlinx.coroutines.android)
 
     testImplementation(libs.junit)}

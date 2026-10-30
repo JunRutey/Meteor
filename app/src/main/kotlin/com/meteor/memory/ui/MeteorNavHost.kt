@@ -1,5 +1,11 @@
 package com.meteor.memory.ui
 
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,6 +26,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -40,10 +47,25 @@ private const val ROUTE_DIARY = "diary"
 private const val ROUTE_DIARY_EDIT = "diary/edit"
 
 @Composable
-fun MeteorNavHost(versionName: String) {
+fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
     val navController = rememberNavController()
 
-    NavHost(navController = navController, startDestination = ROUTE_HOME) {
+    // Archive R11: turning animations off must kill screen transitions too.
+    val enter: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
+        if (animationsEnabled) fadeIn(tween(durationMillis = 220)) else EnterTransition.None
+    }
+    val exit: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
+        if (animationsEnabled) fadeOut(tween(durationMillis = 180)) else ExitTransition.None
+    }
+
+    NavHost(
+        navController = navController,
+        startDestination = ROUTE_HOME,
+        enterTransition = enter,
+        exitTransition = exit,
+        popEnterTransition = enter,
+        popExitTransition = exit,
+    ) {
         composable(ROUTE_HOME) {
             HomeScreen(
                 onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
@@ -58,9 +80,11 @@ fun MeteorNavHost(versionName: String) {
             SettingsScreen(
                 settings = settings,
                 versionName = versionName,
+                onDarkModeChanged = viewModel::setDarkMode,
+                onFontScaleChanged = viewModel::setFontScale,
                 onAnimationsChanged = viewModel::setAnimationsEnabled,
-                onAutoBackupChanged = viewModel::setAutoBackupEnabled,
                 onAppLockChanged = viewModel::setAppLockEnabled,
+                onAutoBackupChanged = viewModel::setAutoBackupEnabled,
             )
         }
 

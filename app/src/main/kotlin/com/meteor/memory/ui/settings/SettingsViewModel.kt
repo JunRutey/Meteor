@@ -3,6 +3,8 @@ package com.meteor.memory.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meteor.memory.feature.settings.AppSettings
+import com.meteor.memory.feature.settings.DarkMode
+import com.meteor.memory.feature.settings.FontScale
 import com.meteor.memory.feature.settings.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -21,6 +23,14 @@ class SettingsViewModel @Inject constructor(
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = AppSettings(),
     )
+
+    fun setDarkMode(mode: DarkMode) {
+        viewModelScope.launch { repository.setDarkMode(mode) }
+    }
+
+    fun setFontScale(scale: FontScale) {
+        viewModelScope.launch { repository.setFontScale(scale) }
+    }
 
     fun setAnimationsEnabled(enabled: Boolean) {
         viewModelScope.launch { repository.setAnimationsEnabled(enabled) }

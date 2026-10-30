@@ -1,32 +1,57 @@
 package com.meteor.memory
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import android.view.WindowManager
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.ui.Modifier
-import com.meteor.memory.ui.MeteorNavHost
-import com.meteor.memory.ui.theme.MeteorTheme
+import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.lifecycleScope
+import com.meteor.memory.core.crypto.AppLock
+import com.meteor.memory.ui.MeteorRoot
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import javax.inject.Inject
 
+/**
+ * [FragmentActivity], not just ComponentActivity: the frozen
+ * `AppLock.unlock(activity: FragmentActivity)` contract requires it.
+ */
 @AndroidEntryPoint
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
+
+    @Inject
+    lateinit var appLock: AppLock
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // v0.1 skeleton: theme follows system. Once :feature-settings is wired
-        // into the composition root, MeteorTheme() reads SettingsRepository.
+        // Keep a stale thumbnail out of the recents switcher while locked.
+        applyScreenProtection()
+
         setContent {
-            MeteorTheme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background,
-                ) {
-                    MeteorNavHost(versionName = BuildConfig.VERSION_NAME)
-                }
+            MeteorRoot(versionName = BuildConfig.VERSION_NAME)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Re-evaluate in case the user just toggled the lock in settings.
+        applyScreenProtection()
+    }
+
+    private fun applyScreenProtection() {
+        lifecycleScope.launch {
+            val enabled = withContext(Dispatchers.IO) {
+                runCatching { appLock.isEnabled() }.getOrDefault(false)
+            }
+            if (enabled) {
+                window.setFlags(
+                    WindowManager.LayoutParams.FLAG_SECURE,
+                    WindowManager.LayoutParams.FLAG_SECURE,
+                )
+            } else {
+                window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
             }
         }
     }

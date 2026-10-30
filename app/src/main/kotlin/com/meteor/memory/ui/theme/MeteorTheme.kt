@@ -6,8 +6,11 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 
 /**
  * Global animation gate (archive R11).
@@ -35,9 +38,19 @@ private val MeteorLight = lightColorScheme(
 fun MeteorTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     animationsEnabled: Boolean = true,
+    /** Multiplier on top of the system font scale. 1f = follow the system. */
+    fontScale: Float = 1f,
     content: @Composable () -> Unit,
 ) {
-    CompositionLocalProvider(LocalAnimationsEnabled provides animationsEnabled) {
+    val density = LocalDensity.current
+    val scaledDensity = remember(density, fontScale) {
+        Density(density = density.density, fontScale = density.fontScale * fontScale)
+    }
+
+    CompositionLocalProvider(
+        LocalAnimationsEnabled provides animationsEnabled,
+        LocalDensity provides scaledDensity,
+    ) {
         MaterialTheme(
             colorScheme = if (darkTheme) MeteorDark else MeteorLight,
             content = content,

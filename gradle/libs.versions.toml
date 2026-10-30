@@ -37,6 +37,7 @@ androidx-security-crypto = { group = "androidx.security", name = "security-crypt
 androidx-biometric = { group = "androidx.biometric", name = "biometric", version.ref = "biometric" }
 
 compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
+compose-animation = { group = "androidx.compose.animation", name = "animation" }
 compose-ui = { group = "androidx.compose.ui", name = "ui" }
 compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
 compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }

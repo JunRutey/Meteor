@@ -7,11 +7,21 @@
     <string name="settings_section_backup">备份</string>
     <string name="settings_section_about">关于</string>
 
+    <string name="settings_dark_mode">暗色模式</string>
+    <string name="settings_dark_follow_system">跟随系统</string>
+    <string name="settings_dark_dark">暗色</string>
+    <string name="settings_dark_light">亮色</string>
+
+    <string name="settings_font_scale">字体大小</string>
+    <string name="settings_font_small">小</string>
+    <string name="settings_font_normal">标准</string>
+    <string name="settings_font_large">大</string>
+
     <string name="settings_animations">动画</string>
     <string name="settings_animations_desc">关闭后禁用页面转场、列表动画与心情动画</string>
 
     <string name="settings_app_lock">应用锁</string>
-    <string name="settings_app_lock_desc">使用生物识别解锁 Meteor</string>
+    <string name="settings_app_lock_desc">使用生物识别解锁 Meteor；离开前台后重新上锁</string>
 
     <string name="settings_auto_backup">自动备份</string>
     <string name="settings_auto_backup_desc">每天在应用私有目录保留一份快照，仅防应用内误删</string>
