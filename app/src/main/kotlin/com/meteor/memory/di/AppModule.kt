@@ -7,7 +7,11 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
 import com.meteor.memory.core.backup.BackupModule
 import com.meteor.memory.core.crypto.AppLock
+import com.meteor.memory.core.crypto.EncryptedPrefsAppLock
 import com.meteor.memory.core.crypto.FileCrypto
+import com.meteor.memory.core.crypto.androidKeystoreFileCrypto
+import com.meteor.memory.core.storage.PrivateStorageRouter
+import com.meteor.memory.core.storage.StorageRouter
 import com.meteor.memory.core.time.SystemTimeModule
 import com.meteor.memory.core.time.TimeModule
 import com.meteor.memory.feature.settings.SettingsRepository
@@ -22,8 +26,7 @@ import javax.inject.Singleton
  * Composition root. `:app` is the only module that knows about Hilt, which keeps
  * every `:core-*` / `:feature-*` module plain Kotlin and removable (archive R3).
  *
- * Implementations are filled in as each version lands:
- *   v0.1 -> FileCrypto, AppLock, StorageRouter, BackupModule
+ * Still unwired: [BackupModule] (lands with the backup implementation).
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -32,6 +35,24 @@ object AppModule {
     @Provides
     @Singleton
     fun provideTimeModule(): TimeModule = SystemTimeModule()
+
+    @Provides
+    @Singleton
+    fun provideFileCrypto(): FileCrypto = androidKeystoreFileCrypto()
+
+    @Provides
+    @Singleton
+    fun provideAppLock(
+        @ApplicationContext context: Context,
+    ): AppLock = EncryptedPrefsAppLock(context)
+
+    @Provides
+    @Singleton
+    fun provideStorageRouter(
+        @ApplicationContext context: Context,
+        fileCrypto: FileCrypto,
+        timeModule: TimeModule,
+    ): StorageRouter = PrivateStorageRouter(context, fileCrypto, timeModule)
 
     @Provides
     @Singleton

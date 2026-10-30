@@ -26,5 +26,4 @@ dependencies {
     implementation(libs.androidx.biometric)
     implementation(libs.kotlinx.coroutines.android)
 
-    testImplementation(libs.junit)
-}
+    testImplementation(libs.junit)}
