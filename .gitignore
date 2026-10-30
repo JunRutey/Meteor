@@ -2,7 +2,6 @@
 .gradle/
 build/
 !gradle/wrapper/gradle-wrapper.jar
-
 # Android
 local.properties
 *.apk
@@ -12,17 +11,16 @@ local.properties
 captures/
 .externalNativeBuild/
 .cxx/
-
 # IDE
 .idea/
 *.iml
 .DS_Store
-
 # Kotlin
 .kotlin/
-
 # Secrets — never commit
+
+# Local-only tooling (session CA bundle, scratch)
+.tools/
+
 secrets.properties
 *.env
-
-# Local-only tooling (session CA bundle, scratch).tools/
