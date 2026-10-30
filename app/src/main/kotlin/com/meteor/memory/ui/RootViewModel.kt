@@ -12,6 +12,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -21,17 +24,22 @@ import javax.inject.Inject
  * Activity-scoped state for the app shell: the lock gate and the preferences
  * that drive theming.
  *
- * Lives above the NavHost so a lock event or a theme change is never scoped to
- * a single screen.
+ * [locked] is nullable on purpose: `null` means "not resolved yet". Rendering
+ * the unlocked UI before the persisted lock preference has been read would show
+ * one frame of plaintext content on every cold start.
+ *
+ * The settings DataStore is the single source of truth (archive R11); this view
+ * model mirrors it into [AppLock], which owns its own keystore-backed storage
+ * and cannot depend on `:feature-settings` itself.
  */
 @HiltViewModel
 class RootViewModel @Inject constructor(
     private val appLock: AppLock,
-    settingsRepository: SettingsRepository,
+    private val settingsRepository: SettingsRepository,
 ) : ViewModel() {
 
-    private val _locked = MutableStateFlow(!appLock.requireUnlocked())
-    val locked: StateFlow<Boolean> = _locked.asStateFlow()
+    private val _locked = MutableStateFlow<Boolean?>(null)
+    val locked: StateFlow<Boolean?> = _locked.asStateFlow()
 
     private val _unlockFailed = MutableStateFlow(false)
     val unlockFailed: StateFlow<Boolean> = _unlockFailed.asStateFlow()
@@ -41,6 +49,22 @@ class RootViewModel @Inject constructor(
         started = SharingStarted.Eagerly,
         initialValue = AppSettings(),
     )
+
+    init {
+        viewModelScope.launch {
+            // Wait for the first persisted value, then keep AppLock in sync.
+            settingsRepository.settings
+                .map { it.appLockEnabled }
+                .distinctUntilChanged()
+                .collect { enabled ->
+                    withContext(Dispatchers.IO) {
+                        runCatching { appLock.setEnabled(enabled) }
+                    }
+                    // Enabling locks straight away; disabling drops the gate.
+                    _locked.value = enabled
+                }
+        }
+    }
 
     fun unlock(activity: FragmentActivity) {
         viewModelScope.launch {

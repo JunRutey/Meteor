@@ -1,7 +1,11 @@
 package com.meteor.memory.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -22,6 +26,9 @@ import com.meteor.memory.ui.theme.MeteorTheme
 /**
  * App shell above the NavHost: themes from [RootViewModel.settings] and shows
  * the lock gate when the session is locked.
+ *
+ * Content is padded by the system bars because targetSdk 35 forces
+ * edge-to-edge; the Surface itself still paints behind the status bar.
  */
 @Composable
 fun MeteorRoot(versionName: String) {
@@ -61,17 +68,29 @@ fun MeteorRoot(versionName: String) {
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background,
         ) {
-            if (locked) {
-                val activity = LocalContext.current as? FragmentActivity
-                LockScreen(
-                    failed = unlockFailed,
-                    onUnlock = { activity?.let(viewModel::unlock) },
-                )
-            } else {
-                MeteorNavHost(
-                    versionName = versionName,
-                    animationsEnabled = settings.animationsEnabled,
-                )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.systemBars),
+            ) {
+                when (locked) {
+                    // Preference not read yet: show nothing rather than a frame
+                    // of decrypted content on cold start.
+                    null -> Unit
+
+                    true -> {
+                        val activity = LocalContext.current as? FragmentActivity
+                        LockScreen(
+                            failed = unlockFailed,
+                            onUnlock = { activity?.let(viewModel::unlock) },
+                        )
+                    }
+
+                    false -> MeteorNavHost(
+                        versionName = versionName,
+                        animationsEnabled = settings.animationsEnabled,
+                    )
+                }
             }
         }
     }

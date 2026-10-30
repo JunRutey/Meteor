@@ -32,9 +32,11 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.meteor.memory.BuildConfig
 import com.meteor.memory.R
 import com.meteor.memory.feature.settings.SettingsScreen
 import com.meteor.memory.ui.backup.BackupActions
+import com.meteor.memory.ui.diagnostics.StorageDiagnosticsScreen
 import com.meteor.memory.ui.diary.DiaryEditScreen
 import com.meteor.memory.ui.diary.DiaryEditViewModel
 import com.meteor.memory.ui.diary.DiaryListScreen
@@ -46,6 +48,7 @@ private const val ROUTE_HOME = "home"
 private const val ROUTE_SETTINGS = "settings"
 private const val ROUTE_DIARY = "diary"
 private const val ROUTE_DIARY_EDIT = "diary/edit"
+private const val ROUTE_DIAGNOSTICS = "diagnostics"
 
 @Composable
 fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
@@ -71,7 +74,16 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
             HomeScreen(
                 onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
                 onOpenDiary = { navController.navigate(ROUTE_DIARY) },
+                onOpenDiagnostics = if (BuildConfig.DEBUG) {
+                    { navController.navigate(ROUTE_DIAGNOSTICS) }
+                } else {
+                    null
+                },
             )
+        }
+
+        composable(ROUTE_DIAGNOSTICS) {
+            StorageDiagnosticsScreen(onBack = { navController.popBackStack() })
         }
 
         composable(ROUTE_SETTINGS) {
@@ -140,6 +152,7 @@ private fun RefreshOnResume(block: () -> Unit) {
 private fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenDiary: () -> Unit,
+    onOpenDiagnostics: (() -> Unit)?,
 ) {
     Column(
         modifier = Modifier
@@ -156,6 +169,11 @@ private fun HomeScreen(
         }
         OutlinedButton(onClick = onOpenSettings, modifier = Modifier.padding(top = 8.dp)) {
             Text(text = stringResource(R.string.home_open_settings))
+        }
+        onOpenDiagnostics?.let { open ->
+            OutlinedButton(onClick = open, modifier = Modifier.padding(top = 8.dp)) {
+                Text(text = stringResource(R.string.home_open_diagnostics))
+            }
         }
     }
 }
