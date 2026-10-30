@@ -6,6 +6,8 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
 import com.meteor.memory.core.backup.BackupModule
+import com.meteor.memory.core.backup.BackupRetentionProvider
+import com.meteor.memory.core.backup.PlaintextBackupModule
 import com.meteor.memory.core.crypto.AppLock
 import com.meteor.memory.core.crypto.EncryptedPrefsAppLock
 import com.meteor.memory.core.crypto.FileCrypto
@@ -17,12 +19,19 @@ import com.meteor.memory.core.storage.StorageLayout
 import com.meteor.memory.core.storage.StorageRouter
 import com.meteor.memory.core.time.SystemTimeModule
 import com.meteor.memory.core.time.TimeModule
+import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.SettingsRepository
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import java.io.File
 import javax.inject.Singleton
 
@@ -67,6 +76,34 @@ object AppModule {
         rootDir = File(context.filesDir, StorageLayout.ROOT_NAME),
         router = storageRouter,
     )
+
+    /**
+     * `:core-backup` may not depend on `:feature-settings` (that edge runs the
+     * other way), so the retention count is injected as a cached provider here.
+     */
+    @Provides
+    @Singleton
+    fun provideBackupRetentionProvider(
+        settingsRepository: SettingsRepository,
+    ): BackupRetentionProvider {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val cached = settingsRepository.settings
+            .map { it.backupRetention }
+            .stateIn(
+                scope = scope,
+                started = SharingStarted.Eagerly,
+                initialValue = AppSettings.DEFAULT_BACKUP_RETENTION,
+            )
+        return BackupRetentionProvider { cached.value }
+    }
+
+    @Provides
+    @Singleton
+    fun provideBackupModule(
+        @ApplicationContext context: Context,
+        storageRouter: StorageRouter,
+        retentionProvider: BackupRetentionProvider,
+    ): BackupModule = PlaintextBackupModule(context, storageRouter, retentionProvider)
 
     @Provides
     @Singleton
