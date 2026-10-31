@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="ai_title">AI 与数字人格</string>
+    <string name="ai_title_short">AI</string>
     <string name="ai_back">返回</string>
     <string name="ai_clear">清空</string>
     <string name="ai_open_settings">去设置</string>
@@ -24,6 +25,8 @@
     <string name="ai_busy">思考中…</string>
     <string name="ai_thinking_process">思考过程</string>
     <string name="ai_hide_thinking">收起思考</string>
+    <string name="ai_show_process">工具调用（%1$d）</string>
+    <string name="ai_hide_process">收起工具调用</string>
     <string name="ai_tool_line">%1$s %2$s · %3$s</string>
     <string name="ai_tool_unknown">调用工具</string>
     <string name="ai_tool_list_people">查看人物列表</string>

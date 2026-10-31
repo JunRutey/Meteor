@@ -233,21 +233,25 @@ class AiViewModel @Inject constructor(
                 )
             }.onSuccess { reply ->
                 val usage = reply.usage
-                _state.update {
-                    it.copy(
+                _state.update { state ->
+                    state.copy(
                         busy = false,
                         streaming = false,
                         liveContent = "",
                         liveReasoning = "",
                         liveTools = emptyList(),
-                        messages = it.messages + AiChatBubble(
+                        messages = state.messages + AiChatBubble(
                             fromUser = false,
                             text = reply.text,
                             usage = usage.takeIf { it.totalTokens > 0 },
                             elapsedMs = reply.elapsedMs,
+                            // Carry the process into the finished bubble; it used
+                            // to be dropped here and could never be seen again.
+                            reasoning = state.liveReasoning.takeIf { it.isNotBlank() },
+                            tools = state.liveTools,
                         ),
-                        sessionUsage = it.sessionUsage.merge(usage),
-                        sessionElapsedMs = it.sessionElapsedMs + reply.elapsedMs,
+                        sessionUsage = state.sessionUsage.merge(usage),
+                        sessionElapsedMs = state.sessionElapsedMs + reply.elapsedMs,
                     )
                 }
                 persistHistory()

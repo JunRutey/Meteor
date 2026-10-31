@@ -1,6 +1,8 @@
 package com.meteor.memory.feature.ai
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -27,6 +30,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 
 /** One selectable skill. Labels are resolved by the caller. */
@@ -41,10 +45,17 @@ data class AiChatBubble(
     val text: String,
     val usage: AiUsage? = null,
     val elapsedMs: Long = 0,
+    /** Thinking trace kept after the turn ends, so it can be re-opened. */
+    val reasoning: String? = null,
+    /** Tool calls made during this turn, kept for the same reason. */
+    val tools: List<AiToolTrace> = emptyList(),
 )
 
 /** One tool the model is calling (or has called) during the live turn. */
 data class AiToolTrace(val name: String, val detail: String, val done: Boolean)
+
+/** Header and picker rows are list items, so they scroll away with the chat. */
+private const val HEADER_ITEMS = 2
 
 /**
  * The AI domain screen: pick a skill, optionally pick a person, chat.
@@ -81,25 +92,24 @@ fun AiScreen(
     modifier: Modifier = Modifier,
 ) {
     var input by remember { mutableStateOf("") }
+    val listState = rememberLazyListState()
+    // The title bar and pickers scroll with the transcript; once they are gone a
+    // compact bar takes over so "clear" and "back" stay reachable.
+    val scrolled by remember {
+        derivedStateOf {
+            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
+        }
+    }
 
     Column(modifier = modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(text = stringResource(R.string.ai_title), style = MaterialTheme.typography.headlineSmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = onClear, enabled = messages.isNotEmpty() || streaming) {
-                    Text(stringResource(R.string.ai_clear))
-                }
-                TextButton(onClick = onBack) { Text(stringResource(R.string.ai_back)) }
-            }
-        }
-        HorizontalDivider()
-
         val blocked = blockedMessage
         if (blocked != null) {
+            ScreenHeader(
+                canClear = messages.isNotEmpty() || streaming,
+                onClear = onClear,
+                onBack = onBack,
+            )
+            HorizontalDivider()
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -110,69 +120,105 @@ fun AiScreen(
             return@Column
         }
 
-        SkillAndScopePicker(
-            skills = skills,
-            selectedSkillId = selectedSkillId,
-            people = people,
-            selectedPersonId = selectedPersonId,
-            personaStatus = personaStatus,
-            onSkillSelect = onSkillSelect,
-            onPersonSelect = onPersonSelect,
-            onOpenPersona = onOpenPersona,
-        )
-        HorizontalDivider()
-
         val showLive = streaming || liveContent.isNotBlank() ||
             liveReasoning.isNotBlank() || liveTools.isNotEmpty()
-        val itemCount = (if (messages.isEmpty()) 1 else messages.size) +
+        val contentItems = (if (messages.isEmpty()) 1 else messages.size) +
             (if (showLive) 1 else 0) +
             (if (busy && !showLive) 1 else 0) +
             (if (error != null) 1 else 0)
-        val listState = rememberLazyListState()
+        // Two leading list items (header + pickers) scroll away with the content.
+        val itemCount = contentItems + HEADER_ITEMS
         LaunchedEffect(itemCount, liveContent.length, liveReasoning.length, liveTools.size) {
             if (itemCount > 0) listState.scrollToItem(itemCount - 1)
         }
 
-        LazyColumn(modifier = Modifier.weight(1f), state = listState) {
-            if (messages.isEmpty()) {
+        Box(modifier = Modifier.weight(1f)) {
+            LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 item {
-                    Text(
-                        text = stringResource(R.string.ai_empty_chat),
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(16.dp),
-                    )
+                    Column {
+                        ScreenHeader(
+                            canClear = messages.isNotEmpty() || streaming,
+                            onClear = onClear,
+                            onBack = onBack,
+                        )
+                        HorizontalDivider()
+                    }
                 }
-            } else {
-                items(messages) { bubble -> ChatBubble(bubble) }
+                item {
+                    Column {
+                        SkillAndScopePicker(
+                            skills = skills,
+                            selectedSkillId = selectedSkillId,
+                            people = people,
+                            selectedPersonId = selectedPersonId,
+                            personaStatus = personaStatus,
+                            onSkillSelect = onSkillSelect,
+                            onPersonSelect = onPersonSelect,
+                            onOpenPersona = onOpenPersona,
+                        )
+                        HorizontalDivider()
+                    }
+                }
+
+                if (messages.isEmpty()) {
+                    item {
+                        Text(
+                            text = stringResource(R.string.ai_empty_chat),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(16.dp),
+                        )
+                    }
+                } else {
+                    items(messages) { bubble -> ChatBubble(bubble) }
+                }
+
+                if (showLive) {
+                    item {
+                        LiveTurn(
+                            content = liveContent,
+                            reasoning = liveReasoning,
+                            tools = liveTools,
+                            streaming = streaming,
+                        )
+                    }
+                } else if (busy) {
+                    item {
+                        Text(
+                            text = stringResource(R.string.ai_busy),
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                    }
+                }
+
+                val message = error
+                if (message != null) {
+                    item {
+                        Text(
+                            text = message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                        )
+                    }
+                }
             }
 
-            if (showLive) {
-                item {
-                    LiveTurn(
-                        content = liveContent,
-                        reasoning = liveReasoning,
-                        tools = liveTools,
-                        streaming = streaming,
-                    )
-                }
-            } else if (busy) {
-                item {
-                    Text(
-                        text = stringResource(R.string.ai_busy),
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    )
-                }
-            }
-
-            val message = error
-            if (message != null) {
-                item {
-                    Text(
-                        text = message,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            AnimatedVisibility(
+                visible = scrolled,
+                modifier = Modifier.align(Alignment.TopCenter),
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 3.dp,
+                    shadowElevation = 2.dp,
+                ) {
+                    ScreenHeader(
+                        title = stringResource(R.string.ai_title_short),
+                        style = MaterialTheme.typography.titleMedium,
+                        canClear = messages.isNotEmpty() || streaming,
+                        onClear = onClear,
+                        onBack = onBack,
                     )
                 }
             }
@@ -217,6 +263,29 @@ fun AiScreen(
                 text = stringResource(R.string.ai_privacy_short),
                 style = MaterialTheme.typography.bodySmall,
             )
+        }
+    }
+}
+
+@Composable
+private fun ScreenHeader(
+    canClear: Boolean,
+    onClear: () -> Unit,
+    onBack: () -> Unit,
+    title: String = stringResource(R.string.ai_title),
+    style: TextStyle = MaterialTheme.typography.headlineSmall,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(text = title, style = style)
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            TextButton(onClick = onClear, enabled = canClear) {
+                Text(stringResource(R.string.ai_clear))
+            }
+            TextButton(onClick = onBack) { Text(stringResource(R.string.ai_back)) }
         }
     }
 }
@@ -296,6 +365,13 @@ private fun ChatBubble(bubble: AiChatBubble) {
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
         horizontalAlignment = if (bubble.fromUser) Alignment.End else Alignment.Start,
     ) {
+        if (!bubble.fromUser) {
+            ProcessBlocks(
+                tools = bubble.tools,
+                reasoning = bubble.reasoning.orEmpty(),
+                initiallyOpen = false,
+            )
+        }
         Surface(
             color = if (bubble.fromUser) {
                 MaterialTheme.colorScheme.primaryContainer
@@ -317,6 +393,75 @@ private fun ChatBubble(bubble: AiChatBubble) {
     }
 }
 
+/**
+ * Tool chain and thinking trace of one turn.
+ *
+ * Both survive the end of the turn: the finished bubble keeps them, collapsed,
+ * so they can be re-opened instead of vanishing once the answer arrives.
+ */
+@Composable
+private fun ProcessBlocks(
+    tools: List<AiToolTrace>,
+    reasoning: String,
+    initiallyOpen: Boolean,
+) {
+    if (tools.isEmpty() && reasoning.isBlank()) return
+
+    if (tools.isNotEmpty()) {
+        var toolsOpen by remember(initiallyOpen) { mutableStateOf(initiallyOpen) }
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = MaterialTheme.shapes.small,
+        ) {
+            Column(modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp)) {
+                TextButton(onClick = { toolsOpen = !toolsOpen }) {
+                    Text(
+                        stringResource(
+                            if (toolsOpen) R.string.ai_hide_process else R.string.ai_show_process,
+                            tools.size,
+                        ),
+                    )
+                }
+                if (toolsOpen) {
+                    tools.forEach { trace ->
+                        Text(
+                            text = stringResource(
+                                R.string.ai_tool_line,
+                                if (trace.done) "✓" else "…",
+                                toolLabel(trace.name),
+                                trace.detail,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (reasoning.isNotBlank()) {
+        var reasoningOpen by remember(initiallyOpen) { mutableStateOf(initiallyOpen) }
+        Surface(
+            color = MaterialTheme.colorScheme.surfaceVariant,
+            shape = MaterialTheme.shapes.small,
+        ) {
+            Column(modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp)) {
+                TextButton(onClick = { reasoningOpen = !reasoningOpen }) {
+                    Text(
+                        stringResource(
+                            if (reasoningOpen) R.string.ai_hide_thinking else R.string.ai_thinking_process,
+                        ),
+                    )
+                }
+                if (reasoningOpen) {
+                    Text(text = reasoning, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+    }
+}
+
 /** The in-flight turn: tool chain, thinking trace and streamed answer text. */
 @Composable
 private fun LiveTurn(
@@ -325,48 +470,11 @@ private fun LiveTurn(
     tools: List<AiToolTrace>,
     streaming: Boolean,
 ) {
-    var reasoningOpen by remember { mutableStateOf(true) }
-
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        if (tools.isNotEmpty()) {
-            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                tools.forEach { trace ->
-                    Text(
-                        text = stringResource(
-                            R.string.ai_tool_line,
-                            if (trace.done) "✓" else "…",
-                            toolLabel(trace.name),
-                            trace.detail,
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
-
-        if (reasoning.isNotBlank()) {
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                shape = MaterialTheme.shapes.small,
-            ) {
-                Column(modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp)) {
-                    TextButton(onClick = { reasoningOpen = !reasoningOpen }) {
-                        Text(
-                            stringResource(
-                                if (reasoningOpen) R.string.ai_hide_thinking else R.string.ai_thinking_process,
-                            ),
-                        )
-                    }
-                    if (reasoningOpen) {
-                        Text(text = reasoning, style = MaterialTheme.typography.bodySmall)
-                    }
-                }
-            }
-        }
+        ProcessBlocks(tools = tools, reasoning = reasoning, initiallyOpen = true)
 
         if (content.isNotBlank()) {
             Surface(
