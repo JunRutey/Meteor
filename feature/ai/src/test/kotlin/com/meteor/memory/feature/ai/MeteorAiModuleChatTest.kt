@@ -1,15 +1,11 @@
 package com.meteor.memory.feature.ai
 
 import com.meteor.memory.core.storage.Document
-import com.meteor.memory.core.storage.Mood
 import com.meteor.memory.core.storage.MoodQueries
-import com.meteor.memory.core.storage.PersonEntry
-import com.meteor.memory.core.storage.PersonProfile
 import com.meteor.memory.core.storage.PersonQueries
 import com.meteor.memory.core.storage.RecordScanner
 import com.meteor.memory.core.storage.RecordSource
 import com.meteor.memory.core.storage.RecordType
-import com.meteor.memory.core.storage.Relation
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -17,7 +13,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 import java.time.Instant
-import java.time.LocalDate
 
 class MeteorAiModuleChatTest {
 
@@ -49,36 +44,31 @@ class MeteorAiModuleChatTest {
         override suspend fun probe() = ProbeResult(ok = true, code = 200)
     }
 
-    private class StubPeople : PersonQueries {
-        override fun list(): List<PersonEntry> = emptyList()
-
-        override fun read(personId: String): PersonProfile? = null
-
-        override fun create(displayName: String, relation: Relation?, notes: String): String = "id"
-
-        override fun update(personId: String, displayName: String, relation: Relation?, notes: String) = Unit
-    }
-
-    private class StubMoods : MoodQueries {
-        override fun range(from: LocalDate, to: LocalDate): Map<LocalDate, Mood> = emptyMap()
-
-        override fun read(date: LocalDate): Mood? = null
-
-        override fun save(date: LocalDate, mood: Mood) = Unit
-    }
-
-    private class StubPersonaStore : PersonaStore {
-        override fun read(personId: String): PersonaSnapshot? = null
-
-        override fun write(snapshot: PersonaSnapshot) = Unit
-    }
+    /**
+     * The question path under test never reaches these collaborators' methods;
+     * only their presence is required. A proxy keeps the test focused instead of
+     * re-declaring every interface member by hand.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun <T : Any> stub(type: Class<T>): T =
+        java.lang.reflect.Proxy.newProxyInstance(type.classLoader, arrayOf(type)) { _, method, _ ->
+            when (method.name) {
+                "list" -> emptyList<Any>()
+                "range" -> emptyMap<Any, Any>()
+                "create" -> "id"
+                "toString" -> "stub"
+                "hashCode" -> 0
+                "equals" -> false
+                else -> null
+            }
+        } as T
 
     private fun module(provider: AiProvider, documents: List<Document>) = MeteorAiModule(
         rootDir = root,
         scanner = RecordScanner { documents },
-        personQueries = StubPeople(),
-        moodQueries = StubMoods(),
-        personaStore = StubPersonaStore(),
+        personQueries = stub(PersonQueries::class.java),
+        moodQueries = stub(MoodQueries::class.java),
+        personaStore = stub(PersonaStore::class.java),
         skillLoader = { CHAT_SKILL },
         providerFactory = { provider },
         now = { fixedNow },
