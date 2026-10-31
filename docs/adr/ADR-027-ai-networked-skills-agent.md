@@ -97,3 +97,14 @@ v0.6 的目标是：**人格蒸馏（把一个人蒸馏成可对话的 Persona�
   `content` / `reasoning_content` 逐段回调，工具调用沿 `tool_calls[index]` 增量拼接。
 - 界面展示思考过程与工具链；回调可能来自后台线程，状态只做不可变更新。
 - 不支持 SSE 的兼容实现由 `AiProvider.completeStream` 默认实现回退为整段返回。
+
+## 增补（v0.7.1）：联网入口默认关闭
+
+- 原文第 5 条把 `aiEnabled` 定为 `true`，理由是「入口只是可见，不发请求」。实测首次安装后
+  设置页显示「启用 AI」为开，容易被读成应用默认联网，与「默认关闭」的说法自相矛盾。
+- 改为 `aiEnabled` 默认 `false`：新装用户在设置里主动打开，才会出现 AI 入口与任何网络请求。
+  `aiConsentAccepted` 仍为 `false`，两者都不满足时 `AiGate` 返回 `DISABLED`。
+- 升级兼容：`SettingsRepository.migrateAiDefaultToOff()` 只在 `ai_enabled` 键**不存在**且
+  用户已接受过同意弹窗时补写 `true`，因此用过 AI 的人升级后入口不会消失；
+  显式关过的用户保持关闭，该迁移幂等。
+- 该默认值不涉及 `FROZEN INTERFACE`，也不改 DataStore 键名。
