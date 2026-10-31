@@ -1,8 +1,6 @@
 package com.meteor.memory.ui.people
 
-import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -16,6 +14,7 @@ import com.meteor.memory.core.storage.Relation
 import com.meteor.memory.core.storage.StorageRouter
 import com.meteor.memory.feature.editor.EditorModule
 import com.meteor.memory.feature.editor.MarkdownEditing
+import com.meteor.memory.ui.common.decodeImages
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +32,8 @@ data class PersonEditState(
     val relation: Relation? = null,
     val notes: String = "",
     val images: Map<String, ImageBitmap> = emptyMap(),
+    /** Referenced images whose bytes exist but produced no bitmap. */
+    val missingImages: Set<String> = emptySet(),
     val saving: Boolean = false,
     val saved: Boolean = false,
     val error: String? = null,
@@ -119,7 +120,14 @@ class PersonEditViewModel @Inject constructor(
         if (body == current.notes) return
 
         pendingDeletes += token
-        _state.update { it.copy(notes = body, images = it.images - token, saved = false) }
+        _state.update {
+            it.copy(
+                notes = body,
+                images = it.images - token,
+                missingImages = it.missingImages - token,
+                saved = false,
+            )
+        }
         appLog.debug(TAG, "image detached, will delete on save: $token")
     }
 
@@ -169,24 +177,22 @@ class PersonEditViewModel @Inject constructor(
     }
 
     private fun refreshImages(body: String) {
+        val known = _state.value.images.keys + _state.value.missingImages
         val tokens = MarkdownEditing.imagesOf(body)
             .map { it.token }
-            .take(MAX_IMAGES)
-            .filter { it !in _state.value.images }
+            .filter { it !in known }
         if (tokens.isEmpty()) return
 
         viewModelScope.launch {
-            val decoded = withContext(Dispatchers.IO) {
-                tokens.mapNotNull { token ->
-                    val bytes = imageStore.load(token) ?: return@mapNotNull null
-                    val options = BitmapFactory.Options().apply { inSampleSize = 2 }
-                    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
-                        ?: return@mapNotNull null
-                    token to bitmap.asImageBitmap()
-                }.toMap()
+            val decoded = decodeImages(imageStore, tokens)
+            if (decoded.missing.isNotEmpty()) {
+                appLog.warn(TAG, "images not decodable: ${decoded.missing.size}")
             }
-            if (decoded.isNotEmpty()) {
-                _state.update { it.copy(images = it.images + decoded) }
+            _state.update {
+                it.copy(
+                    images = it.images + decoded.bitmaps,
+                    missingImages = it.missingImages + decoded.missing,
+                )
             }
         }
     }
@@ -205,6 +211,5 @@ class PersonEditViewModel @Inject constructor(
         const val ARG_PERSON_ID = "personId"
         private const val TAG = "PersonEdit"
         private const val SHORT_ID = 8
-        private const val MAX_IMAGES = 20
     }
 }

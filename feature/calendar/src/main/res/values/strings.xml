@@ -5,6 +5,7 @@
     <string name="calendar_select_hint">点选一天查看或记录心情</string>
     <string name="calendar_no_mood">这天还没有记录心情</string>
     <string name="calendar_open_diary">查看当天日记</string>
+    <string name="calendar_has_diary">这天已写日记</string>
 
     <string name="mood_happy">开心</string>
     <string name="mood_calm">平静</string>

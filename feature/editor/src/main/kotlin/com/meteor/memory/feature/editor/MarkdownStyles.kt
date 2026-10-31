@@ -18,10 +18,10 @@ internal const val TAG_TARGET = "meteor-target"
  * red: a match recurses into its own content instead of guessing with one flat
  * regex.
  *
- * Colour and italic are still parsed even though the toolbar no longer offers
- * them (ADR-019 §3): records written by v0.4-rc and earlier keep their look.
- * The editing surface deliberately does **not** use this parser — see
- * [EditorRendering].
+ * The toolbar no longer produces bold, italic or colour (ADR-019, ADR-021), but
+ * the parser still understands them: records written earlier keep their look in
+ * the preview, while the editing surface shows them as literal Markdown that can
+ * be deleted.
  */
 object MarkdownStyles {
 
@@ -103,86 +103,66 @@ object MarkdownStyles {
 
     /**
      * Earliest match starting at or after [from] and ending before [to].
-     *
-     * [kinds] narrows the scan: the editing surface only asks for [Kind.BOLD] and
-     * lets every other construct through as literal text.
      */
-    internal fun earliest(
-        text: String,
-        from: Int,
-        to: Int,
-        kinds: Set<Kind> = ALL_KINDS,
-    ): InlineMatch? {
+    internal fun earliest(text: String, from: Int, to: Int): InlineMatch? {
         val candidates = buildList {
-            if (Kind.COLOR in kinds) {
-                COLOR.find(text, from)?.takeIf { it.range.last < to }?.let {
-                    val inner = it.groups[2]!!
-                    add(
-                        InlineMatch(
-                            kind = Kind.COLOR,
-                            range = it.range,
-                            groupStart = inner.range.first,
-                            groupEnd = inner.range.last + 1,
-                            extra = it.groupValues[1],
-                        ),
-                    )
-                }
+            COLOR.find(text, from)?.takeIf { it.range.last < to }?.let {
+                val inner = it.groups[2]!!
+                add(
+                    InlineMatch(
+                        kind = Kind.COLOR,
+                        range = it.range,
+                        groupStart = inner.range.first,
+                        groupEnd = inner.range.last + 1,
+                        extra = it.groupValues[1],
+                    ),
+                )
             }
-            if (Kind.IMAGE in kinds) {
-                IMAGE.find(text, from)?.takeIf { it.range.last < to }?.let {
-                    add(
-                        InlineMatch(
-                            kind = Kind.IMAGE,
-                            range = it.range,
-                            label = it.groupValues[1],
-                            target = it.groupValues[2],
-                        ),
-                    )
-                }
+            IMAGE.find(text, from)?.takeIf { it.range.last < to }?.let {
+                add(
+                    InlineMatch(
+                        kind = Kind.IMAGE,
+                        range = it.range,
+                        label = it.groupValues[1],
+                        target = it.groupValues[2],
+                    ),
+                )
             }
-            if (Kind.LINK in kinds) {
-                LINK.find(text, from)?.takeIf { it.range.last < to }?.let {
-                    add(
-                        InlineMatch(
-                            kind = Kind.LINK,
-                            range = it.range,
-                            label = it.groupValues[1],
-                            target = it.groupValues[2],
-                        ),
-                    )
-                }
+            LINK.find(text, from)?.takeIf { it.range.last < to }?.let {
+                add(
+                    InlineMatch(
+                        kind = Kind.LINK,
+                        range = it.range,
+                        label = it.groupValues[1],
+                        target = it.groupValues[2],
+                    ),
+                )
             }
-            if (Kind.BOLD in kinds) {
-                BOLD.find(text, from)?.takeIf { it.range.last < to }?.let {
-                    val inner = it.groups[1]!!
-                    add(
-                        InlineMatch(
-                            kind = Kind.BOLD,
-                            range = it.range,
-                            groupStart = inner.range.first,
-                            groupEnd = inner.range.last + 1,
-                        ),
-                    )
-                }
+            BOLD.find(text, from)?.takeIf { it.range.last < to }?.let {
+                val inner = it.groups[1]!!
+                add(
+                    InlineMatch(
+                        kind = Kind.BOLD,
+                        range = it.range,
+                        groupStart = inner.range.first,
+                        groupEnd = inner.range.last + 1,
+                    ),
+                )
             }
-            if (Kind.ITALIC in kinds) {
-                ITALIC.find(text, from)?.takeIf { it.range.last < to }?.let {
-                    val inner = it.groups[1]!!
-                    add(
-                        InlineMatch(
-                            kind = Kind.ITALIC,
-                            range = it.range,
-                            groupStart = inner.range.first,
-                            groupEnd = inner.range.last + 1,
-                        ),
-                    )
-                }
+            ITALIC.find(text, from)?.takeIf { it.range.last < to }?.let {
+                val inner = it.groups[1]!!
+                add(
+                    InlineMatch(
+                        kind = Kind.ITALIC,
+                        range = it.range,
+                        groupStart = inner.range.first,
+                        groupEnd = inner.range.last + 1,
+                    ),
+                )
             }
         }
         return candidates.minByOrNull { it.range.first }
     }
-
-    private val ALL_KINDS: Set<Kind> = Kind.entries.toSet()
 
     fun parseColor(hex: String): Color =
         runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrDefault(Color.Unspecified)

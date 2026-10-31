@@ -85,6 +85,7 @@ fun DiaryEditScreen(
             onRemoveImage = onRemoveImage,
             modifier = Modifier.weight(1f),
             placeholder = { Text(text = stringResource(R.string.diary_hint)) },
+            missingImages = state.missingImages,
             resolveImage = resolveImage,
             onActivate = onActivate,
         )

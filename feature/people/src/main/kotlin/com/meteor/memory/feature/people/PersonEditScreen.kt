@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -31,9 +32,8 @@ import com.meteor.memory.feature.editor.MarkdownField
  * Editing an existing person (ADR-020): name, relationship, and the free-form
  * notes field, which is a Markdown body edited by `:feature-editor`.
  *
- * Notes used to be write-once — they could only be filled in when the profile
- * was created, and never afterwards. This screen closes that hole and reuses the
- * diary editor's markup handling instead of growing a second implementation.
+ * Laid out like the detail page it came from — same header line, same section
+ * rhythm — so moving between 详情 and 编辑 does not feel like two different apps.
  */
 @Composable
 fun PersonEditScreen(
@@ -52,6 +52,7 @@ fun PersonEditScreen(
     onSave: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    missingImages: Set<String> = emptySet(),
     resolveImage: (String) -> ImageBitmap? = { null },
 ) {
     var previewing by rememberSaveable { mutableStateOf(false) }
@@ -60,42 +61,53 @@ fun PersonEditScreen(
         modifier = modifier
             .fillMaxSize()
             .imePadding()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(horizontal = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Column {
                 Text(
                     text = stringResource(R.string.people_edit_title),
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.headlineSmall,
                 )
-                if (saved) {
-                    Text(
-                        text = stringResource(R.string.people_saved),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
+                Text(
+                    text = if (saved) {
+                        stringResource(R.string.people_saved)
+                    } else {
+                        stringResource(R.string.people_edit_subtitle)
+                    },
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (saved) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
             }
             TextButton(onClick = onBack) {
                 Text(text = stringResource(R.string.people_back))
             }
         }
 
+        HorizontalDivider()
+
+        SectionLabel(stringResource(R.string.people_label_name))
         OutlinedTextField(
             value = displayName,
             onValueChange = onNameChanged,
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
-            label = { Text(text = stringResource(R.string.people_name)) },
+            placeholder = { Text(text = stringResource(R.string.people_name_hint)) },
         )
 
+        SectionLabel(stringResource(R.string.people_label_relation))
         RelationPicker(selected = relation, onSelect = onRelationChanged)
 
+        SectionLabel(stringResource(R.string.people_label_notes))
         MarkdownField(
             text = notes,
             previewing = previewing,
@@ -106,6 +118,7 @@ fun PersonEditScreen(
             onRemoveImage = onRemoveImage,
             modifier = Modifier.weight(1f),
             placeholder = { Text(text = stringResource(R.string.people_notes_hint)) },
+            missingImages = missingImages,
             resolveImage = resolveImage,
         )
 
@@ -120,7 +133,7 @@ fun PersonEditScreen(
         Button(
             onClick = onSave,
             enabled = !saving && displayName.isNotBlank(),
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
         ) {
             Text(
                 text = stringResource(
@@ -129,6 +142,16 @@ fun PersonEditScreen(
             )
         }
     }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 4.dp),
+    )
 }
 
 /**

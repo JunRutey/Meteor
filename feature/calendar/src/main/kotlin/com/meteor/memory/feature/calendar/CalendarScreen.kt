@@ -1,6 +1,7 @@
 package com.meteor.memory.feature.calendar
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +25,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -68,6 +74,8 @@ fun CalendarScreen(
     onOpenDiary: (LocalDate) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Days that already have a diary entry, for the ✓✓ marker on the day card. */
+    diaryDates: Set<LocalDate> = emptySet(),
 ) {
     val locale = Locale.getDefault()
     val monthLabel = DateTimeFormatter.ofPattern("LLLL yyyy", locale).format(month.atDay(1))
@@ -108,6 +116,7 @@ fun CalendarScreen(
             DayCard(
                 date = date,
                 mood = moods[date],
+                hasDiary = date in diaryDates,
                 onPickMood = { mood -> onPickMood(date, mood) },
                 onOpenDiary = { onOpenDiary(date) },
             )
@@ -208,6 +217,7 @@ private fun DayCell(
 private fun DayCard(
     date: LocalDate,
     mood: Mood?,
+    hasDiary: Boolean,
     onPickMood: (Mood) -> Unit,
     onOpenDiary: () -> Unit,
 ) {
@@ -220,10 +230,16 @@ private fun DayCard(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
-                text = DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.getDefault()).format(date),
-                style = MaterialTheme.typography.titleMedium,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.getDefault()).format(date),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                if (hasDiary) DoubleCheckMark()
+            }
             Text(
                 text = mood?.let { "${it.emoji()} ${it.label()}" }
                     ?: stringResource(R.string.calendar_no_mood),
@@ -271,3 +287,39 @@ private fun Mood.label(): String = stringResource(
         Mood.ANGRY -> R.string.mood_angry
     },
 )
+
+/**
+ * WhatsApp-style double tick: two overlapping check paths, drawn rather than
+ * typed so the overlap is exact on every font.
+ *
+ * It only says "there is a diary that day" — no read/delivered semantics.
+ */
+@Composable
+private fun DoubleCheckMark(modifier: Modifier = Modifier) {
+    val label = stringResource(R.string.calendar_has_diary)
+    Canvas(
+        modifier = modifier
+            .size(width = 26.dp, height = 15.dp)
+            .semantics { contentDescription = label },
+    ) {
+        val stroke = Stroke(
+            width = 2.dp.toPx(),
+            cap = StrokeCap.Round,
+            join = StrokeJoin.Round,
+        )
+        val first = Path().apply {
+            moveTo(size.width * 0.02f, size.height * 0.55f)
+            lineTo(size.width * 0.20f, size.height * 0.86f)
+            lineTo(size.width * 0.54f, size.height * 0.14f)
+        }
+        val second = Path().apply {
+            moveTo(size.width * 0.38f, size.height * 0.55f)
+            lineTo(size.width * 0.56f, size.height * 0.86f)
+            lineTo(size.width * 0.98f, size.height * 0.14f)
+        }
+        drawPath(first, color = DiaryGreen, style = stroke)
+        drawPath(second, color = DiaryGreen, style = stroke)
+    }
+}
+
+private val DiaryGreen = Color(0xFF25D366)

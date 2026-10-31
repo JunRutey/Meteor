@@ -43,7 +43,6 @@ import com.meteor.memory.BuildConfig
 import com.meteor.memory.R
 import com.meteor.memory.core.storage.RecordType
 import com.meteor.memory.feature.calendar.CalendarScreen
-import com.meteor.memory.feature.gallery.GalleryItem
 import com.meteor.memory.feature.gallery.GalleryScreen
 import com.meteor.memory.feature.gallery.ImageViewerScreen
 import com.meteor.memory.feature.people.PeopleListScreen
@@ -136,6 +135,10 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
             val month by viewModel.month.collectAsStateWithLifecycle()
             val moods by viewModel.moods.collectAsStateWithLifecycle()
             val selectedDate by viewModel.selectedDate.collectAsStateWithLifecycle()
+            val diaryDates by viewModel.diaryDates.collectAsStateWithLifecycle()
+
+            // Coming back from the editor must light up the ✓✓ straight away.
+            RefreshOnResume { viewModel.refreshDiaryDates() }
 
             CalendarScreen(
                 month = month,
@@ -148,6 +151,7 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
                 onPickMood = viewModel::setMood,
                 onOpenDiary = { date -> navController.navigate("$ROUTE_DIARY_EDIT/$date") },
                 onBack = { navController.popBackStack() },
+                diaryDates = diaryDates,
             )
         }
 
@@ -202,6 +206,15 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
                 },
                 onBack = { navController.popBackStack() },
                 onEdit = { navController.navigate("people/$personId/edit") },
+                onEditNotes = { navController.navigate("people/$personId/edit") },
+                resolveImage = viewModel::imageFor,
+                onActivate = { target ->
+                    if (target.startsWith("meteor://image/")) {
+                        navController.navigate(
+                            "gallery/${Uri.encode(target.removePrefix("meteor://image/"))}",
+                        )
+                    }
+                },
             )
         }
 
@@ -228,21 +241,23 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
                 onRemoveImage = viewModel::removeImage,
                 onSave = viewModel::save,
                 onBack = { navController.popBackStack() },
+                missingImages = state.missingImages,
                 resolveImage = viewModel::imageFor,
             )
         }
 
         composable(ROUTE_GALLERY) {
             val viewModel: GalleryViewModel = hiltViewModel()
-            val items by viewModel.items.collectAsStateWithLifecycle()
+            val days by viewModel.days.collectAsStateWithLifecycle()
             val loading by viewModel.loading.collectAsStateWithLifecycle()
 
             RefreshOnResume { viewModel.refresh() }
 
             GalleryScreen(
-                items = items.map { GalleryItem(it.token, it.bitmap, it.caption) },
+                days = days,
                 loading = loading,
                 onOpen = { token -> navController.navigate("gallery/${Uri.encode(token)}") },
+                onDelete = viewModel::delete,
                 onBack = { navController.popBackStack() },
             )
         }

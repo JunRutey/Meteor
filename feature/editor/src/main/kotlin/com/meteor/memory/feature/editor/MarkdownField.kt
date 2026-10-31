@@ -33,19 +33,15 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextRange
-import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 
 /**
- * The whole Markdown editing surface: toolbar, text field (with the markup
- * hidden), preview, and the strip of images currently referenced by the body.
+ * The whole Markdown editing surface: toolbar, plain text field, preview, and the
+ * strip of images the body currently references.
  *
- * Shared by the diary editor and the person editor so both get the same caret
- * handling — the part that used to drift between callers. Edits are reported
- * through [onTextChanged]; the composable keeps its own [TextFieldValue] so the
- * selection survives, and resyncs only when the text changes from outside
- * (inserted image or link).
+ * The field is **plain text** (ADR-021): no markup is hidden, so what you see is
+ * exactly what is stored. Shared by the diary editor and the person editor so
+ * both get the same insert/remove/preview behaviour from one place.
  */
 @Composable
 fun MarkdownField(
@@ -59,28 +55,25 @@ fun MarkdownField(
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
     placeholder: (@Composable () -> Unit)? = null,
+    /** Tokens whose ciphertext exists but could not be decoded. */
+    missingImages: Set<String> = emptySet(),
     resolveImage: (String) -> ImageBitmap? = { null },
     onActivate: (String) -> Unit = {},
 ) {
-    var field by remember { mutableStateOf(TextFieldValue(text)) }
     var showLinkDialog by remember { mutableStateOf(false) }
     var pendingRemoval by remember { mutableStateOf<String?>(null) }
 
+    // The field keeps its own copy of the text: routing every keystroke through
+    // the view model makes Chinese IME composition stutter. It resyncs only when
+    // the text changes from outside (inserted image or link).
+    var draft by remember { mutableStateOf(text) }
     LaunchedEffect(text) {
-        if (text != field.text) field = TextFieldValue(text, TextRange(text.length))
-    }
-
-    fun apply(result: EditResult) {
-        field = TextFieldValue(result.text, TextRange(result.selectionStart, result.selectionEnd))
-        onTextChanged(result.text)
+        if (text != draft) draft = text
     }
 
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         EditorToolbar(
             isPreviewing = previewing,
-            onBold = {
-                apply(MarkdownEditing.toggleBold(field.text, field.selection.min, field.selection.max))
-            },
             onLink = { showLinkDialog = true },
             onImage = onPickImage,
             onTogglePreview = onPreviewToggle,
@@ -91,6 +84,7 @@ fun MarkdownField(
             ImageStrip(
                 images = images,
                 resolveImage = resolveImage,
+                missing = missingImages,
                 onRemove = { token -> pendingRemoval = token },
             )
         }
@@ -98,22 +92,21 @@ fun MarkdownField(
         if (previewing) {
             Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 MarkdownPreview(
-                    body = text,
+                    body = draft,
                     resolveImage = resolveImage,
                     onActivate = onActivate,
                 )
             }
         } else {
             OutlinedTextField(
-                value = field,
+                value = draft,
                 onValueChange = { value ->
-                    field = value
-                    onTextChanged(value.text)
+                    draft = value
+                    onTextChanged(value)
                 },
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 enabled = enabled,
                 textStyle = MaterialTheme.typography.bodyLarge,
-                visualTransformation = MarkdownStyledTransformation(),
                 placeholder = placeholder,
             )
         }
@@ -140,11 +133,18 @@ fun MarkdownField(
     }
 }
 
-/** Thumbnails of every image in the body, each with its own delete button. */
+/**
+ * Thumbnails of every image in the body, each with its own delete button.
+ *
+ * Three states, all honest: a real thumbnail, a "cannot decode" glyph for a
+ * token whose file exists but yields no bitmap, and an empty frame while the
+ * decode is still running.
+ */
 @Composable
 private fun ImageStrip(
     images: List<AttachedImage>,
     resolveImage: (String) -> ImageBitmap?,
+    missing: Set<String>,
     onRemove: (String) -> Unit,
 ) {
     val removeLabel = stringResource(R.string.editor_remove_image)
@@ -157,11 +157,15 @@ private fun ImageStrip(
     ) {
         images.forEach { image ->
             Box(modifier = Modifier.padding(top = 4.dp, end = 4.dp)) {
-                ImageThumbnail(image, resolveImage)
+                ImageThumbnail(
+                    image = image,
+                    bitmap = resolveImage(image.token),
+                    isMissing = image.token in missing,
+                )
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .size(20.dp)
+                        .size(22.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.errorContainer)
                         .clickable { onRemove(image.token) }
@@ -170,7 +174,7 @@ private fun ImageStrip(
                 ) {
                     Text(
                         text = "×",
-                        style = MaterialTheme.typography.labelLarge,
+                        style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onErrorContainer,
                     )
                 }
@@ -180,30 +184,36 @@ private fun ImageStrip(
 }
 
 @Composable
-private fun ImageThumbnail(image: AttachedImage, resolveImage: (String) -> ImageBitmap?) {
-    val bitmap = resolveImage(image.token)
-    val shape = RoundedCornerShape(6.dp)
-    if (bitmap != null) {
-        Image(
+private fun ImageThumbnail(image: AttachedImage, bitmap: ImageBitmap?, isMissing: Boolean) {
+    val shape = RoundedCornerShape(8.dp)
+    when {
+        bitmap != null -> Image(
             bitmap = bitmap,
             contentDescription = image.label.takeIf { it.isNotBlank() },
             modifier = Modifier.size(THUMBNAIL).clip(shape),
             contentScale = ContentScale.Crop,
         )
-    } else {
-        Box(
+
+        isMissing -> Box(
+            modifier = Modifier
+                .size(THUMBNAIL)
+                .clip(shape)
+                .background(MaterialTheme.colorScheme.errorContainer),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = stringResource(R.string.editor_image_missing),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+        }
+
+        else -> Box(
             modifier = Modifier
                 .size(THUMBNAIL)
                 .clip(shape)
                 .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = stringResource(R.string.editor_image_short),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        )
     }
 }
 
@@ -269,4 +279,4 @@ private fun LinkDialog(
     )
 }
 
-private val THUMBNAIL = 56.dp
+private val THUMBNAIL = 64.dp

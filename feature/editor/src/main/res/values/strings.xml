@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="editor_image_placeholder">［图片］</string>
-    <string name="editor_image_short">图片</string>
+    <string name="editor_image_missing">无法显示</string>
     <string name="editor_link">链接</string>
     <string name="editor_image">图片</string>
     <string name="editor_preview">预览</string>

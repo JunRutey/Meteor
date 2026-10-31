@@ -2,35 +2,23 @@ package com.meteor.memory.feature.editor
 
 import com.meteor.memory.core.storage.ImageStore
 
-/** Result of a formatting action: the new text plus where the caret should land. */
-data class EditResult(
-    val text: String,
-    val selectionStart: Int,
-    val selectionEnd: Int,
-)
-
 /** One image reference found in a record body. */
 data class AttachedImage(
-    /** Path token usable as `meteor://image/<token>`. */
+    /** Bare path, usable with `ImageStore.load` / `delete`. */
     val token: String,
     /** Alt text written by the author, empty when the reference has none. */
     val label: String,
 )
 
 /**
- * Markdown text manipulation, kept pure so it can be unit-tested.
+ * Markdown body manipulation, kept pure so it can be unit-tested.
  *
- * v0.4 ships exactly three inline capabilities (ADR-019): bold, images and
- * links. Colour and italic were dropped from the toolbar, so no new markup can
- * be produced for them — the preview still renders old ones (ADR-019 §3).
- *
- * Bold is a **toggle**: with a selection it wraps (or unwraps) that selection;
- * with no selection it inserts an empty pair and parks the caret inside, so the
- * user can press the button first and type afterwards.
+ * The editing surface itself is now plain text (ADR-021): no markup is hidden,
+ * so there is no caret mapping to get wrong. What this object still owns is the
+ * two things the toolbar can insert — images and links — plus removing an image
+ * again.
  */
 object MarkdownEditing {
-
-    private const val BOLD_MARKER = "**"
 
     private val REFERENCE = Regex("""!\[([^\]]*)]\(([^)]+)\)""")
     private val MULTIPLE_SPACES = Regex(" {2,}")
@@ -41,17 +29,6 @@ object MarkdownEditing {
     fun appendLink(body: String, target: String, label: String?): String {
         val text = label?.takeIf { it.isNotBlank() } ?: target
         return appendInline(body, "[$text]($target)")
-    }
-
-    fun toggleBold(body: String, start: Int, end: Int): EditResult =
-        toggle(body, start, end, BOLD_MARKER, BOLD_MARKER)
-
-    fun wrapsWith(body: String, start: Int, end: Int, marker: String): String {
-        if (start !in 0..body.length || end !in start..body.length) return body
-        val before = body.substring(0, start)
-        val selection = body.substring(start, end)
-        val after = body.substring(end)
-        return "$before$marker$selection$marker$after"
     }
 
     /**
@@ -100,45 +77,6 @@ object MarkdownEditing {
         // Removing the first or last line must not leave the body with an empty
         // line in front of (or behind) everything else.
         return kept.dropWhile { it.isBlank() }.dropLastWhile { it.isBlank() }.joinToString("\n")
-    }
-
-    /**
-     * Wraps the selection, or unwraps it when it is already wrapped, or inserts
-     * an empty pair with the caret between the markers.
-     */
-    private fun toggle(
-        body: String,
-        start: Int,
-        end: Int,
-        open: String,
-        close: String,
-    ): EditResult {
-        if (start !in 0..body.length || end !in start..body.length) {
-            return EditResult(body, start, end)
-        }
-
-        val alreadyWrapped = start >= open.length &&
-            end + close.length <= body.length &&
-            body.startsWith(open, start - open.length) &&
-            body.startsWith(close, end)
-
-        if (alreadyWrapped) {
-            val unwrapped = body
-                .removeRange(end, end + close.length)
-                .removeRange(start - open.length, start)
-            val shift = open.length
-            return EditResult(unwrapped, start - shift, end - shift)
-        }
-
-        if (start == end) {
-            val text = body.substring(0, start) + open + close + body.substring(start)
-            val caret = start + open.length
-            return EditResult(text, caret, caret)
-        }
-
-        val selected = body.substring(start, end)
-        val text = body.substring(0, start) + open + selected + close + body.substring(end)
-        return EditResult(text, start + open.length, end + open.length)
     }
 
     private fun appendBlock(body: String, block: String): String {

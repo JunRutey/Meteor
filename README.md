@@ -26,9 +26,9 @@
 
 ```
 :app                    组装、DI、导航、主题
- ├── :feature-editor     Markdown 编辑与预览（加粗、图片、链接）
+ ├── :feature-editor     Markdown 编辑与预览（图片、链接）
  ├── :feature-people     人际关系档案、档案编辑
- ├── :feature-gallery    加密图片浏览
+ ├── :feature-gallery    加密图片浏览（按天分组、可删除）
  ├── :feature-calendar   心情日历
  ├── :feature-settings   设置页（DataStore 偏好）
  ├── :core-backup        明文 zip 备份 / 按新设备密钥重新加密导入

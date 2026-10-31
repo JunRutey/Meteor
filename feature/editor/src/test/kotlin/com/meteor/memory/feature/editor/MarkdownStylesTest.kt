@@ -5,9 +5,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * [MarkdownStyles] only feeds the read-only preview: the editing surface hides
- * bold markers itself (see [EditorRenderingTest]). Colour and italic are still
- * parsed here so records written before ADR-019 keep their look.
+ * [MarkdownStyles] only feeds the read-only preview: the editing surface is plain
+ * Markdown (ADR-021). Bold, italic and colour are no longer produced by any
+ * button, but the preview still renders them for records written earlier.
  */
 class MarkdownStylesTest {
 

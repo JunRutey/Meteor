@@ -3,6 +3,7 @@ package com.meteor.memory.ui.calendar
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meteor.memory.core.log.AppLog
+import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.storage.Mood
 import com.meteor.memory.core.storage.MoodQueries
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -19,6 +20,7 @@ import javax.inject.Inject
 @HiltViewModel
 class CalendarViewModel @Inject constructor(
     private val moodQueries: MoodQueries,
+    private val diaryQueries: DiaryQueries,
     private val appLog: AppLog,
 ) : ViewModel() {
 
@@ -31,8 +33,13 @@ class CalendarViewModel @Inject constructor(
     private val _moods = MutableStateFlow<Map<LocalDate, Mood>>(emptyMap())
     val moods: StateFlow<Map<LocalDate, Mood>> = _moods.asStateFlow()
 
+    /** Days with a diary on disk — drives the ✓✓ next to the selected date. */
+    private val _diaryDates = MutableStateFlow<Set<LocalDate>>(emptySet())
+    val diaryDates: StateFlow<Set<LocalDate>> = _diaryDates.asStateFlow()
+
     init {
         load()
+        refreshDiaryDates()
     }
 
     fun previousMonth() = shiftMonth(-1)
@@ -49,6 +56,18 @@ class CalendarViewModel @Inject constructor(
             appLog.debug(TAG, "mood saved $date=${mood.code}")
             _selectedDate.value = date
             load()
+        }
+    }
+
+    /**
+     * Re-reads the diary directory. Cheap (one directory walk) and called when
+     * the screen resumes, so a diary written a moment ago gets its tick.
+     */
+    fun refreshDiaryDates() {
+        viewModelScope.launch {
+            _diaryDates.value = withContext(Dispatchers.IO) {
+                runCatching { diaryQueries.dates().toSet() }.getOrDefault(emptySet())
+            }
         }
     }
 

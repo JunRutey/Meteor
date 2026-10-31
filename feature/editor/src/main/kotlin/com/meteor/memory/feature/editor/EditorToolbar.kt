@@ -11,20 +11,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 /**
- * Formatting bar: exactly the three things v0.4 supports (ADR-019) plus the
+ * Formatting bar: the two things the editor can insert (ADR-021) plus the
  * preview toggle.
  *
- * No horizontal scrolling: every action must stay on screen, including 图片 and
- * 预览 (a scrolling row previously pushed 图片 out of reach).
+ * No horizontal scrolling: every action must stay on screen (a scrolling row
+ * previously pushed 图片 out of reach).
  */
 @Composable
 fun EditorToolbar(
     isPreviewing: Boolean,
-    onBold: () -> Unit,
     onLink: () -> Unit,
     onImage: () -> Unit,
     onTogglePreview: () -> Unit,
@@ -35,13 +33,6 @@ fun EditorToolbar(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        TextButton(onClick = onBold, enabled = !isPreviewing) {
-            Text(
-                text = "B",
-                fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.titleMedium,
-            )
-        }
         TextButton(onClick = onLink, enabled = !isPreviewing) {
             Text(stringResource(R.string.editor_link), style = MaterialTheme.typography.labelLarge)
         }

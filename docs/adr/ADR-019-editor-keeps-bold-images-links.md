@@ -1,8 +1,12 @@
 # ADR-019 · 编辑器收敛为「加粗 + 图片 + 链接」，颜色与斜体下线
 
-- 状态：已接受（v0.4）
+- 状态：**已被 [ADR-021](ADR-021-editor-is-plain-text.md) 取代**（加粗也已下线）
 - 影响：`:feature-editor`
 - 取代：[ADR-018](ADR-018-drop-wysiwyg-rich-text.md) 中「不做所见即所得」的结论
+
+> 颜色与斜体下线的结论仍然有效。本文「保留加粗」的部分在
+> [ADR-021](ADR-021-editor-is-plain-text.md) 中被推翻：只要还有一种隐藏标记，
+> 就得永远维护光标映射。
 
 ## 背景
 

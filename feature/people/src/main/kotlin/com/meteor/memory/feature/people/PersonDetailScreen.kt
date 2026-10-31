@@ -5,11 +5,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -17,9 +16,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.meteor.memory.core.storage.Relation
+import com.meteor.memory.feature.editor.MarkdownPreview
 
 /** One aggregated record shown on a person's page. */
 data class PersonRecordRow(
@@ -31,6 +32,10 @@ data class PersonRecordRow(
 /**
  * Logical aggregation of one person: profile from the file, records from the
  * index. The two live in different places on disk by design (archive v0.5).
+ *
+ * The notes are Markdown, so they are rendered the same way a diary is — and the
+ * section carries its own 编辑备注 entry, because until now the only way to touch
+ * them was to find the 编辑 button in the header.
  */
 @Composable
 fun PersonDetailScreen(
@@ -41,6 +46,9 @@ fun PersonDetailScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     onEdit: () -> Unit = {},
+    onEditNotes: () -> Unit = onEdit,
+    resolveImage: (String) -> ImageBitmap? = { null },
+    onActivate: (String) -> Unit = {},
 ) {
     Column(modifier = modifier.fillMaxSize()) {
         Row(
@@ -64,22 +72,44 @@ fun PersonDetailScreen(
 
         HorizontalDivider()
 
-        Column(modifier = Modifier.padding(16.dp)) {
-            if (notes.isBlank()) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = stringResource(R.string.people_notes),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            TextButton(onClick = onEditNotes) {
                 Text(
-                    text = stringResource(R.string.people_notes_empty),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            } else {
-                Text(
-                    text = notes,
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    text = stringResource(
+                        if (notes.isBlank()) R.string.people_notes_add else R.string.people_notes_edit,
+                    ),
+                    style = MaterialTheme.typography.labelLarge,
                 )
             }
         }
 
-        HorizontalDivider()
+        if (notes.isBlank()) {
+            Text(
+                text = stringResource(R.string.people_notes_empty),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        } else {
+            MarkdownPreview(
+                body = notes,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 220.dp)
+                    .padding(horizontal = 4.dp),
+                resolveImage = resolveImage,
+                onActivate = onActivate,
+            )
+        }
+
+        HorizontalDivider(Modifier.padding(top = 8.dp))
 
         Text(
             text = stringResource(R.string.people_records),
