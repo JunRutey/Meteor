@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Sampled from the bottom edge of the launcher artwork. Only shows through
+        the antialiased edge of the system mask, so it just needs to sit in the
+        same dark family as the tile.
+    -->
+    <color name="ic_launcher_background">#1E222B</color>
+</resources>
