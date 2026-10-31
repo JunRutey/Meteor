@@ -31,7 +31,7 @@ import com.meteor.memory.R
 /**
  * 关于页：这么运作 / 加密说明 / GitHub / 打赏 / 逐版本更新日志。
  *
- * 长正文放 assets/*.md（数据，不是代码字面量），短标签走 strings.xml。
+ * 长正文放在 assets 的 Markdown 文件中（数据，不是代码字面量），短标签走 strings.xml。
  * 打赏码缺失时整块隐藏，缺图不会挡住编译。
  */
 @Composable
