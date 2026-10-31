@@ -80,6 +80,7 @@ android {
 dependencies {
     // --- Meteor modules (dependency direction is enforced by tools/check-module-graph.sh)
     implementation(project(":feature-settings"))
+    implementation(project(":feature-calendar"))
     implementation(project(":core-backup"))
     implementation(project(":core-storage"))
     implementation(project(":core-crypto"))

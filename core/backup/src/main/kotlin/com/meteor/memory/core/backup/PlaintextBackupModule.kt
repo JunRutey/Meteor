@@ -32,6 +32,7 @@ class PlaintextBackupModule(
     private val router: StorageRouter,
     private val retentionProvider: BackupRetentionProvider,
     private val clock: () -> Instant = Instant::now,
+    private val mirror: ExternalBackupMirror = NoExternalBackupMirror,
 ) : BackupModule {
 
     private val backupDir = File(context.filesDir, BACKUP_DIR_NAME)
@@ -66,6 +67,10 @@ class PlaintextBackupModule(
             val target = File(backupDir, fileNameFor(clock()))
             router.exportTo(Uri.fromFile(target))
             prune()
+
+            // Second destination is a reserved extension point; today the
+            // no-op reports "not configured" and nothing else happens.
+            runCatching { mirror.mirror(target) }
 
             BackupResult.Success(fileCount = files, bytes = bytes, at = clock()) as BackupResult
         }.getOrElse { BackupResult.Failure("自动备份失败：${it.message}", it) }

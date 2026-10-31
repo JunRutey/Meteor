@@ -9,6 +9,7 @@ cd "$(dirname "$0")/.."
 # ADR and a change to the Meteor archive §3 graph.
 ALLOWED_EDGES="$(cat <<'EOF'
 app feature-settings
+app feature-calendar
 app core-backup
 app core-storage
 app core-crypto
@@ -17,6 +18,7 @@ app core-log
 app core-index
 feature-settings core-crypto
 feature-settings core-backup
+feature-calendar core-storage
 core-backup core-storage
 core-backup core-crypto
 core-index core-storage

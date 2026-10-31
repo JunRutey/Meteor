@@ -7,6 +7,8 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
 import com.meteor.memory.core.backup.BackupModule
 import com.meteor.memory.core.backup.BackupRetentionProvider
+import com.meteor.memory.core.backup.ExternalBackupMirror
+import com.meteor.memory.core.backup.NoExternalBackupMirror
 import com.meteor.memory.core.backup.PlaintextBackupModule
 import com.meteor.memory.core.crypto.AppLock
 import com.meteor.memory.core.crypto.EncryptedPrefsAppLock
@@ -16,7 +18,9 @@ import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.log.FileAppLogger
 import com.meteor.memory.core.log.LogExporter
 import com.meteor.memory.core.storage.DiaryQueries
+import com.meteor.memory.core.storage.MoodQueries
 import com.meteor.memory.core.storage.PrivateDiaryQueries
+import com.meteor.memory.core.storage.PrivateMoodQueries
 import com.meteor.memory.core.storage.PrivateRecordScanner
 import com.meteor.memory.core.storage.PrivateStorageRouter
 import com.meteor.memory.core.storage.RecordScanner
@@ -82,6 +86,16 @@ object AppModule {
         router = storageRouter,
     )
 
+    @Provides
+    @Singleton
+    fun provideMoodQueries(
+        @ApplicationContext context: Context,
+        storageRouter: StorageRouter,
+    ): MoodQueries = PrivateMoodQueries(
+        rootDir = File(context.filesDir, StorageLayout.ROOT_NAME),
+        router = storageRouter,
+    )
+
     /**
      * `:core-backup` may not depend on `:feature-settings` (that edge runs the
      * other way), so the retention count is injected as a cached provider here.
@@ -108,7 +122,12 @@ object AppModule {
         @ApplicationContext context: Context,
         storageRouter: StorageRouter,
         retentionProvider: BackupRetentionProvider,
-    ): BackupModule = PlaintextBackupModule(context, storageRouter, retentionProvider)
+        mirror: ExternalBackupMirror,
+    ): BackupModule = PlaintextBackupModule(context, storageRouter, retentionProvider, mirror = mirror)
+
+    @Provides
+    @Singleton
+    fun provideExternalBackupMirror(): ExternalBackupMirror = NoExternalBackupMirror
 
     @Provides
     @Singleton

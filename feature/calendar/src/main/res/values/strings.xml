@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="calendar_title">心情日历</string>
+    <string name="calendar_back">返回</string>
+    <string name="calendar_select_hint">点选一天查看或记录心情</string>
+    <string name="calendar_no_mood">这天还没有记录心情</string>
+    <string name="calendar_open_diary">查看当天日记</string>
+
+    <string name="mood_happy">开心</string>
+    <string name="mood_calm">平静</string>
+    <string name="mood_excited">兴奋</string>
+    <string name="mood_tired">疲惫</string>
+    <string name="mood_sad">难过</string>
+    <string name="mood_angry">生气</string>
+</resources>

@@ -38,8 +38,10 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.meteor.memory.BuildConfig
 import com.meteor.memory.R
+import com.meteor.memory.feature.calendar.CalendarScreen
 import com.meteor.memory.feature.settings.SettingsScreen
 import com.meteor.memory.ui.backup.BackupActions
+import com.meteor.memory.ui.calendar.CalendarViewModel
 import com.meteor.memory.ui.diagnostics.StorageDiagnosticsScreen
 import com.meteor.memory.ui.diary.DiaryEditScreen
 import com.meteor.memory.ui.diary.DiaryEditViewModel
@@ -57,6 +59,7 @@ private const val ROUTE_DIARY = "diary"
 private const val ROUTE_DIARY_EDIT = "diary/edit"
 private const val ROUTE_DIAGNOSTICS = "diagnostics"
 private const val ROUTE_SEARCH = "search"
+private const val ROUTE_CALENDAR = "calendar"
 
 /** Shown in the About section; must match README.md. */
 private const val REPOSITORY_URL = "https://github.com/JunRutey/Meteor"
@@ -92,11 +95,32 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
                 onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
                 onOpenDiary = { navController.navigate(ROUTE_DIARY) },
                 onOpenSearch = { navController.navigate(ROUTE_SEARCH) },
+                onOpenCalendar = { navController.navigate(ROUTE_CALENDAR) },
                 onOpenDiagnostics = if (BuildConfig.DEBUG) {
                     { navController.navigate(ROUTE_DIAGNOSTICS) }
                 } else {
                     null
                 },
+            )
+        }
+
+        composable(ROUTE_CALENDAR) {
+            val viewModel: CalendarViewModel = hiltViewModel()
+            val month by viewModel.month.collectAsStateWithLifecycle()
+            val moods by viewModel.moods.collectAsStateWithLifecycle()
+            val selectedDate by viewModel.selectedDate.collectAsStateWithLifecycle()
+
+            CalendarScreen(
+                month = month,
+                today = LocalDate.now(),
+                moods = moods,
+                selectedDate = selectedDate,
+                onPreviousMonth = viewModel::previousMonth,
+                onNextMonth = viewModel::nextMonth,
+                onSelectDate = viewModel::selectDate,
+                onPickMood = viewModel::setMood,
+                onOpenDiary = { date -> navController.navigate("$ROUTE_DIARY_EDIT/$date") },
+                onBack = { navController.popBackStack() },
             )
         }
 
@@ -193,6 +217,7 @@ private fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenDiary: () -> Unit,
     onOpenSearch: () -> Unit,
+    onOpenCalendar: () -> Unit,
     onOpenDiagnostics: (() -> Unit)?,
 ) {
     Column(
@@ -210,6 +235,9 @@ private fun HomeScreen(
         }
         OutlinedButton(onClick = onOpenSearch, modifier = Modifier.padding(top = 8.dp)) {
             Text(text = stringResource(R.string.home_open_search))
+        }
+        OutlinedButton(onClick = onOpenCalendar, modifier = Modifier.padding(top = 8.dp)) {
+            Text(text = stringResource(R.string.home_open_calendar))
         }
         OutlinedButton(onClick = onOpenSettings, modifier = Modifier.padding(top = 8.dp)) {
             Text(text = stringResource(R.string.home_open_settings))
