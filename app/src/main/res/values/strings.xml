@@ -37,7 +37,7 @@
     <string name="backup_import_done">已导入 %1$d 个文件，并按本机密钥重新加密</string>
     <string name="backup_failed">备份操作失败</string>
     <string name="backup_warning_title">备份包是明文</string>
-    <string name="backup_warning_body">导出的 zip 内是可以直接阅读的 Markdown 与图片，任何拿到该文件的人都能看到你的全部记忆内容。请自行妥善保管，不要上传到网盘或聊天工具。</string>
+    <string name="backup_warning_body">导出的 zip 内是可以直接阅读的 Markdown 与图片，任何拿到该文件的人都能看到你的全部记忆内容。附件（图片、文档等）的明文与从中抽取的文本也会一并导出。请自行妥善保管，不要上传到网盘或聊天工具。</string>
     <string name="backup_warning_confirm">我已了解，继续导出</string>
     <string name="backup_warning_cancel">取消</string>
 
