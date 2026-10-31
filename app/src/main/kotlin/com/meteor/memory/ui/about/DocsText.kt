@@ -21,7 +21,9 @@ import androidx.compose.ui.unit.dp
 internal fun DocsText(text: String, modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         text.lines().forEach { raw ->
-            val line = raw.trimEnd()
+            // assets/*.md stays real Markdown; only the inline emphasis and code
+            // markers are dropped here, because this renderer draws plain text.
+            val line = raw.trimEnd().replace("**", "").replace("`", "")
             when {
                 line.isBlank() -> Spacer(Modifier.height(6.dp))
                 line.startsWith("### ") ->
