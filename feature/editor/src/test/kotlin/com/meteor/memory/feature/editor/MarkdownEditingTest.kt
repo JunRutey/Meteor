@@ -38,8 +38,9 @@ class MarkdownEditingTest {
     @Test
     fun `finds every image reference in document order`() {
         val body = "开头\n\n![](meteor://image/a.enc)\n\n![](meteor://image/b.enc)\n"
+        // Bare paths: this is what ImageStore.load and delete take.
         assertEquals(
-            listOf("meteor://image/a.enc", "meteor://image/b.enc"),
+            listOf("a.enc", "b.enc"),
             MarkdownEditing.imagesOf(body).map { it.token },
         )
     }

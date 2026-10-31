@@ -54,11 +54,23 @@ object MarkdownEditing {
         return "$before$marker$selection$marker$after"
     }
 
-    /** Every image referenced by [body], in document order and without duplicates. */
+    /**
+     * Every image referenced by [body], in document order and without duplicates.
+     *
+     * [AttachedImage.token] is the bare path, because that is what
+     * `ImageStore.load` / `delete` take; the `meteor://image/` prefix only exists
+     * inside a body.
+     */
     fun imagesOf(body: String): List<AttachedImage> =
         REFERENCE.findAll(body)
-            .filter { it.groupValues[2].startsWith(ImageStore.IMAGE_SCHEME) }
-            .map { AttachedImage(token = it.groupValues[2], label = it.groupValues[1]) }
+            .mapNotNull { match ->
+                val target = match.groupValues[2]
+                if (!target.startsWith(ImageStore.IMAGE_SCHEME)) return@mapNotNull null
+                AttachedImage(
+                    token = target.removePrefix(ImageStore.IMAGE_SCHEME),
+                    label = match.groupValues[1],
+                )
+            }
             .distinctBy { it.token }
             .toList()
 

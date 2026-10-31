@@ -20,6 +20,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
+import com.meteor.memory.core.storage.ImageStore
 
 /**
  * Read-only preview with inline images and **jumpable** references.
@@ -81,7 +82,9 @@ private fun PreviewLine(
 
         IMAGE_LINE.matches(trimmed) -> {
             val target = IMAGE_LINE.find(trimmed)?.groupValues?.getOrNull(1).orEmpty()
-            val bitmap = resolveImage(target)
+            // resolveImage takes the bare path, exactly like ImageStore; the
+            // `meteor://image/` prefix only exists inside a body.
+            val bitmap = resolveImage(target.removePrefix(ImageStore.IMAGE_SCHEME))
             if (bitmap != null) {
                 Image(
                     bitmap = bitmap,
