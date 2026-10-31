@@ -5,10 +5,14 @@ import java.time.Instant
 import java.time.LocalDate
 
 /**
- * The six moods a day can carry.
+ * The seven moods a day can carry.
  *
  * Stored as a stable code rather than an emoji so the rendered glyph and its
  * label stay a presentation concern (archive R7: no hardcoded text in code).
+ *
+ * Adding a constant is backward compatible in both directions: [fromCode]
+ * returns null for a code this build does not know, so an older install shows
+ * "no mood" for a day written by a newer one instead of failing to parse.
  */
 enum class Mood(val code: String) {
     HAPPY("happy"),
@@ -17,6 +21,9 @@ enum class Mood(val code: String) {
     TIRED("tired"),
     SAD("sad"),
     ANGRY("angry"),
+
+    /** Wordless "hmm…" mood; the label stays untranslated on purpose. */
+    EMM("emm"),
     ;
 
     companion object {

@@ -55,12 +55,13 @@ import java.util.Locale
 
 /** Emoji shown on a day cell and in the picker. Presentation only. */
 fun Mood.emoji(): String = when (this) {
-    Mood.HAPPY -> "😊"
+    Mood.HAPPY -> "😆"
     Mood.CALM -> "😌"
     Mood.EXCITED -> "🤩"
-    Mood.TIRED -> "😪"
-    Mood.SAD -> "😔"
-    Mood.ANGRY -> "😠"
+    Mood.TIRED -> "🥱"
+    Mood.SAD -> "😵‍💫"
+    Mood.ANGRY -> "😡"
+    Mood.EMM -> "🥺"
 }
 
 /**
@@ -334,12 +335,17 @@ private fun DayCard(
                 style = MaterialTheme.typography.bodyMedium,
             )
 
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 Mood.entries.forEach { candidate ->
                     val label = candidate.label()
                     Box(
                         modifier = Modifier
-                            .size(40.dp)
+                            // 七个心情平铺，宽度自适应：窄屏也不换行、不溢出。
+                            .weight(1f)
+                            .aspectRatio(1f)
                             .clip(CircleShape)
                             .background(
                                 if (candidate == mood) {
@@ -392,6 +398,7 @@ private fun Mood.label(): String = stringResource(
         Mood.TIRED -> R.string.mood_tired
         Mood.SAD -> R.string.mood_sad
         Mood.ANGRY -> R.string.mood_angry
+        Mood.EMM -> R.string.mood_emm
     },
 )
 
