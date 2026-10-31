@@ -7,4 +7,5 @@
     <string name="editor_image">图片</string>
     <string name="editor_preview">预览</string>
     <string name="editor_edit">编辑</string>
+    <string name="editor_color">颜色 %1$d</string>
 </resources>

@@ -1,11 +1,13 @@
 package com.meteor.memory.feature.editor
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.ClickableText
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
@@ -16,32 +18,25 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 
 /**
- * Read-only Markdown preview.
+ * Read-only preview with inline images and **jumpable** references.
  *
- * Intentionally a small renderer: headings, bullets, bold, italic, links and an
- * image placeholder. A full Markdown engine can replace the body of this
- * composable without touching [EditorModule].
+ * Tapping a link or an image hands the raw target back to the caller
+ * (`https://…`, `meteor://image/…`, `meteor://person/…`), which decides whether
+ * to open a browser, the image viewer, or a person page.
  */
 @Composable
 fun MarkdownPreview(
     body: String,
     modifier: Modifier = Modifier,
-    /**
-     * Resolves a `meteor://image/<token>` reference to a decrypted bitmap.
-     * Returning null falls back to a placeholder, which is what happens when
-     * the image was deleted or the caller has no access to `:core-storage`.
-     */
     resolveImage: (String) -> ImageBitmap? = { null },
+    onActivate: (String) -> Unit = {},
 ) {
+    val imageLabel = stringResource(R.string.editor_image_placeholder)
+
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -52,98 +47,77 @@ fun MarkdownPreview(
         SelectionContainer {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 body.lines().forEach { line ->
-                    PreviewLine(line, resolveImage)
+                    PreviewLine(line, imageLabel, resolveImage, onActivate)
                 }
             }
         }
     }
 }
 
-private val IMAGE_REF = Regex("""\]\(meteor://image/([^)]+)\)""")
+private val IMAGE_LINE = Regex("""^!\[[^\]]*\]\(([^)]+)\)$""")
 
 @Composable
-private fun PreviewLine(line: String, resolveImage: (String) -> ImageBitmap?) {
-    val trimmed = line.trimEnd()
+private fun PreviewLine(
+    line: String,
+    imageLabel: String,
+    resolveImage: (String) -> ImageBitmap?,
+    onActivate: (String) -> Unit,
+) {
+    val trimmed = line.trim()
+    val typography = MaterialTheme.typography
+
+    val (style, content) = when {
+        trimmed.startsWith("### ") -> typography.titleSmall to trimmed.removePrefix("### ")
+        trimmed.startsWith("## ") -> typography.titleMedium to trimmed.removePrefix("## ")
+        trimmed.startsWith("# ") -> typography.titleLarge to trimmed.removePrefix("# ")
+        trimmed.startsWith("- ") -> typography.bodyMedium to "• ${trimmed.removePrefix("- ")}"
+        else -> typography.bodyMedium to trimmed
+    }
+
     when {
         trimmed.isBlank() -> Unit
 
-        trimmed.startsWith("### ") -> Text(
-            text = inline(trimmed.removePrefix("### ")),
-            style = MaterialTheme.typography.titleSmall,
-        )
+        trimmed == "---" -> HorizontalDivider()
 
-        trimmed.startsWith("## ") -> Text(
-            text = inline(trimmed.removePrefix("## ")),
-            style = MaterialTheme.typography.titleMedium,
-        )
-
-        trimmed.startsWith("# ") -> Text(
-            text = inline(trimmed.removePrefix("# ")),
-            style = MaterialTheme.typography.titleLarge,
-        )
-
-        trimmed.startsWith("!") && trimmed.contains("](") -> {
-            val token = IMAGE_REF.find(trimmed)?.groupValues?.getOrNull(1)
-            val bitmap = token?.let(resolveImage)
+        IMAGE_LINE.matches(trimmed) -> {
+            val target = IMAGE_LINE.find(trimmed)?.groupValues?.getOrNull(1).orEmpty()
+            val bitmap = resolveImage(target)
             if (bitmap != null) {
                 Image(
                     bitmap = bitmap,
-                    contentDescription = stringResource(R.string.editor_image_placeholder),
-                    modifier = Modifier.fillMaxWidth(),
+                    contentDescription = imageLabel,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onActivate(target) },
                     contentScale = ContentScale.FillWidth,
                 )
             } else {
                 Text(
-                    text = stringResource(R.string.editor_image_placeholder),
-                    style = MaterialTheme.typography.bodySmall,
+                    text = imageLabel,
+                    style = typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.clickable { onActivate(target) },
                 )
             }
         }
 
-        trimmed.startsWith("- ") -> Text(
-            text = inline("• ${trimmed.removePrefix("- ")}"),
-            style = MaterialTheme.typography.bodyMedium,
-        )
-
-        trimmed == "---" -> HorizontalDivider()
-
-        else -> Text(text = inline(trimmed), style = MaterialTheme.typography.bodyMedium)
-    }
-}
-
-/** Minimal inline parsing: `**bold**`, `*italic*`, `[label](target)`. */
-internal fun inline(text: String): AnnotatedString = buildAnnotatedString {
-    var cursor = 0
-    for (match in INLINE.findAll(text)) {
-        if (match.range.first > cursor) append(text.substring(cursor, match.range.first))
-
-        val label = match.groupValues[1]
-        val bold = match.groupValues[3]
-        val italic = match.groupValues[4]
-
-        when {
-            match.value.startsWith("[") -> {
-                pushStyle(SpanStyle(textDecoration = TextDecoration.Underline))
-                append(label)
-                pop()
-            }
-
-            bold.isNotEmpty() -> {
-                pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
-                append(bold)
-                pop()
-            }
-
-            else -> {
-                pushStyle(SpanStyle(fontStyle = FontStyle.Italic))
-                append(italic)
-                pop()
-            }
+        else -> {
+            val annotated = MarkdownStyles.annotate(content, imageLabel)
+            ClickableText(
+                text = annotated,
+                style = TextStyle(
+                    color = style.color,
+                    fontSize = style.fontSize,
+                    fontWeight = style.fontWeight,
+                    lineHeight = style.lineHeight,
+                ),
+                onClick = { offset ->
+                    annotated
+                        .getStringAnnotations(TAG_TARGET, offset, offset)
+                        .firstOrNull()
+                        ?.let { annotation -> onActivate(annotation.item) }
+                },
+            )
         }
-        cursor = match.range.last + 1
     }
-    if (cursor < text.length) append(text.substring(cursor))
 }
-
-private val INLINE = Regex("""\[([^\]]*)\]\(([^)]*)\)|\*\*([^*]+)\*\*|\*([^*]+)\*""")

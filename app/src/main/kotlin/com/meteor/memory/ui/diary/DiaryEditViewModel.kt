@@ -87,6 +87,7 @@ class DiaryEditViewModel @Inject constructor(
     }
 
     /** Bitmap for a `meteor://image/<token>` reference, or null when unknown. */
+    /** Bitmap for a `meteor://image/<token>` reference, or null when unknown. */
     fun imageFor(token: String): ImageBitmap? = images[token]
 
     fun insertImage(bytes: ByteArray) {

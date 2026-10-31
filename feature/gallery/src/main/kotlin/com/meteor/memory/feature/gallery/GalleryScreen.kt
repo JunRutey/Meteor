@@ -1,6 +1,7 @@
 package com.meteor.memory.feature.gallery
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -37,6 +38,7 @@ data class GalleryItem(
 fun GalleryScreen(
     items: List<GalleryItem>,
     loading: Boolean,
+    onOpen: (String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -70,7 +72,7 @@ fun GalleryScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(items, key = { it.token }) { item ->
-                    Column {
+                    Column(modifier = Modifier.clickable { onOpen(item.token) }) {
                         Image(
                             bitmap = item.bitmap,
                             contentDescription = item.caption,

@@ -48,6 +48,7 @@ import com.meteor.memory.core.storage.RecordType
 import com.meteor.memory.feature.calendar.CalendarScreen
 import com.meteor.memory.feature.gallery.GalleryItem
 import com.meteor.memory.feature.gallery.GalleryScreen
+import com.meteor.memory.feature.gallery.ImageViewerScreen
 import com.meteor.memory.feature.people.PeopleListScreen
 import com.meteor.memory.feature.people.PeopleRow
 import com.meteor.memory.feature.people.PersonDetailScreen
@@ -61,6 +62,7 @@ import com.meteor.memory.ui.diary.DiaryEditViewModel
 import com.meteor.memory.ui.diary.DiaryListScreen
 import com.meteor.memory.ui.diary.DiaryListViewModel
 import com.meteor.memory.ui.gallery.GalleryViewModel
+import com.meteor.memory.ui.gallery.ImageViewerViewModel
 import com.meteor.memory.ui.log.LogActions
 import com.meteor.memory.ui.people.PeopleViewModel
 import com.meteor.memory.ui.people.PersonDetailViewModel
@@ -82,6 +84,7 @@ private const val ROUTE_CALENDAR = "calendar"
 private const val ROUTE_PEOPLE = "people"
 private const val ROUTE_PERSON = "people/{personId}"
 private const val ROUTE_GALLERY = "gallery"
+private const val ROUTE_IMAGE = "gallery/{token}"
 
 /** Shown in the About section; must match README.md. */
 private const val REPOSITORY_URL = "https://github.com/JunRutey/Meteor"
@@ -208,6 +211,21 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
             GalleryScreen(
                 items = items.map { GalleryItem(it.token, it.bitmap, it.caption) },
                 loading = loading,
+                onOpen = { token -> navController.navigate("gallery/${Uri.encode(token)}") },
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(
+            route = ROUTE_IMAGE,
+            arguments = listOf(navArgument(ImageViewerViewModel.ARG_TOKEN) { type = NavType.StringType }),
+        ) {
+            val viewModel: ImageViewerViewModel = hiltViewModel()
+            val bitmap by viewModel.bitmap.collectAsStateWithLifecycle()
+
+            ImageViewerScreen(
+                bitmap = bitmap,
+                caption = stringResource(R.string.home_open_gallery),
                 onBack = { navController.popBackStack() },
             )
         }
@@ -305,6 +323,26 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
                 onSave = viewModel::save,
                 onBack = { navController.popBackStack() },
                 resolveImage = viewModel::imageFor,
+                onActivate = { target ->
+                    when {
+                        target.startsWith("meteor://image/") ->
+                            navController.navigate(
+                                "gallery/${Uri.encode(target.removePrefix("meteor://image/"))}",
+                            )
+
+                        target.startsWith("meteor://person/") ->
+                            navController.navigate(
+                                "people/${Uri.encode(target.removePrefix("meteor://person/"))}",
+                            )
+
+                        target.startsWith("meteor://diary/") ->
+                            navController.navigate(
+                                "$ROUTE_DIARY_EDIT/${target.removePrefix("meteor://diary/")}",
+                            )
+
+                        else -> context.openInBrowser(target)
+                    }
+                },
             )
         }
     }

@@ -21,11 +21,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.meteor.memory.R
 import com.meteor.memory.feature.editor.EditorToolbar
+import com.meteor.memory.feature.editor.MarkdownEditing
 import com.meteor.memory.feature.editor.MarkdownPreview
+import com.meteor.memory.feature.editor.MarkdownStyledTransformation
 
 @Composable
 fun DiaryEditScreen(
@@ -38,9 +43,20 @@ fun DiaryEditScreen(
     onSave: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
-    resolveImage: (String) -> androidx.compose.ui.graphics.ImageBitmap? = { null },
+    resolveImage: (String) -> ImageBitmap? = { null },
+    onActivate: (String) -> Unit = {},
 ) {
     var showLinkDialog by remember { mutableStateOf(false) }
+
+    // Keeps the caret position so bold/italic can act on the current selection.
+    var field by remember(state.text) {
+        mutableStateOf(TextFieldValue(state.text, TextRange(state.text.length)))
+    }
+
+    fun applyFormatted(newText: String) {
+        field = TextFieldValue(newText, TextRange(newText.length))
+        onTextChanged(newText)
+    }
 
     Column(
         modifier = modifier
@@ -78,6 +94,21 @@ fun DiaryEditScreen(
 
         EditorToolbar(
             isPreviewing = isPreviewing,
+            onBold = {
+                applyFormatted(
+                    MarkdownEditing.blockQuote(field.text, field.selection.start, field.selection.end),
+                )
+            },
+            onItalic = {
+                applyFormatted(
+                    MarkdownEditing.italicize(field.text, field.selection.start, field.selection.end),
+                )
+            },
+            onColor = { hex ->
+                applyFormatted(
+                    MarkdownEditing.colorize(field.text, field.selection.start, field.selection.end, hex),
+                )
+            },
             onLink = { showLinkDialog = true },
             onImage = onPickImage,
             onTogglePreview = onTogglePreview,
@@ -89,16 +120,24 @@ fun DiaryEditScreen(
                     .fillMaxWidth()
                     .weight(1f),
             ) {
-                MarkdownPreview(body = state.text, resolveImage = resolveImage)
+                MarkdownPreview(
+                    body = state.text,
+                    resolveImage = resolveImage,
+                    onActivate = onActivate,
+                )
             }
         } else {
             OutlinedTextField(
-                value = state.text,
-                onValueChange = onTextChanged,
+                value = field,
+                onValueChange = { value ->
+                    field = value
+                    onTextChanged(value.text)
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
                 textStyle = MaterialTheme.typography.bodyLarge,
+                visualTransformation = MarkdownStyledTransformation(),
                 placeholder = { Text(text = stringResource(R.string.diary_hint)) },
             )
         }

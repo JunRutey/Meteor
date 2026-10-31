@@ -52,4 +52,28 @@ class MarkdownEditingTest {
     fun `italic uses a single marker`() {
         assertEquals("*斜*", MarkdownEditing.italicize("斜", 0, 1))
     }
+
+    @Test
+    fun `colorize wraps the selection in a span`() {
+        assertEquals(
+            """<span style="color:#E53935">重要</span>""",
+            MarkdownEditing.colorize("重要", 0, 2, "#E53935"),
+        )
+    }
+
+    @Test
+    fun `colorize with an empty selection inserts placeholder text`() {
+        assertEquals(
+            """<span style="color:#1E88E5">文字</span>""",
+            MarkdownEditing.colorize("", 0, 0, "#1E88E5"),
+        )
+    }
+
+    @Test
+    fun `colorize keeps surrounding text`() {
+        assertEquals(
+            """前<span style="color:#43A047">中</span>后""",
+            MarkdownEditing.colorize("前中后", 1, 2, "#43A047"),
+        )
+    }
 }

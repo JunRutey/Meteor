@@ -32,6 +32,16 @@ object MarkdownEditing {
     fun italicize(body: String, start: Int, end: Int): String =
         wrapsWith(body, start, end, "*")
 
+    /** Wraps the selection in an inline colour span; colours are part of the body. */
+    fun colorize(body: String, start: Int, end: Int, hex: String): String {
+        if (start !in 0..body.length || end !in start..body.length) return body
+        val before = body.substring(0, start)
+        val selection = body.substring(start, end)
+        val after = body.substring(end)
+        val tag = if (selection.isEmpty()) "文字" else selection
+        return "$before<span style=\"color:$hex\">$tag</span>$after"
+    }
+
     private fun appendBlock(body: String, block: String): String {
         val trimmed = body.trimEnd()
         return when {
