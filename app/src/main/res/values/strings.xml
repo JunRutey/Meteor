@@ -70,4 +70,18 @@
     <string name="type_profile">档案</string>
     <string name="type_chat_log">聊天</string>
     <string name="type_persona">人格</string>
+
+    <string name="about_title">关于</string>
+    <string name="about_back">返回</string>
+    <string name="about_version">Meteor %1$s</string>
+    <string name="about_repository">GitHub 仓库 · JunRutey/Meteor</string>
+    <string name="about_donate">打赏</string>
+    <string name="about_changelog">更新日志</string>
+
+    <string name="chats_title">聊天记录</string>
+    <string name="chats_back">返回</string>
+    <string name="chats_empty">聊天记录总览尚未开放</string>
+
+    <string name="diary_preview_edit">修改日记</string>
+    <string name="diary_preview_back">返回</string>
 </resources>
