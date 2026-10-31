@@ -1,5 +1,6 @@
-package com.meteor.memory.core.index
+package com.meteor.memory.index
 
+import com.meteor.memory.core.index.IndexModule
 import com.meteor.memory.core.log.AppLog
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
