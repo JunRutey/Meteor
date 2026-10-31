@@ -2,6 +2,7 @@ package com.meteor.memory.ui.diary
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.time.TimeModule
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -26,6 +27,7 @@ data class DiaryRow(
 class DiaryListViewModel @Inject constructor(
     private val diaryQueries: DiaryQueries,
     private val timeModule: TimeModule,
+    private val appLog: AppLog,
 ) : ViewModel() {
 
     private val _rows = MutableStateFlow<List<DiaryRow>>(emptyList())
@@ -55,6 +57,7 @@ class DiaryListViewModel @Inject constructor(
             }
             _rows.value = loaded
             _loading.value = false
+            appLog.debug(TAG, "listed ${loaded.size} diaries")
         }
     }
 
@@ -64,6 +67,7 @@ class DiaryListViewModel @Inject constructor(
     }
 
     private companion object {
+        const val TAG = "DiaryList"
         const val MAX_ROWS = 100
         const val PREVIEW_CHARS = 60
     }

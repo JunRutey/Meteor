@@ -60,6 +60,15 @@ class RootViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            // Verbose logging must be active from process start, before any
+            // screen is opened.
+            settingsRepository.settings
+                .map { it.verboseLogging }
+                .distinctUntilChanged()
+                .collect { appLog.setVerbose(it) }
+        }
+
+        viewModelScope.launch {
             // Wait for the first persisted value, then keep AppLock in sync.
             settingsRepository.settings
                 .map { it.appLockEnabled }

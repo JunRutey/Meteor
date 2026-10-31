@@ -37,7 +37,9 @@ fun SettingsScreen(
     onFontScaleChanged: (FontScale) -> Unit,
     onAnimationsChanged: (Boolean) -> Unit,
     onAppLockChanged: (Boolean) -> Unit,
+    onVerboseLoggingChanged: (Boolean) -> Unit,
     onOpenRepository: () -> Unit,
+    logSizeBytes: Long,
     modifier: Modifier = Modifier,
     backupActions: @Composable () -> Unit = {},
     logActions: @Composable () -> Unit = {},
@@ -107,6 +109,21 @@ fun SettingsScreen(
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
+        SectionTitle(stringResource(R.string.settings_section_logs))
+        ToggleRow(
+            title = stringResource(R.string.settings_verbose_logging),
+            subtitle = stringResource(R.string.settings_verbose_logging_desc),
+            checked = settings.verboseLogging,
+            onCheckedChange = onVerboseLoggingChanged,
+        )
+        Text(
+            text = stringResource(R.string.settings_log_size, formatBytes(logSizeBytes)),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        logActions()
+
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
         SectionTitle(stringResource(R.string.settings_section_about))
         Text(
             text = stringResource(R.string.settings_about_version, versionName),
@@ -115,7 +132,16 @@ fun SettingsScreen(
         OutlinedButton(onClick = onOpenRepository) {
             Text(text = stringResource(R.string.settings_about_repository))
         }
-        logActions()
+    }
+}
+
+/** Byte counts are units, not prose, so they stay out of string resources. */
+private fun formatBytes(bytes: Long): String {
+    val locale = java.util.Locale.getDefault()
+    return when {
+        bytes >= 1024L * 1024L -> String.format(locale, "%.1f MB", bytes / (1024.0 * 1024.0))
+        bytes >= 1024L -> String.format(locale, "%.1f KB", bytes / 1024.0)
+        else -> String.format(locale, "%d B", bytes)
     }
 }
 

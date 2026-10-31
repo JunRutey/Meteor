@@ -25,6 +25,17 @@ interface AppLog {
     fun info(tag: String, message: String)
     fun warn(tag: String, message: String, throwable: Throwable? = null)
     fun error(tag: String, message: String, throwable: Throwable? = null)
+
+    /**
+     * Verbose mode records every level; otherwise only WARN/ERROR reach the file.
+     * Logcat is always written regardless, so `adb logcat` stays complete.
+     */
+    fun setVerbose(enabled: Boolean)
+
+    fun isVerbose(): Boolean
+
+    /** Bytes currently occupied by the on-disk log files. */
+    fun sizeBytes(): Long
 }
 
 /** Pure line formatting, kept out of the logger so it can be unit-tested. */

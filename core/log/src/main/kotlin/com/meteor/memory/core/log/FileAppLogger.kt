@@ -22,6 +22,20 @@ class FileAppLogger(
     private val logDir = File(context.filesDir, DIR_NAME)
     private val lock = Any()
 
+    @Volatile
+    private var verbose: Boolean = false
+
+    override fun setVerbose(enabled: Boolean) {
+        verbose = enabled
+    }
+
+    override fun isVerbose(): Boolean = verbose
+
+    override fun sizeBytes(): Long =
+        (logDir.listFiles() ?: emptyArray())
+            .filter { it.isFile }
+            .sumOf { it.length() }
+
     override fun debug(tag: String, message: String) = write(LogLevel.DEBUG, tag, message, null)
     override fun info(tag: String, message: String) = write(LogLevel.INFO, tag, message, null)
     override fun warn(tag: String, message: String, throwable: Throwable?) =
@@ -32,6 +46,9 @@ class FileAppLogger(
 
     private fun write(level: LogLevel, tag: String, message: String, throwable: Throwable?) {
         Log.println(priorityOf(level), LOGCAT_TAG, "$tag: $message")
+
+        // Non-verbose sessions keep only what explains a failure.
+        if (!verbose && level != LogLevel.WARN && level != LogLevel.ERROR) return
 
         val at = clock()
         val line = LogFormatter.line(level, tag, message, throwable, at)

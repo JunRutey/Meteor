@@ -26,6 +26,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             fontScale = prefs[KEY_FONT_SCALE]?.let { runCatching { FontScale.valueOf(it) }.getOrNull() }
                 ?: FontScale.SYSTEM,
             appLockEnabled = prefs[KEY_APP_LOCK] ?: false,
+            verboseLogging = prefs[KEY_VERBOSE_LOGGING] ?: false,
             autoBackupEnabled = prefs[KEY_AUTO_BACKUP] ?: true,
             backupRetention = prefs[KEY_BACKUP_RETENTION] ?: AppSettings.DEFAULT_BACKUP_RETENTION,
             aiEnabled = prefs[KEY_AI_ENABLED] ?: false,
@@ -42,6 +43,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
 
     suspend fun setAppLockEnabled(enabled: Boolean) = store.edit { it[KEY_APP_LOCK] = enabled }
 
+    suspend fun setVerboseLogging(enabled: Boolean) = store.edit { it[KEY_VERBOSE_LOGGING] = enabled }
+
     suspend fun setAutoBackupEnabled(enabled: Boolean) = store.edit { it[KEY_AUTO_BACKUP] = enabled }
 
     suspend fun setBackupRetention(count: Int) =
@@ -55,6 +58,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val KEY_ANIMATIONS = booleanPreferencesKey("animations_enabled")
         val KEY_FONT_SCALE = stringPreferencesKey("font_scale")
         val KEY_APP_LOCK = booleanPreferencesKey("app_lock_enabled")
+        val KEY_VERBOSE_LOGGING = booleanPreferencesKey("verbose_logging")
         val KEY_AUTO_BACKUP = booleanPreferencesKey("auto_backup_enabled")
         val KEY_BACKUP_RETENTION = intPreferencesKey("backup_retention")
         val KEY_AI_ENABLED = booleanPreferencesKey("ai_enabled")

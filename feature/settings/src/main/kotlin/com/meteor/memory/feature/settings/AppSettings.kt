@@ -13,6 +13,8 @@ data class AppSettings(
     val animationsEnabled: Boolean = true,
     val fontScale: FontScale = FontScale.SYSTEM,
     val appLockEnabled: Boolean = false,
+    /** Record every log level, not just warnings and errors. */
+    val verboseLogging: Boolean = false,
     val autoBackupEnabled: Boolean = true,
     val backupRetention: Int = DEFAULT_BACKUP_RETENTION,
     val aiEnabled: Boolean = false,

@@ -103,7 +103,10 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
         composable(ROUTE_SETTINGS) {
             val viewModel: SettingsViewModel = hiltViewModel()
             val settings by viewModel.settings.collectAsStateWithLifecycle()
+            val logSizeBytes by viewModel.logSizeBytes.collectAsStateWithLifecycle()
             val context = LocalContext.current
+
+            RefreshOnResume { viewModel.refreshLogSize() }
 
             SettingsScreen(
                 settings = settings,
@@ -113,7 +116,9 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
                 onFontScaleChanged = viewModel::setFontScale,
                 onAnimationsChanged = viewModel::setAnimationsEnabled,
                 onAppLockChanged = viewModel::setAppLockEnabled,
+                onVerboseLoggingChanged = viewModel::setVerboseLogging,
                 onOpenRepository = { context.openInBrowser(REPOSITORY_URL) },
+                logSizeBytes = logSizeBytes,
                 backupActions = { BackupActions() },
                 logActions = { LogActions() },
             )

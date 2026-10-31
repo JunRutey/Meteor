@@ -2,20 +2,26 @@ package com.meteor.memory.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.DarkMode
 import com.meteor.memory.feature.settings.FontScale
 import com.meteor.memory.feature.settings.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val repository: SettingsRepository,
+    private val appLog: AppLog,
 ) : ViewModel() {
 
     val settings: StateFlow<AppSettings> = repository.settings.stateIn(
@@ -23,6 +29,13 @@ class SettingsViewModel @Inject constructor(
         started = SharingStarted.WhileSubscribed(5_000),
         initialValue = AppSettings(),
     )
+
+    private val _logSizeBytes = MutableStateFlow(0L)
+    val logSizeBytes: StateFlow<Long> = _logSizeBytes.asStateFlow()
+
+    init {
+        refreshLogSize()
+    }
 
     fun setDarkMode(mode: DarkMode) {
         viewModelScope.launch { repository.setDarkMode(mode) }
@@ -42,5 +55,18 @@ class SettingsViewModel @Inject constructor(
 
     fun setAppLockEnabled(enabled: Boolean) {
         viewModelScope.launch { repository.setAppLockEnabled(enabled) }
+    }
+
+    fun setVerboseLogging(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setVerboseLogging(enabled)
+            withContext(Dispatchers.IO) { appLog.setVerbose(enabled) }
+        }
+    }
+
+    fun refreshLogSize() {
+        viewModelScope.launch {
+            _logSizeBytes.value = withContext(Dispatchers.IO) { appLog.sizeBytes() }
+        }
     }
 }

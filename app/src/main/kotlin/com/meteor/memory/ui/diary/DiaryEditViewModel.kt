@@ -54,6 +54,7 @@ class DiaryEditViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             val document = withContext(Dispatchers.IO) { diaryQueries.read(date) }
+            appLog.debug(TAG, "opened $date chars=${document?.body?.length ?: 0}")
             _state.value = _state.value.copy(
                 text = document?.body.orEmpty(),
                 signedAtLabel = document?.signedAt?.let(::formatStamp),
