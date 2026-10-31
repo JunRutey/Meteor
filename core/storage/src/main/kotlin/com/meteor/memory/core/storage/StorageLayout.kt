@@ -58,6 +58,8 @@ class StorageLayout(private val root: File) {
         const val CHAT = "聊天记录"
         const val IMAGES = "图片"
         const val PERSONA = "数字人格"
+        /** AI conversation history; encrypted, never scanned as archive records. */
+        const val AI_CHAT = "AI对话"
         const val ARCHIVE = "记忆档案"
         const val SELF = "自己"
         const val RELATIONS = "人际关系"

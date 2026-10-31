@@ -1,5 +1,6 @@
 package com.meteor.memory.feature.ai
 
+import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.storage.Document
 import com.meteor.memory.core.storage.MoodQueries
 import com.meteor.memory.core.storage.PersonQueries
@@ -68,6 +69,7 @@ class MeteorAiModuleChatTest {
         scanner = RecordScanner { documents },
         personQueries = stub(PersonQueries::class.java),
         moodQueries = stub(MoodQueries::class.java),
+        diaryQueries = stub(DiaryQueries::class.java),
         personaStore = stub(PersonaStore::class.java),
         skillLoader = { CHAT_SKILL },
         providerFactory = { provider },

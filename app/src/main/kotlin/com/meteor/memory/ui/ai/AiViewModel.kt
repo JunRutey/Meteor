@@ -4,8 +4,10 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meteor.memory.core.log.AppLog
+import com.meteor.memory.core.storage.AiChatStore
 import com.meteor.memory.core.storage.PersonEntry
 import com.meteor.memory.core.storage.PersonQueries
+import com.meteor.memory.core.storage.StoredChatTurn
 import com.meteor.memory.feature.ai.AiChatBubble
 import com.meteor.memory.feature.ai.AiModule
 import com.meteor.memory.feature.ai.AiPresets
@@ -25,6 +27,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.Instant
 import javax.inject.Inject
 
 /** Why the chat is unavailable. Mapped to user copy by the UI layer. */
@@ -54,6 +57,7 @@ class AiViewModel @Inject constructor(
     private val repository: SettingsRepository,
     private val reader: AiSettingsReader,
     private val appLog: AppLog,
+    private val chatStore: AiChatStore,
 ) : ViewModel() {
 
     private val initialPersonId: String? = savedStateHandle.get<String>(ARG_PERSON_ID)
@@ -94,11 +98,13 @@ class AiViewModel @Inject constructor(
                     selectedSkill = state.selectedSkill ?: default?.name ?: chatSkills.firstOrNull()?.name,
                 )
             }
+            restoreHistory()
         }
     }
 
     fun selectSkill(name: String) {
         _state.update { it.copy(selectedSkill = name) }
+        restoreHistory()
     }
 
     fun selectPerson(personId: String?) {
@@ -121,7 +127,11 @@ class AiViewModel @Inject constructor(
                 errorDetail = null,
             )
         }
-        if (personId == null) return
+        if (personId == null) {
+            restoreHistory()
+            return
+        }
+        restoreHistory()
         viewModelScope.launch {
             runCatching { aiModule.persona(personId) }.onSuccess { persona ->
                 _state.update { it.copy(personaDistilled = persona.distilled) }
@@ -145,6 +155,7 @@ class AiViewModel @Inject constructor(
                 errorDetail = null,
             )
         }
+        persistHistory()
 
         viewModelScope.launch {
             val readiness = withContext(Dispatchers.IO) { runCatching { reader.read() }.getOrNull() }
@@ -177,6 +188,7 @@ class AiViewModel @Inject constructor(
                         sessionElapsedMs = it.sessionElapsedMs + reply.elapsedMs,
                     )
                 }
+                persistHistory()
             }.onFailure { error ->
                 appLog.warn(TAG, "chat failed", error)
                 _state.update {
@@ -186,11 +198,14 @@ class AiViewModel @Inject constructor(
                         errorDetail = (error as? AiProviderException)?.message,
                     )
                 }
+                persistHistory()
             }
         }
     }
 
     fun clear() {
+        val key = scopeKey(_state.value.selectedSkill, _state.value.selectedPersonId)
+        viewModelScope.launch(Dispatchers.IO) { runCatching { chatStore.clear(key) } }
         _state.update {
             it.copy(
                 messages = emptyList(),
@@ -199,6 +214,35 @@ class AiViewModel @Inject constructor(
                 errorCode = 0,
                 errorDetail = null,
             )
+        }
+    }
+
+    private fun scopeKey(skill: String?, personId: String?) =
+        "${skill ?: "none"}__${personId ?: "all"}"
+
+    private fun restoreHistory() {
+        viewModelScope.launch {
+            val key = scopeKey(_state.value.selectedSkill, _state.value.selectedPersonId)
+            val turns = withContext(Dispatchers.IO) {
+                runCatching { chatStore.load(key) }.getOrDefault(emptyList())
+            }
+            _state.update {
+                it.copy(
+                    messages = turns.map { turn -> AiChatBubble(turn.fromUser, turn.text) },
+                    sessionUsage = AiUsage(),
+                    sessionElapsedMs = 0,
+                )
+            }
+        }
+    }
+
+    private fun persistHistory() {
+        val key = scopeKey(_state.value.selectedSkill, _state.value.selectedPersonId)
+        val turns = _state.value.messages.map {
+            StoredChatTurn(fromUser = it.fromUser, text = it.text, at = Instant.now())
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { chatStore.save(key, turns) }
         }
     }
 

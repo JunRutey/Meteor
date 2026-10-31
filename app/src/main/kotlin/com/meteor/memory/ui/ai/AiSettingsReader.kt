@@ -34,6 +34,7 @@ class AiSettingsReader(
                 model = settings.aiModel,
                 apiKey = key,
                 reasoning = settings.aiReasoning,
+                writeEnabled = settings.aiWriteEnabled,
             ),
             hasApiKey = key != null,
         )

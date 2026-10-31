@@ -1,17 +1,20 @@
 package com.meteor.memory.feature.ai
 
+import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.storage.Document
+import com.meteor.memory.core.storage.Mood
 import com.meteor.memory.core.storage.MoodQueries
 import com.meteor.memory.core.storage.PersonQueries
 import com.meteor.memory.core.storage.RecordScanner
 import com.meteor.memory.core.storage.RecordType
+import com.meteor.memory.core.storage.Relation
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.time.LocalDate
 import java.time.ZoneId
 
-/** The tool surface an agent may use. Read-only by construction. */
+/** The tool surface an agent may use. Read tools are always on. */
 interface Toolbox {
     fun specs(): List<AiToolSpec>
 
@@ -19,17 +22,19 @@ interface Toolbox {
 }
 
 /**
- * The **entire** agent capability set: six read-only tools (ADR-024).
+ * The agent's capability set (ADR-024 / ADR-025).
  *
- * There is deliberately no write, delete, export, share, network-fetch or shell
- * tool. The only write in the AI domain is the persona artifact, and it happens
- * outside this class after the user explicitly asks for a distillation.
+ * Read tools are always available. Write tools (diary, mood, people) exist only
+ * when the user turned on "let AI modify the archive" for this request; there is
+ * deliberately no delete, export, share, network-fetch or shell tool.
  */
 class ArchiveTools(
     private val rootDir: File,
     private val scanner: RecordScanner,
     private val personQueries: PersonQueries,
     private val moodQueries: MoodQueries,
+    private val diaryQueries: DiaryQueries,
+    private val writeEnabled: Boolean = false,
     private val zone: ZoneId = ZoneId.systemDefault(),
 ) : Toolbox {
 
@@ -44,7 +49,8 @@ class ArchiveTools(
             .toList()
     }
 
-    override fun specs(): List<AiToolSpec> = SPECS
+    override fun specs(): List<AiToolSpec> =
+        if (writeEnabled) READ_SPECS + WRITE_SPECS else READ_SPECS
 
     /** Always returns a JSON string; failures are JSON too, never exceptions. */
     override fun execute(name: String, arguments: String, allowedPersonId: String?): String = runCatching {
@@ -70,6 +76,22 @@ class ArchiveTools(
                 query = args.optString("query"),
                 personId = args.optString("person_id"),
                 allowedPersonId = allowedPersonId,
+            )
+
+            TOOL_SAVE_DIARY -> saveDiary(args.optString("date"), args.optString("body"))
+            TOOL_APPEND_DIARY -> appendDiary(args.optString("date"), args.optString("text"))
+            TOOL_SET_MOOD -> setMood(args.optString("date"), args.optString("mood"))
+            TOOL_CREATE_PERSON -> createPerson(
+                name = args.optString("name"),
+                relation = args.optString("relation"),
+                notes = args.optString("notes"),
+            )
+
+            TOOL_UPDATE_PERSON -> updatePerson(
+                personId = args.optString("person_id"),
+                name = args.optString("name"),
+                relation = args.optString("relation"),
+                notes = args.optString("notes"),
             )
 
             else -> errorJson("unknown-tool")
@@ -335,6 +357,68 @@ class ArchiveTools(
         return array.toString()
     }
 
+    // --- write tools (only when the user allowed them) ---------------------
+
+    private fun saveDiary(date: String, body: String): String {
+        if (!writeEnabled) return errorJson("write-disabled")
+        val day = parseDate(date) ?: return errorJson("bad-date")
+        val text = body.trim().take(MAX_WRITE_CHARS)
+        if (text.isBlank()) return errorJson("empty-body")
+        diaryQueries.save(day, text)
+        return savedJson(day)
+    }
+
+    private fun appendDiary(date: String, text: String): String {
+        if (!writeEnabled) return errorJson("write-disabled")
+        val day = parseDate(date) ?: return errorJson("bad-date")
+        val addition = text.trim().take(MAX_WRITE_CHARS)
+        if (addition.isBlank()) return errorJson("empty-body")
+        val existing = diaryQueries.read(day)?.body.orEmpty().trimEnd()
+        diaryQueries.save(day, if (existing.isBlank()) addition else "$existing\n\n$addition")
+        return savedJson(day)
+    }
+
+    private fun savedJson(day: LocalDate): String =
+        JSONObject().put("saved", true).put("date", day.toString()).toString()
+
+    private fun setMood(date: String, mood: String): String {
+        if (!writeEnabled) return errorJson("write-disabled")
+        val day = parseDate(date) ?: return errorJson("bad-date")
+        val value = Mood.fromCode(mood.trim().lowercase()) ?: return errorJson("bad-mood")
+        moodQueries.save(day, value)
+        return JSONObject().put("saved", true)
+            .put("date", day.toString())
+            .put("mood", value.code)
+            .toString()
+    }
+
+    private fun createPerson(name: String, relation: String, notes: String): String {
+        if (!writeEnabled) return errorJson("write-disabled")
+        val displayName = name.trim()
+        if (displayName.isBlank()) return errorJson("empty-name")
+        val id = personQueries.create(
+            displayName = displayName,
+            relation = relation.trim().takeIf { it.isNotBlank() }?.let { Relation.fromCode(it) },
+            notes = notes.trim().take(MAX_WRITE_CHARS),
+        )
+        return JSONObject().put("created", true).put("person_id", id).toString()
+    }
+
+    private fun updatePerson(personId: String, name: String, relation: String, notes: String): String {
+        if (!writeEnabled) return errorJson("write-disabled")
+        if (personId.isBlank()) return errorJson("missing-person-id")
+        val existing = personQueries.read(personId) ?: return errorJson("not-found")
+        val chosenRelation = relation.trim().takeIf { it.isNotBlank() }?.let { Relation.fromCode(it) }
+            ?: existing.relation
+        personQueries.update(
+            personId = personId,
+            displayName = name.trim().ifBlank { existing.displayName },
+            relation = chosenRelation,
+            notes = notes.trim().ifBlank { existing.notes }.take(MAX_WRITE_CHARS),
+        )
+        return JSONObject().put("updated", true).put("person_id", personId).toString()
+    }
+
     // --- guards ------------------------------------------------------------
 
     private fun personAllowed(personId: String, allowedPersonId: String?): Boolean =
@@ -370,6 +454,11 @@ class ArchiveTools(
         const val TOOL_DIARY_DATES = "list_diary_dates"
         const val TOOL_READ_MOODS = "read_moods"
         const val TOOL_SEARCH = "search_archive"
+        const val TOOL_SAVE_DIARY = "save_diary"
+        const val TOOL_APPEND_DIARY = "append_diary"
+        const val TOOL_SET_MOOD = "set_mood"
+        const val TOOL_CREATE_PERSON = "create_person"
+        const val TOOL_UPDATE_PERSON = "update_person"
 
         private const val MAX_PEOPLE = 100
         private const val MAX_RECORDS = 200
@@ -377,8 +466,9 @@ class ArchiveTools(
         private const val MAX_SNIPPET_CHARS = 400
         private const val MAX_SEARCH_HITS = 8
         private const val PREFETCH_SNIPPET_CHARS = 320
+        private const val MAX_WRITE_CHARS = 20_000
 
-        private val SPECS = listOf(
+        private val READ_SPECS = listOf(
             AiToolSpec(
                 name = TOOL_LIST_PEOPLE,
                 description = "列出档案里的人物（person_id、称呼、关系）。",
@@ -418,6 +508,34 @@ class ArchiveTools(
                 name = TOOL_SEARCH,
                 description = "在自己的档案里检索关键词，返回最相关的原文片段。",
                 parametersJson = """{"type":"object","properties":{"query":{"type":"string"},"person_id":{"type":"string"}},"required":["query"]}""",
+            ),
+        )
+
+        private val WRITE_SPECS = listOf(
+            AiToolSpec(
+                name = TOOL_SAVE_DIARY,
+                description = "写入或覆盖某一天的日记（日期 YYYY-MM-DD）。会把原文替换为你给出的正文。",
+                parametersJson = """{"type":"object","properties":{"date":{"type":"string"},"body":{"type":"string"}},"required":["date","body"]}""",
+            ),
+            AiToolSpec(
+                name = TOOL_APPEND_DIARY,
+                description = "在某一天的日记末尾追加一段文字；当天没有日记时会新建。",
+                parametersJson = """{"type":"object","properties":{"date":{"type":"string"},"text":{"type":"string"}},"required":["date","text"]}""",
+            ),
+            AiToolSpec(
+                name = TOOL_SET_MOOD,
+                description = "设置某一天的心情：happy/calm/excited/tired/sad/angry。",
+                parametersJson = """{"type":"object","properties":{"date":{"type":"string"},"mood":{"type":"string"}},"required":["date","mood"]}""",
+            ),
+            AiToolSpec(
+                name = TOOL_CREATE_PERSON,
+                description = "新建一个人物档案：称呼必填，关系（family/friend/former_friend）与备注可选。",
+                parametersJson = """{"type":"object","properties":{"name":{"type":"string"},"relation":{"type":"string"},"notes":{"type":"string"}},"required":["name"]}""",
+            ),
+            AiToolSpec(
+                name = TOOL_UPDATE_PERSON,
+                description = "更新一个人物档案：只改你给出的字段，其余保持不变。",
+                parametersJson = """{"type":"object","properties":{"person_id":{"type":"string"},"name":{"type":"string"},"relation":{"type":"string"},"notes":{"type":"string"}},"required":["person_id"]}""",
             ),
         )
     }

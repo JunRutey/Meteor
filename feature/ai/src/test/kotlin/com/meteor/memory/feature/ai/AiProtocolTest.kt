@@ -166,6 +166,14 @@ class AiProtocolTest {
     }
 
     @Test
+    fun `model ids are parsed and de-duplicated`() {
+        val body = """{"data":[{"id":"deepseek-chat"},{"id":"deepseek-reasoner"},{"id":"deepseek-chat"}]}"""
+
+        assertEquals(listOf("deepseek-chat", "deepseek-reasoner"), AiProtocol.parseModels(body))
+        assertEquals(emptyList<String>(), AiProtocol.parseModels("""{"data":[]}"""))
+    }
+
+    @Test
     fun `assistant reasoning content is echoed for tool rounds`() {
         val body = AiProtocol.requestBody(
             model = "m",

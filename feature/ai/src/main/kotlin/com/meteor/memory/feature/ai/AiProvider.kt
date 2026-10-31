@@ -13,6 +13,9 @@ interface AiProvider {
 
     /** Cheap `/models` call behind the "test connection" button. */
     suspend fun probe(): ProbeResult
+
+    /** Model ids the provider currently offers; used by the settings picker. */
+    suspend fun listModels(): List<String> = emptyList()
 }
 
 /**
@@ -65,4 +68,24 @@ class OpenAiCompatibleProvider(
             ProbeResult(ok = response.code in 200..299, code = response.code)
         }.getOrDefault(ProbeResult(ok = false, code = 0))
     }
+
+    override suspend fun listModels(): List<String> {
+        val apiKey = config.apiKey?.takeIf { it.isNotBlank() }
+            ?: throw AiProviderException(0, "missing-api-key")
+        if (!config.isConfigured()) throw AiProviderException(0, "not-configured")
+
+        val response = transport.get(
+            url = config.modelsEndpoint,
+            headers = mapOf("Authorization" to "Bearer $apiKey"),
+        )
+        if (response.code !in 200..299) {
+            throw AiProviderException(response.code, AiProtocol.errorMessage(response.body))
+        }
+        return AiProtocol.parseModels(response.body)
+    }
+}
+
+/** Fetches available model ids for the settings picker. */
+object AiModels {
+    suspend fun fetch(config: AiConfig): List<String> = OpenAiCompatibleProvider(config).listModels()
 }

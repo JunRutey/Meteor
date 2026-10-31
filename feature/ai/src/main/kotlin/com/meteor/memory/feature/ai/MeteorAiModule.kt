@@ -1,5 +1,6 @@
 package com.meteor.memory.feature.ai
 
+import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.storage.Document
 import com.meteor.memory.core.storage.MoodQueries
 import com.meteor.memory.core.storage.PersonQueries
@@ -64,6 +65,7 @@ class MeteorAiModule(
     private val scanner: RecordScanner,
     private val personQueries: PersonQueries,
     private val moodQueries: MoodQueries,
+    private val diaryQueries: DiaryQueries,
     private val personaStore: PersonaStore,
     private val skillLoader: (String) -> String?,
     private val providerFactory: (AiConfig) -> AiProvider = { OpenAiCompatibleProvider(it) },
@@ -103,7 +105,7 @@ class MeteorAiModule(
             append(" Target person_id: ").append(request.personId).append('.')
         }
         val user = distillPrompt(request.personId, profile?.displayName, snapshot)
-        val tools = archiveTools()
+        val tools = archiveTools(writeEnabled = false)
         val result = withContext(Dispatchers.IO) {
             agent(request.config, tools).run(
                 conversation = listOf(AiMessage.system(system), AiMessage.user(user)),
@@ -140,7 +142,7 @@ class MeteorAiModule(
         // keyword retrieval. Either way only a few short excerpts are sent.
         val today = LocalDate.now()
         val window = TimePhrase.parse(request.question, today)
-        val tools = archiveTools()
+        val tools = archiveTools(writeEnabled = request.config.writeEnabled)
         val prefetched = withContext(Dispatchers.IO) {
             if (window != null) {
                 tools.dateContext(window, request.personId, PREFETCH_HITS, PREFETCH_CHARS)
@@ -165,6 +167,13 @@ class MeteorAiModule(
                 append("\n\nNo distilled persona exists yet for person_id=")
                     .append(request.personId)
                     .append(". Answer from the archive only; if asked to role-play, say the persona is not distilled yet.")
+            }
+            if (request.config.writeEnabled) {
+                append("\n\nWrite tools are enabled: save_diary, append_diary, set_mood, ")
+                append("create_person, update_person. State the exact date and change in your reply, ")
+                append("and never overwrite or delete anything the user did not ask for.")
+            } else {
+                append("\n\nTools are read-only; never claim to have changed anything.")
             }
             if (prefetched.isNotBlank()) {
                 append("\n\n# Pre-retrieved archive context\n\n")
@@ -205,11 +214,13 @@ class MeteorAiModule(
         providerFactory(config).probe()
     }
 
-    private fun archiveTools(): ArchiveTools = ArchiveTools(
+    private fun archiveTools(writeEnabled: Boolean): ArchiveTools = ArchiveTools(
         rootDir = rootDir,
         scanner = scanner,
         personQueries = personQueries,
         moodQueries = moodQueries,
+        diaryQueries = diaryQueries,
+        writeEnabled = writeEnabled,
     )
 
     private fun agent(config: AiConfig, tools: ArchiveTools): AiAgent = AiAgent(

@@ -35,6 +35,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             aiBaseUrl = prefs[KEY_AI_BASE_URL].orEmpty(),
             aiModel = prefs[KEY_AI_MODEL].orEmpty(),
             aiReasoning = prefs[KEY_AI_REASONING] ?: AppSettings.DEFAULT_AI_REASONING,
+            aiWriteEnabled = prefs[KEY_AI_WRITE] ?: false,
         )
     }
 
@@ -72,6 +73,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     suspend fun setAiReasoning(reasoning: String) =
         store.edit { it[KEY_AI_REASONING] = reasoning.trim() }
 
+    suspend fun setAiWriteEnabled(enabled: Boolean) =
+        store.edit { it[KEY_AI_WRITE] = enabled }
+
     private companion object {
         val KEY_DARK_MODE = stringPreferencesKey("dark_mode")
         val KEY_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
@@ -87,5 +91,6 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val KEY_AI_BASE_URL = stringPreferencesKey("ai_base_url")
         val KEY_AI_MODEL = stringPreferencesKey("ai_model")
         val KEY_AI_REASONING = stringPreferencesKey("ai_reasoning")
+        val KEY_AI_WRITE = booleanPreferencesKey("ai_write_enabled")
     }
 }

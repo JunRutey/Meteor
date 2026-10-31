@@ -181,6 +181,16 @@ object AiProtocol {
         )
     }
 
+    /** `/models` response: only the ids are useful to the picker. */
+    fun parseModels(body: String): List<String> {
+        val root = runCatching { JSONObject(body) }
+            .getOrElse { throw AiProviderException(0, "invalid-json") }
+        val data = root.optJSONArray("data") ?: return emptyList()
+        return (0 until data.length()).mapNotNull { index ->
+            data.optJSONObject(index)?.optString("id")?.takeIf { it.isNotBlank() }
+        }.distinct().sorted()
+    }
+
     /**
      * Only the provider's structured `error.message`, never the whole body: a
      * proxy may echo the request, and that request contains archive excerpts.

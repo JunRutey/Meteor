@@ -61,6 +61,8 @@ data class AiConfig(
     val model: String = "",
     val apiKey: String? = null,
     val reasoning: String = "auto",
+    /** When true the model may use write tools (diary, mood, people). */
+    val writeEnabled: Boolean = false,
 ) {
 
     private val resolved: Pair<String, String> = AiPresets.resolveProvider(provider, baseUrl, model)

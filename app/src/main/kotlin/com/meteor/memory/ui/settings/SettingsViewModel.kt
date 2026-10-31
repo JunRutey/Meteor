@@ -3,6 +3,7 @@ package com.meteor.memory.ui.settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meteor.memory.core.log.AppLog
+import com.meteor.memory.feature.ai.AiModels
 import com.meteor.memory.feature.ai.AiModule
 import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.DarkMode
@@ -28,6 +29,13 @@ data class AiTestState(
     val code: Int = 0,
 )
 
+/** Model ids fetched from the provider; failure keeps manual entry possible. */
+data class AiModelsState(
+    val loading: Boolean = false,
+    val items: List<String> = emptyList(),
+    val failed: Boolean = false,
+)
+
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val repository: SettingsRepository,
@@ -50,6 +58,9 @@ class SettingsViewModel @Inject constructor(
 
     private val _aiTest = MutableStateFlow(AiTestState())
     val aiTest: StateFlow<AiTestState> = _aiTest.asStateFlow()
+
+    private val _aiModels = MutableStateFlow(AiModelsState())
+    val aiModels: StateFlow<AiModelsState> = _aiModels.asStateFlow()
 
     init {
         refreshLogSize()
@@ -108,6 +119,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repository.setAiReasoning(reasoning) }
     }
 
+    fun setAiWriteEnabled(enabled: Boolean) {
+        viewModelScope.launch { repository.setAiWriteEnabled(enabled) }
+    }
+
     fun saveApiKey(key: String) {
         viewModelScope.launch(Dispatchers.IO) {
             reader.saveApiKey(key)
@@ -137,6 +152,21 @@ class SettingsViewModel @Inject constructor(
                 ok = result?.ok == true,
                 code = result?.code ?: 0,
             )
+        }
+    }
+
+    /** Pulls the provider's model ids so the user never has to type one. */
+    fun refreshAiModels() {
+        if (_aiModels.value.loading) return
+        _aiModels.value = AiModelsState(loading = true)
+        viewModelScope.launch {
+            val readiness = withContext(Dispatchers.IO) { runCatching { reader.read() }.getOrNull() }
+            if (readiness == null || !readiness.config.isConfigured()) {
+                _aiModels.value = AiModelsState(failed = true)
+                return@launch
+            }
+            val models = runCatching { AiModels.fetch(readiness.config) }.getOrNull().orEmpty()
+            _aiModels.value = AiModelsState(items = models, failed = models.isEmpty())
         }
     }
 

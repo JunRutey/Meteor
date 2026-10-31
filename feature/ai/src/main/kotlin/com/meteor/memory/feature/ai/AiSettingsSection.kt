@@ -1,12 +1,15 @@
 package com.meteor.memory.feature.ai
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -40,6 +43,10 @@ fun AiSettingsSection(
     model: String,
     reasoning: String,
     apiKeyPresent: Boolean,
+    models: List<String> = emptyList(),
+    modelsLoading: Boolean = false,
+    modelsFailed: Boolean = false,
+    writeEnabled: Boolean = false,
     testing: Boolean,
     testMessage: String?,
     onEnabledChange: (Boolean) -> Unit,
@@ -48,12 +55,15 @@ fun AiSettingsSection(
     onBaseUrlChange: (String) -> Unit,
     onModelChange: (String) -> Unit,
     onReasoningChange: (String) -> Unit,
+    onRefreshModels: () -> Unit = {},
+    onWriteChange: (Boolean) -> Unit = {},
     onSaveApiKey: (String) -> Unit,
     onClearApiKey: () -> Unit,
     onTestConnection: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var showConsent by remember { mutableStateOf(false) }
+    var showModels by remember { mutableStateOf(false) }
     var keyDraft by remember { mutableStateOf("") }
 
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -141,6 +151,49 @@ fun AiSettingsSection(
                 label = { Text(text = stringResource(R.string.ai_settings_model)) },
                 placeholder = { Text(text = stringResource(R.string.ai_settings_model_hint)) },
             )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(onClick = onRefreshModels, enabled = !modelsLoading) {
+                    Text(
+                        text = stringResource(
+                            if (modelsLoading) {
+                                R.string.ai_settings_models_loading
+                            } else {
+                                R.string.ai_settings_models_fetch
+                            },
+                        ),
+                    )
+                }
+                if (models.isNotEmpty()) {
+                    Box {
+                        OutlinedButton(onClick = { showModels = true }) {
+                            Text(stringResource(R.string.ai_settings_models_pick, models.size))
+                        }
+                        DropdownMenu(
+                            expanded = showModels,
+                            onDismissRequest = { showModels = false },
+                        ) {
+                            models.forEach { id ->
+                                DropdownMenuItem(
+                                    text = { Text(id) },
+                                    onClick = {
+                                        showModels = false
+                                        onModelChange(id)
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            if (modelsFailed) {
+                Text(
+                    text = stringResource(R.string.ai_settings_models_failed),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
 
             Text(
                 text = stringResource(R.string.ai_settings_reasoning),
@@ -160,6 +213,24 @@ fun AiSettingsSection(
                 text = stringResource(R.string.ai_settings_reasoning_hint),
                 style = MaterialTheme.typography.bodySmall,
             )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text(
+                        text = stringResource(R.string.ai_settings_write),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Text(
+                        text = stringResource(R.string.ai_settings_write_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Switch(checked = writeEnabled, onCheckedChange = onWriteChange)
+            }
 
             OutlinedTextField(
                 value = keyDraft,

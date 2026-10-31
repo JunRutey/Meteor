@@ -395,6 +395,7 @@ fun MeteorNavHost(
             val logSizeBytes by viewModel.logSizeBytes.collectAsStateWithLifecycle()
             val apiKeyPresent by viewModel.apiKeyPresent.collectAsStateWithLifecycle()
             val aiTest by viewModel.aiTest.collectAsStateWithLifecycle()
+            val aiModels by viewModel.aiModels.collectAsStateWithLifecycle()
             val context = LocalContext.current
 
             RefreshOnResume { viewModel.refreshLogSize() }
@@ -421,6 +422,10 @@ fun MeteorNavHost(
                         model = settings.aiModel,
                         reasoning = settings.aiReasoning,
                         apiKeyPresent = apiKeyPresent,
+                        models = aiModels.items,
+                        modelsLoading = aiModels.loading,
+                        modelsFailed = aiModels.failed,
+                        writeEnabled = settings.aiWriteEnabled,
                         testing = aiTest.running,
                         testMessage = aiTestText(aiTest),
                         onEnabledChange = viewModel::setAiEnabled,
@@ -429,6 +434,8 @@ fun MeteorNavHost(
                         onBaseUrlChange = viewModel::setAiBaseUrl,
                         onModelChange = viewModel::setAiModel,
                         onReasoningChange = viewModel::setAiReasoning,
+                        onRefreshModels = viewModel::refreshAiModels,
+                        onWriteChange = viewModel::setAiWriteEnabled,
                         onSaveApiKey = viewModel::saveApiKey,
                         onClearApiKey = viewModel::clearApiKey,
                         onTestConnection = viewModel::testAiConnection,

@@ -33,6 +33,8 @@ data class AppSettings(
     val aiModel: String = "",
     /** Thinking effort: `auto` / `off` / `low` / `high` / `max` (DeepSeek only). */
     val aiReasoning: String = DEFAULT_AI_REASONING,
+    /** When true the model may create/update diaries, moods and people. */
+    val aiWriteEnabled: Boolean = false,
 ) {
     companion object {
         const val DEFAULT_BACKUP_RETENTION = 7

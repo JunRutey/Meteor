@@ -19,7 +19,9 @@ import com.meteor.memory.core.crypto.androidKeystoreSecretStore
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.log.FileAppLogger
 import com.meteor.memory.core.log.LogExporter
+import com.meteor.memory.core.storage.AiChatStore
 import com.meteor.memory.core.storage.DiaryQueries
+import com.meteor.memory.core.storage.EncryptedAiChatStore
 import com.meteor.memory.core.storage.EncryptedImageStore
 import com.meteor.memory.core.storage.ImageStore
 import com.meteor.memory.core.storage.MoodQueries
@@ -143,6 +145,14 @@ object AppModule {
         fileCrypto: FileCrypto,
     ): SecretStore = androidKeystoreSecretStore(context, fileCrypto)
 
+    /** Chat history is encrypted with the same key and never scanned as records. */
+    @Provides
+    @Singleton
+    fun provideAiChatStore(
+        @ApplicationContext context: Context,
+        fileCrypto: FileCrypto,
+    ): AiChatStore = EncryptedAiChatStore(File(context.filesDir, StorageLayout.ROOT_NAME), fileCrypto)
+
     @Provides
     @Singleton
     fun provideAiSettingsReader(
@@ -167,12 +177,14 @@ object AppModule {
         recordScanner: RecordScanner,
         personQueries: PersonQueries,
         moodQueries: MoodQueries,
+        diaryQueries: DiaryQueries,
         storageRouter: StorageRouter,
     ): AiModule = MeteorAiModule(
         rootDir = File(context.filesDir, StorageLayout.ROOT_NAME),
         scanner = recordScanner,
         personQueries = personQueries,
         moodQueries = moodQueries,
+        diaryQueries = diaryQueries,
         personaStore = FilePersonaStore(storageRouter),
         skillLoader = { path ->
             runCatching {

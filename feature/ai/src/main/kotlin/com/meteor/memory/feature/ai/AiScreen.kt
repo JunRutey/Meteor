@@ -33,7 +33,7 @@ data class AiSkillChip(val id: String, val label: String, val requiresPerson: Bo
 /** One selectable conversation subject. */
 data class AiPersonChip(val personId: String, val label: String)
 
-/** One in-memory chat bubble; history is never persisted. */
+/** One persisted chat bubble. History is encrypted on disk, not in the record archive. */
 data class AiChatBubble(
     val fromUser: Boolean,
     val text: String,
@@ -44,8 +44,10 @@ data class AiChatBubble(
 /**
  * The AI domain screen: pick a skill, optionally pick a person, chat.
  *
- * It renders state only and owns no business logic; the provider name and every
- * model-produced string are supplied by the caller.
+ * The skill/scope pickers stay fixed above the transcript so switching a
+ * persona never requires scrolling back up. It renders state only and owns no
+ * business logic; the provider name and every model-produced string come from
+ * the caller.
  */
 @Composable
 fun AiScreen(
@@ -97,153 +99,165 @@ fun AiScreen(
                 Text(text = blocked, style = MaterialTheme.typography.bodyMedium)
                 Button(onClick = onOpenSettings) { Text(stringResource(R.string.ai_open_settings)) }
             }
-        } else {
-            LazyColumn(modifier = Modifier.weight(1f)) {
+            return@Column
+        }
+
+        // Fixed header: switching skill/person never scrolls the transcript.
+        SkillAndScopePicker(
+            skills = skills,
+            selectedSkillId = selectedSkillId,
+            people = people,
+            selectedPersonId = selectedPersonId,
+            personaStatus = personaStatus,
+            onSkillSelect = onSkillSelect,
+            onPersonSelect = onPersonSelect,
+            onOpenPersona = onOpenPersona,
+        )
+        HorizontalDivider()
+
+        LazyColumn(modifier = Modifier.weight(1f)) {
+            if (messages.isEmpty()) {
                 item {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.ai_skill),
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            skills.forEach { skill ->
-                                if (skill.id == selectedSkillId) {
-                                    Button(onClick = { onSkillSelect(skill.id) }) { Text(skill.label) }
-                                } else {
-                                    OutlinedButton(onClick = { onSkillSelect(skill.id) }) { Text(skill.label) }
-                                }
-                            }
-                        }
-                    }
+                    Text(
+                        text = stringResource(R.string.ai_empty_chat),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(16.dp),
+                    )
                 }
+            } else {
+                items(messages) { bubble -> ChatBubble(bubble) }
+            }
 
+            if (busy) {
                 item {
-                    Column(
+                    Text(
+                        text = stringResource(R.string.ai_busy),
+                        style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.ai_scope),
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            item {
-                                if (selectedPersonId == null) {
-                                    Button(onClick = { onPersonSelect(null) }) {
-                                        Text(stringResource(R.string.ai_scope_archive))
-                                    }
-                                } else {
-                                    OutlinedButton(onClick = { onPersonSelect(null) }) {
-                                        Text(stringResource(R.string.ai_scope_archive))
-                                    }
-                                }
-                            }
-                            items(people, key = { it.personId }) { person ->
-                                if (person.personId == selectedPersonId) {
-                                    Button(onClick = { onPersonSelect(person.personId) }) { Text(person.label) }
-                                } else {
-                                    OutlinedButton(onClick = { onPersonSelect(person.personId) }) { Text(person.label) }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                val persona = personaStatus
-                val personId = selectedPersonId
-                if (persona != null && personId != null) {
-                    item {
-                        Column(
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp),
-                        ) {
-                            Text(text = persona, style = MaterialTheme.typography.bodySmall)
-                            TextButton(onClick = { onOpenPersona(personId) }) {
-                                Text(stringResource(R.string.ai_persona_open))
-                            }
-                        }
-                    }
-                }
-
-                if (messages.isEmpty()) {
-                    item {
-                        Text(
-                            text = stringResource(R.string.ai_empty_chat),
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(16.dp),
-                        )
-                    }
-                } else {
-                    items(messages) { bubble -> ChatBubble(bubble) }
-                }
-
-                if (busy) {
-                    item {
-                        Text(
-                            text = stringResource(R.string.ai_busy),
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        )
-                    }
-                }
-
-                val message = error
-                if (message != null) {
-                    item {
-                        Text(
-                            text = message,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        )
-                    }
+                    )
                 }
             }
 
-            HorizontalDivider()
-            Column(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                if (sessionUsage.totalTokens > 0) {
-                    UsageSummary(sessionUsage, sessionElapsedMs)
-                }
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    OutlinedTextField(
-                        value = input,
-                        onValueChange = { input = it },
-                        modifier = Modifier.weight(1f),
-                        label = { Text(stringResource(R.string.ai_question_hint)) },
+            val message = error
+            if (message != null) {
+                item {
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     )
-                    Button(
-                        onClick = {
-                            val text = input.trim()
-                            if (text.isNotEmpty()) {
-                                input = ""
-                                onSend(text)
-                            }
-                        },
-                        enabled = input.isNotBlank() && !busy,
-                    ) {
-                        Text(stringResource(R.string.ai_send))
+                }
+            }
+        }
+
+        HorizontalDivider()
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            if (sessionUsage.totalTokens > 0) {
+                UsageSummary(sessionUsage, sessionElapsedMs)
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = input,
+                    onValueChange = { input = it },
+                    modifier = Modifier.weight(1f),
+                    label = { Text(stringResource(R.string.ai_question_hint)) },
+                )
+                Button(
+                    onClick = {
+                        val text = input.trim()
+                        if (text.isNotEmpty()) {
+                            input = ""
+                            onSend(text)
+                        }
+                    },
+                    enabled = input.isNotBlank() && !busy,
+                ) {
+                    Text(stringResource(R.string.ai_send))
+                }
+            }
+            Text(
+                text = stringResource(R.string.ai_send_to, providerLabel),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                text = stringResource(R.string.ai_privacy_short),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SkillAndScopePicker(
+    skills: List<AiSkillChip>,
+    selectedSkillId: String?,
+    people: List<AiPersonChip>,
+    selectedPersonId: String?,
+    personaStatus: String?,
+    onSkillSelect: (String) -> Unit,
+    onPersonSelect: (String?) -> Unit,
+    onOpenPersona: (String) -> Unit,
+) {
+    Column(
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.ai_skill),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            skills.forEach { skill ->
+                if (skill.id == selectedSkillId) {
+                    Button(onClick = { onSkillSelect(skill.id) }) { Text(skill.label) }
+                } else {
+                    OutlinedButton(onClick = { onSkillSelect(skill.id) }) { Text(skill.label) }
+                }
+            }
+        }
+
+        Text(
+            text = stringResource(R.string.ai_scope),
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item {
+                if (selectedPersonId == null) {
+                    Button(onClick = { onPersonSelect(null) }) {
+                        Text(stringResource(R.string.ai_scope_archive))
+                    }
+                } else {
+                    OutlinedButton(onClick = { onPersonSelect(null) }) {
+                        Text(stringResource(R.string.ai_scope_archive))
                     }
                 }
-                Text(
-                    text = stringResource(R.string.ai_send_to, providerLabel),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Text(
-                    text = stringResource(R.string.ai_privacy_short),
-                    style = MaterialTheme.typography.bodySmall,
-                )
+            }
+            items(people, key = { it.personId }) { person ->
+                if (person.personId == selectedPersonId) {
+                    Button(onClick = { onPersonSelect(person.personId) }) { Text(person.label) }
+                } else {
+                    OutlinedButton(onClick = { onPersonSelect(person.personId) }) { Text(person.label) }
+                }
+            }
+        }
+
+        val persona = personaStatus
+        val personId = selectedPersonId
+        if (persona != null && personId != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = persona, style = MaterialTheme.typography.bodySmall)
+                TextButton(onClick = { onOpenPersona(personId) }) {
+                    Text(stringResource(R.string.ai_persona_open))
+                }
             }
         }
     }
