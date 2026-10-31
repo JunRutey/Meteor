@@ -21,6 +21,13 @@ interface ImageStore {
 
     /** Reads and decrypts the image for [token], or null when it is gone. */
     fun load(token: String): ByteArray?
+
+    companion object {
+        /** Markdown URL scheme used inside a record body. */
+        const val IMAGE_SCHEME = "meteor://image/"
+
+        fun markdownFor(token: String, alt: String = ""): String = "![$alt]($IMAGE_SCHEME$token)"
+    }
 }
 
 class EncryptedImageStore(
@@ -50,10 +57,5 @@ class EncryptedImageStore(
     companion object {
         const val SELF_DIR = "_self"
         const val EXTENSION = ".enc"
-
-        /** Markdown URL scheme used inside a record body. */
-        const val IMAGE_SCHEME = "meteor://image/"
-
-        fun markdownFor(token: String, alt: String = ""): String = "![$alt]($IMAGE_SCHEME$token)"
     }
 }
