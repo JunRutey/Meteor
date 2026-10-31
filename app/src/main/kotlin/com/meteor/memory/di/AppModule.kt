@@ -18,6 +18,8 @@ import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.log.FileAppLogger
 import com.meteor.memory.core.log.LogExporter
 import com.meteor.memory.core.storage.DiaryQueries
+import com.meteor.memory.core.storage.EncryptedImageStore
+import com.meteor.memory.core.storage.ImageStore
 import com.meteor.memory.core.storage.MoodQueries
 import com.meteor.memory.core.storage.PrivateDiaryQueries
 import com.meteor.memory.core.storage.PrivateMoodQueries
@@ -28,6 +30,8 @@ import com.meteor.memory.core.storage.StorageLayout
 import com.meteor.memory.core.storage.StorageRouter
 import com.meteor.memory.core.time.SystemTimeModule
 import com.meteor.memory.core.time.TimeModule
+import com.meteor.memory.feature.editor.EditorModule
+import com.meteor.memory.feature.editor.MarkdownEditorModule
 import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.SettingsRepository
 import dagger.Module
@@ -88,13 +92,29 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideMoodQueries(
-        @ApplicationContext context: Context,
+    fun provideMoodQueries(        @ApplicationContext context: Context,
         storageRouter: StorageRouter,
     ): MoodQueries = PrivateMoodQueries(
         rootDir = File(context.filesDir, StorageLayout.ROOT_NAME),
         router = storageRouter,
     )
+
+    @Provides
+    @Singleton
+    fun provideImageStore(
+        @ApplicationContext context: Context,
+        fileCrypto: FileCrypto,
+    ): ImageStore = EncryptedImageStore(
+        rootDir = File(context.filesDir, StorageLayout.ROOT_NAME),
+        crypto = fileCrypto,
+    )
+
+    @Provides
+    @Singleton
+    fun provideEditorModule(
+        storageRouter: StorageRouter,
+        imageStore: ImageStore,
+    ): EditorModule = MarkdownEditorModule(storageRouter, imageStore)
 
     /**
      * `:core-backup` may not depend on `:feature-settings` (that edge runs the

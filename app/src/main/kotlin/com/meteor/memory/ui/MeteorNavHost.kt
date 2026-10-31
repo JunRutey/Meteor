@@ -3,6 +3,8 @@ package com.meteor.memory.ui
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -20,6 +22,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -51,6 +57,9 @@ import com.meteor.memory.ui.log.LogActions
 import com.meteor.memory.ui.search.SearchScreen
 import com.meteor.memory.ui.search.SearchViewModel
 import com.meteor.memory.ui.settings.SettingsViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
 private const val ROUTE_HOME = "home"
@@ -190,9 +199,30 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
             val viewModel: DiaryEditViewModel = hiltViewModel()
             val state by viewModel.state.collectAsStateWithLifecycle()
 
+            var previewing by remember { mutableStateOf(false) }
+            val context = LocalContext.current
+            val scope = rememberCoroutineScope()
+            val pickImage = rememberLauncherForActivityResult(
+                ActivityResultContracts.GetContent(),
+            ) { uri ->
+                if (uri != null) {
+                    scope.launch {
+                        val bytes = withContext(Dispatchers.IO) {
+                            runCatching { context.contentResolver.openInputStream(uri)?.readBytes() }
+                                .getOrNull()
+                        }
+                        if (bytes != null) viewModel.insertImage(bytes)
+                    }
+                }
+            }
+
             DiaryEditScreen(
                 state = state,
+                isPreviewing = previewing,
+                onTogglePreview = { previewing = !previewing },
                 onTextChanged = viewModel::onTextChanged,
+                onInsertLink = viewModel::insertLink,
+                onPickImage = { pickImage.launch("image/*") },
                 onSave = viewModel::save,
                 onBack = { navController.popBackStack() },
             )

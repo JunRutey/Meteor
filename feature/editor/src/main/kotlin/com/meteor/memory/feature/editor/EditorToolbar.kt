@@ -23,8 +23,6 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun EditorToolbar(
     isPreviewing: Boolean,
-    onBold: () -> Unit,
-    onItalic: () -> Unit,
     onLink: () -> Unit,
     onImage: () -> Unit,
     onTogglePreview: () -> Unit,
@@ -37,12 +35,6 @@ fun EditorToolbar(
             .padding(horizontal = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        TextButton(onClick = onBold, enabled = !isPreviewing) {
-            Text(stringResource(R.string.editor_bold), style = MaterialTheme.typography.labelLarge)
-        }
-        TextButton(onClick = onItalic, enabled = !isPreviewing) {
-            Text(stringResource(R.string.editor_italic), style = MaterialTheme.typography.labelLarge)
-        }
         TextButton(onClick = onLink, enabled = !isPreviewing) {
             Text(stringResource(R.string.editor_link), style = MaterialTheme.typography.labelLarge)
         }
