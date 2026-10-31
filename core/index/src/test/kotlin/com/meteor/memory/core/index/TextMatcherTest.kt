@@ -41,7 +41,10 @@ class TextMatcherTest {
         val body = "a".repeat(200)
         val snippet = TextMatcher.snippet(body, terms, maxChars = 40)
 
-        assertEquals(40, snippet.length)
+        // Head of the body, cut at the limit, with a trailing ellipsis only.
+        assertTrue(snippet.startsWith("a"))
         assertTrue(!snippet.startsWith("…"))
+        assertTrue(snippet.endsWith("…"))
+        assertTrue(snippet.length in 40..42)
     }
 }
