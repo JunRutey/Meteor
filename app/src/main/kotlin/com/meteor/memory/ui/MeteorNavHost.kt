@@ -11,23 +11,15 @@ import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -39,7 +31,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.meteor.memory.BuildConfig
 import com.meteor.memory.R
 import com.meteor.memory.core.storage.RecordType
 import com.meteor.memory.feature.ai.AiPersonChip
@@ -58,16 +49,18 @@ import com.meteor.memory.feature.people.PersonDetailScreen
 import com.meteor.memory.feature.people.PersonEditScreen
 import com.meteor.memory.feature.people.PersonRecordRow
 import com.meteor.memory.feature.settings.SettingsScreen
+import com.meteor.memory.ui.about.AboutScreen
 import com.meteor.memory.ui.ai.AiBlocked
 import com.meteor.memory.ui.ai.AiViewModel
 import com.meteor.memory.ui.ai.PersonaViewModel
 import com.meteor.memory.ui.backup.BackupActions
+import com.meteor.memory.ui.chats.ChatsScreen
 import com.meteor.memory.ui.calendar.CalendarViewModel
 import com.meteor.memory.ui.diagnostics.StorageDiagnosticsScreen
 import com.meteor.memory.ui.diary.DiaryEditScreen
 import com.meteor.memory.ui.diary.DiaryEditViewModel
-import com.meteor.memory.ui.diary.DiaryListScreen
-import com.meteor.memory.ui.diary.DiaryListViewModel
+import com.meteor.memory.ui.diary.DiaryPreviewScreen
+import com.meteor.memory.ui.diary.DiaryPreviewViewModel
 import com.meteor.memory.ui.gallery.GalleryViewModel
 import com.meteor.memory.ui.gallery.ImageViewerViewModel
 import com.meteor.memory.ui.log.LogActions
@@ -83,17 +76,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
-private const val ROUTE_HOME = "home"
 private const val ROUTE_SETTINGS = "settings"
-private const val ROUTE_DIARY = "diary"
 private const val ROUTE_DIARY_EDIT = "diary/edit"
+private const val ROUTE_DIARY_VIEW = "diary/view/{date}"
+private const val ROUTE_ABOUT = "about"
+private const val ROUTE_CHATS = "chats"
 private const val ROUTE_DIAGNOSTICS = "diagnostics"
 private const val ROUTE_SEARCH = "search"
 private const val ROUTE_CALENDAR = "calendar"
 private const val ROUTE_PEOPLE = "people"
 private const val ROUTE_PERSON = "people/{personId}"
 private const val ROUTE_PERSON_EDIT = "people/{personId}/edit"
-private const val ROUTE_GALLERY = "gallery"
+private const val ROUTE_GALLERY = "gallery?date={date}"
 private const val ROUTE_IMAGE = "gallery/{token}"
 private const val ROUTE_AI = "ai?personId={personId}"
 private const val ROUTE_PERSONA = "ai/persona/{personId}"
@@ -125,55 +119,57 @@ fun MeteorNavHost(
 
     NavHost(
         navController = navController,
-        startDestination = ROUTE_HOME,
+        startDestination = ROUTE_CALENDAR,
         enterTransition = enter,
         exitTransition = exit,
         popEnterTransition = enter,
         popExitTransition = exit,
     ) {
-        composable(ROUTE_HOME) {
-            HomeScreen(
-                onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
-                onOpenDiary = { navController.navigate(ROUTE_DIARY) },
-                onOpenSearch = { navController.navigate(ROUTE_SEARCH) },
-                onOpenCalendar = { navController.navigate(ROUTE_CALENDAR) },
-                onOpenPeople = { navController.navigate(ROUTE_PEOPLE) },
-                onOpenGallery = { navController.navigate(ROUTE_GALLERY) },
-                onOpenAi = if (aiEnabled) {
-                    { navController.navigate("ai") }
-                } else {
-                    null
-                },
-                onOpenDiagnostics = if (BuildConfig.DEBUG) {
-                    { navController.navigate(ROUTE_DIAGNOSTICS) }
-                } else {
-                    null
-                },
-            )
-        }
-
         composable(ROUTE_CALENDAR) {
             val viewModel: CalendarViewModel = hiltViewModel()
             val month by viewModel.month.collectAsStateWithLifecycle()
             val moods by viewModel.moods.collectAsStateWithLifecycle()
             val selectedDate by viewModel.selectedDate.collectAsStateWithLifecycle()
             val diaryDates by viewModel.diaryDates.collectAsStateWithLifecycle()
+            val imageDates by viewModel.imageDates.collectAsStateWithLifecycle()
 
-            // Coming back from the editor must light up the ✓✓ straight away.
-            RefreshOnResume { viewModel.refreshDiaryDates() }
+            var pendingImageDate by remember { mutableStateOf<LocalDate?>(null) }
+            val pickImage = rememberImagePicker { bytes ->
+                pendingImageDate?.let { viewModel.saveImage(it, bytes) }
+                pendingImageDate = null
+            }
+
+            RefreshOnResume { viewModel.refresh() }
 
             CalendarScreen(
+                appName = stringResource(R.string.app_name),
                 month = month,
                 today = LocalDate.now(),
                 moods = moods,
                 selectedDate = selectedDate,
+                diaryDates = diaryDates,
+                imageDates = imageDates,
                 onPreviousMonth = viewModel::previousMonth,
                 onNextMonth = viewModel::nextMonth,
                 onSelectDate = viewModel::selectDate,
                 onPickMood = viewModel::setMood,
-                onOpenDiary = { date -> navController.navigate("$ROUTE_DIARY_EDIT/$date") },
-                onBack = { navController.popBackStack() },
-                diaryDates = diaryDates,
+                onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
+                onOpenDiary = { date -> navController.navigate("diary/view/$date") },
+                onEditDiary = { date -> navController.navigate("$ROUTE_DIARY_EDIT/$date") },
+                onOpenImages = { date -> navController.navigate("gallery?date=$date") },
+                onPickImage = { date ->
+                    pendingImageDate = date
+                    pickImage()
+                },
+                onOpenSearch = { navController.navigate(ROUTE_SEARCH) },
+                onOpenAi = if (aiEnabled) {
+                    { navController.navigate("ai") }
+                } else {
+                    null
+                },
+                onOpenGallery = { navController.navigate("gallery") },
+                onOpenChats = { navController.navigate(ROUTE_CHATS) },
+                onOpenPeople = { navController.navigate(ROUTE_PEOPLE) },
             )
         }
 
@@ -272,7 +268,16 @@ fun MeteorNavHost(
             )
         }
 
-        composable(ROUTE_GALLERY) {
+        composable(
+            route = ROUTE_GALLERY,
+            arguments = listOf(
+                navArgument(GalleryViewModel.ARG_DATE) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) { entry ->
             val viewModel: GalleryViewModel = hiltViewModel()
             val days by viewModel.days.collectAsStateWithLifecycle()
             val loading by viewModel.loading.collectAsStateWithLifecycle()
@@ -285,6 +290,7 @@ fun MeteorNavHost(
                 onOpen = { token -> navController.navigate("gallery/${Uri.encode(token)}") },
                 onDelete = viewModel::delete,
                 onBack = { navController.popBackStack() },
+                title = entry.arguments?.getString(GalleryViewModel.ARG_DATE),
             )
         }
 
@@ -400,7 +406,6 @@ fun MeteorNavHost(
             val apiKeyPresent by viewModel.apiKeyPresent.collectAsStateWithLifecycle()
             val aiTest by viewModel.aiTest.collectAsStateWithLifecycle()
             val aiModels by viewModel.aiModels.collectAsStateWithLifecycle()
-            val context = LocalContext.current
 
             RefreshOnResume { viewModel.refreshLogSize() }
 
@@ -409,11 +414,9 @@ fun MeteorNavHost(
                 versionName = versionName,
                 onDarkModeChanged = viewModel::setDarkMode,
                 onDynamicColorChanged = viewModel::setDynamicColor,
-                onFontScaleChanged = viewModel::setFontScale,
-                onAnimationsChanged = viewModel::setAnimationsEnabled,
                 onAppLockChanged = viewModel::setAppLockEnabled,
                 onVerboseLoggingChanged = viewModel::setVerboseLogging,
-                onOpenRepository = { context.openInBrowser(REPOSITORY_URL) },
+                onOpenAbout = { navController.navigate(ROUTE_ABOUT) },
                 logSizeBytes = logSizeBytes,
                 backupActions = { BackupActions() },
                 logActions = { LogActions() },
@@ -448,20 +451,54 @@ fun MeteorNavHost(
             )
         }
 
-        composable(ROUTE_DIARY) {
-            val viewModel: DiaryListViewModel = hiltViewModel()
-            val rows by viewModel.rows.collectAsStateWithLifecycle()
-            val loading by viewModel.loading.collectAsStateWithLifecycle()
+        composable(ROUTE_ABOUT) {
+            val context = LocalContext.current
+            AboutScreen(
+                versionName = versionName,
+                onOpenRepository = { context.openInBrowser(REPOSITORY_URL) },
+                onBack = { navController.popBackStack() },
+            )
+        }
 
-            // Re-read the directory whenever the screen comes back to the front,
-            // so an entry saved in the editor shows up immediately.
-            RefreshOnResume { viewModel.refresh() }
+        composable(ROUTE_CHATS) {
+            ChatsScreen(onBack = { navController.popBackStack() })
+        }
 
-            DiaryListScreen(
-                rows = rows,
-                loading = loading,
-                onOpen = { date -> navController.navigate("$ROUTE_DIARY_EDIT/$date") },
-                onWriteToday = { navController.navigate("$ROUTE_DIARY_EDIT/${LocalDate.now()}") },
+        composable(
+            route = ROUTE_DIARY_VIEW,
+            arguments = listOf(navArgument(DiaryPreviewViewModel.ARG_DATE) { type = NavType.StringType }),
+        ) { entry ->
+            val viewModel: DiaryPreviewViewModel = hiltViewModel()
+            val state by viewModel.state.collectAsStateWithLifecycle()
+            val date = entry.arguments?.getString(DiaryPreviewViewModel.ARG_DATE).orEmpty()
+            val context = LocalContext.current
+
+            RefreshOnResume { viewModel.load() }
+
+            DiaryPreviewScreen(
+                state = state,
+                onEdit = { navController.navigate("$ROUTE_DIARY_EDIT/$date") },
+                onBack = { navController.popBackStack() },
+                onActivate = { target ->
+                    when {
+                        target.startsWith("meteor://image/") ->
+                            navController.navigate(
+                                "gallery/${Uri.encode(target.removePrefix("meteor://image/"))}",
+                            )
+
+                        target.startsWith("meteor://person/") ->
+                            navController.navigate(
+                                "people/${Uri.encode(target.removePrefix("meteor://person/"))}",
+                            )
+
+                        target.startsWith("meteor://diary/") ->
+                            navController.navigate(
+                                "$ROUTE_DIARY_EDIT/${target.removePrefix("meteor://diary/")}",
+                            )
+
+                        else -> context.openInBrowser(target)
+                    }
+                },
             )
         }
 
@@ -596,57 +633,5 @@ private fun RefreshOnResume(block: () -> Unit) {
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-}
-
-@Composable
-private fun HomeScreen(
-    onOpenSettings: () -> Unit,
-    onOpenDiary: () -> Unit,
-    onOpenSearch: () -> Unit,
-    onOpenCalendar: () -> Unit,
-    onOpenPeople: () -> Unit,
-    onOpenGallery: () -> Unit,
-    onOpenAi: (() -> Unit)?,
-    onOpenDiagnostics: (() -> Unit)?,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(text = stringResource(R.string.home_title), style = MaterialTheme.typography.headlineLarge)
-        Text(text = stringResource(R.string.home_subtitle), style = MaterialTheme.typography.bodyMedium)
-
-        Button(onClick = onOpenDiary, modifier = Modifier.padding(top = 24.dp)) {
-            Text(text = stringResource(R.string.home_open_diary))
-        }
-        OutlinedButton(onClick = onOpenSearch, modifier = Modifier.padding(top = 8.dp)) {
-            Text(text = stringResource(R.string.home_open_search))
-        }
-        OutlinedButton(onClick = onOpenCalendar, modifier = Modifier.padding(top = 8.dp)) {
-            Text(text = stringResource(R.string.home_open_calendar))
-        }
-        OutlinedButton(onClick = onOpenPeople, modifier = Modifier.padding(top = 8.dp)) {
-            Text(text = stringResource(R.string.home_open_people))
-        }
-        OutlinedButton(onClick = onOpenGallery, modifier = Modifier.padding(top = 8.dp)) {
-            Text(text = stringResource(R.string.home_open_gallery))
-        }
-        onOpenAi?.let { open ->
-            OutlinedButton(onClick = open, modifier = Modifier.padding(top = 8.dp)) {
-                Text(text = stringResource(R.string.home_open_ai))
-            }
-        }
-        OutlinedButton(onClick = onOpenSettings, modifier = Modifier.padding(top = 8.dp)) {
-            Text(text = stringResource(R.string.home_open_settings))
-        }
-        onOpenDiagnostics?.let { open ->
-            OutlinedButton(onClick = open, modifier = Modifier.padding(top = 8.dp)) {
-                Text(text = stringResource(R.string.home_open_diagnostics))
-            }
-        }
     }
 }
