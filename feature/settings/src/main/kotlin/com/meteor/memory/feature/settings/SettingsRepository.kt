@@ -29,7 +29,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             verboseLogging = prefs[KEY_VERBOSE_LOGGING] ?: false,
             autoBackupEnabled = prefs[KEY_AUTO_BACKUP] ?: true,
             backupRetention = prefs[KEY_BACKUP_RETENTION] ?: AppSettings.DEFAULT_BACKUP_RETENTION,
-            aiEnabled = prefs[KEY_AI_ENABLED] ?: true,
+            aiEnabled = prefs[KEY_AI_ENABLED] ?: false,
             aiConsentAccepted = prefs[KEY_AI_CONSENT] ?: false,
             aiProvider = prefs[KEY_AI_PROVIDER] ?: AppSettings.DEFAULT_AI_PROVIDER,
             aiBaseUrl = prefs[KEY_AI_BASE_URL].orEmpty(),
@@ -75,6 +75,20 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
 
     suspend fun setAiWriteEnabled(enabled: Boolean) =
         store.edit { it[KEY_AI_WRITE] = enabled }
+
+    /**
+     * v0.7.1: the AI entry default flipped to off.
+     *
+     * Anyone who already accepted the "content leaves the device" warning keeps
+     * the entry enabled, so the upgrade does not silently take a feature away;
+     * a fresh install starts off. Idempotent: once the key exists (including an
+     * explicit `false`), nothing is written again.
+     */
+    suspend fun migrateAiDefaultToOff() = store.edit { prefs ->
+        if (KEY_AI_ENABLED !in prefs && prefs[KEY_AI_CONSENT] == true) {
+            prefs[KEY_AI_ENABLED] = true
+        }
+    }
 
     private companion object {
         val KEY_DARK_MODE = stringPreferencesKey("dark_mode")

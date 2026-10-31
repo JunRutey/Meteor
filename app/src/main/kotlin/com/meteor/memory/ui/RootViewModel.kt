@@ -60,6 +60,13 @@ class RootViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            // v0.7.1: the AI entry now defaults to off. Users who already
+            // accepted the consent warning keep it; the settings flow re-emits
+            // once this one-time write lands.
+            runCatching { settingsRepository.migrateAiDefaultToOff() }
+        }
+
+        viewModelScope.launch {
             // Verbose logging must be active from process start, before any
             // screen is opened.
             settingsRepository.settings

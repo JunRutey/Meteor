@@ -108,7 +108,7 @@ private fun Context.openInBrowser(url: String) {
 fun MeteorNavHost(
     versionName: String,
     animationsEnabled: Boolean = true,
-    aiEnabled: Boolean = true,
+    aiEnabled: Boolean = false,
 ) {
     val navController = rememberNavController()
 

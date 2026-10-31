@@ -18,11 +18,12 @@ data class AppSettings(
     val autoBackupEnabled: Boolean = true,
     val backupRetention: Int = DEFAULT_BACKUP_RETENTION,
     /**
-     * AI entry point (ADR-027). Visible by default, but nothing leaves the
-     * device unless [aiConsentAccepted] is true and the user configured a
-     * provider + API key. Turning it off hides the entry and stops all requests.
+     * AI entry point (ADR-027). Off by default: a fresh install must not ship a
+     * networked feature that is already on. Nothing leaves the device unless
+     * this is on, [aiConsentAccepted] is true and a provider + API key is
+     * configured. Turning it off hides the entry and stops all requests.
      */
-    val aiEnabled: Boolean = true,
+    val aiEnabled: Boolean = false,
     /** Set only after the user accepted the "content leaves the device" dialog. */
     val aiConsentAccepted: Boolean = false,
     /** Provider preset id: `deepseek`, `openai` or `custom`. */
