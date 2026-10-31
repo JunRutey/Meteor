@@ -57,6 +57,41 @@ class ArchiveTools(
         }
     }.getOrElse { errorJson("tool-failed") }
 
+    /**
+     * Retrieval the app performs **before** calling the model: the question is
+     * tokenised locally, the archive is ranked, and only a few short windows are
+     * returned. This keeps prompts small and still grounds the answer when a
+     * provider never issues a tool call. [personId] scopes it to one person.
+     */
+    fun searchContext(query: String, personId: String?, maxHits: Int, maxChars: Int): String {
+        if (query.isBlank()) return ""
+        val answer = AskEngine.answer(
+            request = AskRequest(question = query, personId = personId, maxHits = maxHits),
+            corpus = documents,
+            recordId = ::idOf,
+        )
+        if (answer.matches.isEmpty()) {
+            return "No archive record matched this question's keywords " +
+                "(checked ${answer.consultedRecords} records)."
+        }
+
+        val builder = StringBuilder()
+        builder.append("Archive hits: ").append(answer.matches.size)
+            .append(" (checked ").append(answer.consultedRecords).append(" records).\n")
+        var used = builder.length
+        var shown = 0
+        for (match in answer.matches) {
+            val date = match.at.atZone(zone).toLocalDate().toString()
+            val snippet = match.snippet.replace('\n', ' ').trim().take(PREFETCH_SNIPPET_CHARS)
+            val block = "- date=$date type=${match.type.wire} record_id=${match.recordId}\n  $snippet\n"
+            if (used + block.length > maxChars && shown > 0) break
+            builder.append(block)
+            used += block.length
+            shown++
+        }
+        return builder.toString().trimEnd()
+    }
+
     // --- tools -------------------------------------------------------------
 
     private fun listPeople(allowedPersonId: String?): String {
@@ -145,7 +180,11 @@ class ArchiveTools(
             return errorJson("not-allowed")
         }
         val scoped = personId.ifBlank { allowedPersonId }
-        val answer = AskEngine.answer(AskRequest(question = query, personId = scoped, maxHits = MAX_SEARCH_HITS), documents)
+        val answer = AskEngine.answer(
+            request = AskRequest(question = query, personId = scoped, maxHits = MAX_SEARCH_HITS),
+            corpus = documents,
+            recordId = ::idOf,
+        )
 
         val array = JSONArray()
         answer.matches.forEach { match ->
@@ -153,6 +192,7 @@ class ArchiveTools(
                 JSONObject().apply {
                     put("date", match.at.atZone(zone).toLocalDate().toString())
                     put("type", match.type.wire)
+                    put("record_id", match.recordId)
                     put("snippet", match.snippet.take(MAX_SNIPPET_CHARS))
                 },
             )
@@ -196,6 +236,7 @@ class ArchiveTools(
         private const val MAX_BODY_CHARS = 4000
         private const val MAX_SNIPPET_CHARS = 400
         private const val MAX_SEARCH_HITS = 8
+        private const val PREFETCH_SNIPPET_CHARS = 320
 
         private val SPECS = listOf(
             AiToolSpec(

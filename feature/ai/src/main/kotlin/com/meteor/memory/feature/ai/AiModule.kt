@@ -79,6 +79,8 @@ data class AskMatch(
     val personId: String?,
     val snippet: String,
     val score: Double,
+    /** Archive-relative id, usable with the `read_record` tool. */
+    val recordId: String = "",
 )
 
 data class AskAnswer(

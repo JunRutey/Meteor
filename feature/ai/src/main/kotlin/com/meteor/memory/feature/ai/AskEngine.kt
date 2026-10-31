@@ -22,7 +22,11 @@ object AskEngine {
     private const val SNIPPET_AFTER = 120
     private const val ELLIPSIS = "\u2026"
 
-    fun answer(request: AskRequest, corpus: List<Document>): AskAnswer {
+    fun answer(
+        request: AskRequest,
+        corpus: List<Document>,
+        recordId: (Document) -> String = { it.file.name },
+    ): AskAnswer {
         val scoped = scopedCorpus(request.personId, corpus)
         val queryTokens = TextFeatures.tokens(request.question).distinct()
         if (queryTokens.isEmpty() || scoped.isEmpty()) {
@@ -54,6 +58,7 @@ object AskEngine {
                 personId = document.personId,
                 snippet = snippetOf(document.body, weights),
                 score = score,
+                recordId = recordId(document),
             )
         }
         return AskAnswer(request.question, scoped.size, matches)

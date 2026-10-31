@@ -103,8 +103,9 @@ class MeteorAiModule(
             append(" Target person_id: ").append(request.personId).append('.')
         }
         val user = distillPrompt(request.personId, profile?.displayName, snapshot)
+        val tools = archiveTools()
         val result = withContext(Dispatchers.IO) {
-            agent(request.config).run(
+            agent(request.config, tools).run(
                 conversation = listOf(AiMessage.system(system), AiMessage.user(user)),
                 allowedPersonId = request.personId,
             )
@@ -134,6 +135,19 @@ class MeteorAiModule(
             withContext(Dispatchers.IO) { personaStore.read(id) }
         }
 
+        // Keyword retrieval happens locally *before* the model call: the
+        // question is tokenised, only a few short windows are attached, and the
+        // model can still ask for a fuller record when it needs one.
+        val tools = archiveTools()
+        val prefetched = withContext(Dispatchers.IO) {
+            tools.searchContext(
+                query = request.question,
+                personId = request.personId,
+                maxHits = PREFETCH_HITS,
+                maxChars = PREFETCH_CHARS,
+            )
+        }
+
         val system = buildString {
             append(skill.body)
             append("\n\nCurrent date: ").append(LocalDate.now()).append('.')
@@ -143,6 +157,12 @@ class MeteorAiModule(
                 append("\n\nNo distilled persona exists yet for person_id=")
                     .append(request.personId)
                     .append(". Answer from the archive only; if asked to role-play, say the persona is not distilled yet.")
+            }
+            if (prefetched.isNotBlank()) {
+                append("\n\n# Pre-retrieved archive context\n\n")
+                append(prefetched)
+                append("\n\nThis block was retrieved locally by keywords from the question. ")
+                append("Prefer it and cite dates. Call read_record (with its record_id) only when you need a fuller passage.")
             }
         }
 
@@ -157,7 +177,7 @@ class MeteorAiModule(
         messages += AiMessage.user(request.question)
 
         val result = withContext(Dispatchers.IO) {
-            agent(request.config).run(conversation = messages, allowedPersonId = request.personId)
+            agent(request.config, tools).run(conversation = messages, allowedPersonId = request.personId)
         }
         return ChatReply(result.content, result.steps)
     }
@@ -170,14 +190,16 @@ class MeteorAiModule(
         providerFactory(config).probe()
     }
 
-    private fun agent(config: AiConfig): AiAgent = AiAgent(
+    private fun archiveTools(): ArchiveTools = ArchiveTools(
+        rootDir = rootDir,
+        scanner = scanner,
+        personQueries = personQueries,
+        moodQueries = moodQueries,
+    )
+
+    private fun agent(config: AiConfig, tools: ArchiveTools): AiAgent = AiAgent(
         provider = providerFactory(config),
-        tools = ArchiveTools(
-            rootDir = rootDir,
-            scanner = scanner,
-            personQueries = personQueries,
-            moodQueries = moodQueries,
-        ),
+        tools = tools,
     )
 
     private fun requireConfigured(config: AiConfig) {
@@ -202,5 +224,9 @@ class MeteorAiModule(
     private companion object {
         const val MAX_PERSONA_CHARS = 12_000
         const val MAX_HISTORY_TURNS = 12
+
+        /** Pre-fetch budget per question: four short windows, ~1.8k characters. */
+        const val PREFETCH_HITS = 4
+        const val PREFETCH_CHARS = 1800
     }
 }
