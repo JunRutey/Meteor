@@ -68,6 +68,7 @@ dependencies {
     implementation(project(":core-crypto"))
     implementation(project(":core-time"))
     implementation(project(":core-log"))
+    implementation(project(":core-index"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.animation)

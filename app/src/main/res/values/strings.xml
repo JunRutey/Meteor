@@ -39,6 +39,10 @@
     <string name="diagnostics_count">共 %1$d 个文件</string>
     <string name="diagnostics_encrypted">%1$d 字节 · 已加密（aes-gcm-v1）</string>
     <string name="diagnostics_unknown">%1$d 字节 · 未识别为加密记录</string>
+    <string name="diagnostics_rebuild_index">重建索引</string>
+    <string name="diagnostics_index_running">正在重建索引…</string>
+    <string name="diagnostics_index_summary">已索引 %1$d 条记录 · %2$d 种类型 · %3$d 个人物</string>
+    <string name="diagnostics_index_error">重建失败：%1$s</string>
     <string name="home_open_diagnostics">存储诊断（调试）</string>
 
     <string name="log_export">导出日志</string>

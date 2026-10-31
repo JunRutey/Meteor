@@ -14,10 +14,12 @@ app core-storage
 app core-crypto
 app core-time
 app core-log
+app core-index
 feature-settings core-crypto
 feature-settings core-backup
 core-backup core-storage
 core-backup core-crypto
+core-index core-storage
 core-storage core-crypto
 core-storage core-time
 EOF

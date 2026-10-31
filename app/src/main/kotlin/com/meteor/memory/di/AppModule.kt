@@ -12,12 +12,16 @@ import com.meteor.memory.core.crypto.AppLock
 import com.meteor.memory.core.crypto.EncryptedPrefsAppLock
 import com.meteor.memory.core.crypto.FileCrypto
 import com.meteor.memory.core.crypto.androidKeystoreFileCrypto
+import com.meteor.memory.core.index.IndexModule
+import com.meteor.memory.core.index.MeteorIndex
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.log.FileAppLogger
 import com.meteor.memory.core.log.LogExporter
 import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.storage.PrivateDiaryQueries
+import com.meteor.memory.core.storage.PrivateRecordScanner
 import com.meteor.memory.core.storage.PrivateStorageRouter
+import com.meteor.memory.core.storage.RecordScanner
 import com.meteor.memory.core.storage.StorageLayout
 import com.meteor.memory.core.storage.StorageRouter
 import com.meteor.memory.core.time.SystemTimeModule
@@ -115,6 +119,27 @@ object AppModule {
     @Provides
     @Singleton
     fun provideLogExporter(@ApplicationContext context: Context): LogExporter = LogExporter(context)
+
+    @Provides
+    @Singleton
+    fun provideRecordScanner(
+        @ApplicationContext context: Context,
+        storageRouter: StorageRouter,
+    ): RecordScanner = PrivateRecordScanner(
+        rootDir = File(context.filesDir, StorageLayout.ROOT_NAME),
+        router = storageRouter,
+    )
+
+    @Provides
+    @Singleton
+    fun provideIndexModule(
+        @ApplicationContext context: Context,
+        recordScanner: RecordScanner,
+    ): IndexModule = MeteorIndex(
+        context = context,
+        rootDir = File(context.filesDir, StorageLayout.ROOT_NAME),
+        scanner = recordScanner,
+    )
 
     @Provides
     @Singleton

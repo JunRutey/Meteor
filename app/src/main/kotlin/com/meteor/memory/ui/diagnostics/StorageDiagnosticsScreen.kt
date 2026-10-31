@@ -33,6 +33,9 @@ fun StorageDiagnosticsScreen(
     modifier: Modifier = Modifier,
 ) {
     val snapshot by viewModel.snapshot.collectAsStateWithLifecycle()
+    val indexSummary by viewModel.indexSummary.collectAsStateWithLifecycle()
+    val indexBusy by viewModel.indexBusy.collectAsStateWithLifecycle()
+    val indexError by viewModel.indexError.collectAsStateWithLifecycle()
 
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
         Row(
@@ -47,6 +50,37 @@ fun StorageDiagnosticsScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = viewModel::refresh) { Text(stringResource(R.string.diagnostics_refresh)) }
                 Button(onClick = onBack) { Text(stringResource(R.string.diagnostics_back)) }
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Button(onClick = viewModel::rebuildIndex, enabled = !indexBusy) {
+                Text(stringResource(R.string.diagnostics_rebuild_index))
+            }
+            when {
+                indexBusy -> Text(
+                    text = stringResource(R.string.diagnostics_index_running),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                indexError != null -> Text(
+                    text = stringResource(R.string.diagnostics_index_error, indexError.orEmpty()),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+                indexSummary != null -> Text(
+                    text = stringResource(
+                        R.string.diagnostics_index_summary,
+                        indexSummary!!.records,
+                        indexSummary!!.types,
+                        indexSummary!!.persons,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
             }
         }
 
