@@ -31,6 +31,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.meteor.memory.BuildConfig
 import com.meteor.memory.R
 import com.meteor.memory.core.storage.RecordType
 import com.meteor.memory.feature.ai.AiPersonChip
@@ -418,6 +419,11 @@ fun MeteorNavHost(
                 onVerboseLoggingChanged = viewModel::setVerboseLogging,
                 onOpenAbout = { navController.navigate(ROUTE_ABOUT) },
                 logSizeBytes = logSizeBytes,
+                onOpenDiagnostics = if (BuildConfig.DEBUG) {
+                    { navController.navigate(ROUTE_DIAGNOSTICS) }
+                } else {
+                    null
+                },
                 backupActions = { BackupActions() },
                 logActions = { LogActions() },
                 aiActions = {

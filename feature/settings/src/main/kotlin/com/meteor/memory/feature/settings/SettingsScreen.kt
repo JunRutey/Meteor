@@ -40,6 +40,8 @@ fun SettingsScreen(
     onOpenAbout: () -> Unit,
     logSizeBytes: Long,
     modifier: Modifier = Modifier,
+    /** Debug-only extra entry; `null` keeps the section clean in release builds. */
+    onOpenDiagnostics: (() -> Unit)? = null,
     backupActions: @Composable () -> Unit = {},
     logActions: @Composable () -> Unit = {},
     aiActions: @Composable () -> Unit = {},
@@ -126,6 +128,14 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodyLarge,
             )
             Text(text = "›", style = MaterialTheme.typography.titleMedium)
+        }
+
+        // Debug builds only: the entry lives here now that the old home screen
+        // (which owned it) is gone. ADR-016 needs the manual index rebuild.
+        onOpenDiagnostics?.let { open ->
+            OutlinedButton(onClick = open, modifier = Modifier.fillMaxWidth()) {
+                Text(text = stringResource(R.string.settings_open_diagnostics))
+            }
         }
     }
 }

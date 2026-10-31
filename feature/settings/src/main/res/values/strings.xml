@@ -34,4 +34,5 @@
 
     <string name="settings_about_version">Meteor %1$s</string>
     <string name="settings_about_repository">GitHub 仓库 · JunRutey/Meteor</string>
+    <string name="settings_open_diagnostics">存储诊断（调试）</string>
 </resources>
