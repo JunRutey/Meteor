@@ -7,7 +7,6 @@ import com.meteor.memory.core.storage.PersonQueries
 import com.meteor.memory.core.storage.RecordScanner
 import com.meteor.memory.core.storage.RecordSource
 import com.meteor.memory.core.storage.RecordType
-import com.meteor.memory.core.storage.Relation
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -69,11 +68,6 @@ class MeteorAiModuleChatTest {
         rootDir = root,
         scanner = RecordScanner { documents },
         personQueries = stub(PersonQueries::class.java),
-        personWriter = object : PersonWriter {
-            override fun create(displayName: String, relation: Relation?, notes: String): String = "id"
-
-            override fun update(personId: String, displayName: String, relation: Relation?, notes: String) = Unit
-        },
         moodQueries = stub(MoodQueries::class.java),
         diaryQueries = stub(DiaryQueries::class.java),
         personaStore = stub(PersonaStore::class.java),

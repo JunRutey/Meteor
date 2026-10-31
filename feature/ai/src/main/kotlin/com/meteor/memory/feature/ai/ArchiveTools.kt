@@ -32,7 +32,6 @@ class ArchiveTools(
     private val rootDir: File,
     private val scanner: RecordScanner,
     private val personQueries: PersonQueries,
-    private val personWriter: PersonWriter,
     private val moodQueries: MoodQueries,
     private val diaryQueries: DiaryQueries,
     private val writeEnabled: Boolean = false,
@@ -85,6 +84,7 @@ class ArchiveTools(
             TOOL_CREATE_PERSON -> createPerson(
                 name = args.optString("name"),
                 relation = args.optString("relation"),
+                note = args.optString("note"),
                 notes = args.optString("notes"),
             )
 
@@ -92,6 +92,7 @@ class ArchiveTools(
                 personId = args.optString("person_id"),
                 name = args.optString("name"),
                 relation = args.optString("relation"),
+                note = args.optString("note"),
                 notes = args.optString("notes"),
             )
 
@@ -220,6 +221,7 @@ class ArchiveTools(
             put("person_id", personId)
             put("name", profile.displayName)
             put("relation", profile.relation?.code.orEmpty())
+            put("note", profile.note)
             put("notes", profile.notes.take(MAX_BODY_CHARS))
         }.toString()
     }
@@ -393,31 +395,37 @@ class ArchiveTools(
             .toString()
     }
 
-    private fun createPerson(name: String, relation: String, notes: String): String {
+    private fun createPerson(name: String, relation: String, note: String, notes: String): String {
         if (!writeEnabled) return errorJson("write-disabled")
         val displayName = name.trim()
         if (displayName.isBlank()) return errorJson("empty-name")
-        val id = personWriter.create(
-            displayName,
-            relation.trim().takeIf { it.isNotBlank() }?.let { Relation.fromCode(it) },
-            notes.trim().take(MAX_WRITE_CHARS),
+        val id = personQueries.create(
+            displayName = displayName,
+            relation = relation.trim().takeIf { it.isNotBlank() }?.let { Relation.fromCode(it) },
+            note = note.trim().take(MAX_NOTE_CHARS),
+            notes = notes.trim().take(MAX_WRITE_CHARS),
         )
         return JSONObject().put("created", true).put("person_id", id).toString()
     }
 
-    private fun updatePerson(personId: String, name: String, relation: String, notes: String): String {
+    private fun updatePerson(
+        personId: String,
+        name: String,
+        relation: String,
+        note: String,
+        notes: String,
+    ): String {
         if (!writeEnabled) return errorJson("write-disabled")
         if (personId.isBlank()) return errorJson("missing-person-id")
         val existing = personQueries.read(personId) ?: return errorJson("not-found")
         val chosenRelation = relation.trim().takeIf { it.isNotBlank() }?.let { Relation.fromCode(it) }
             ?: existing.relation
-        // Positional on purpose: parameter *names* of this interface differ
-        // across compiled variants, but the types are stable.
-        personWriter.update(
-            personId,
-            name.trim().ifBlank { existing.displayName },
-            chosenRelation,
-            notes.trim().ifBlank { existing.notes }.take(MAX_WRITE_CHARS),
+        personQueries.update(
+            personId = personId,
+            displayName = name.trim().ifBlank { existing.displayName },
+            relation = chosenRelation,
+            note = note.trim().ifBlank { existing.note }.take(MAX_NOTE_CHARS),
+            notes = notes.trim().ifBlank { existing.notes }.take(MAX_WRITE_CHARS),
         )
         return JSONObject().put("updated", true).put("person_id", personId).toString()
     }
@@ -470,6 +478,7 @@ class ArchiveTools(
         private const val MAX_SEARCH_HITS = 8
         private const val PREFETCH_SNIPPET_CHARS = 320
         private const val MAX_WRITE_CHARS = 20_000
+        private const val MAX_NOTE_CHARS = 200
 
         private val READ_SPECS = listOf(
             AiToolSpec(
@@ -532,13 +541,13 @@ class ArchiveTools(
             ),
             AiToolSpec(
                 name = TOOL_CREATE_PERSON,
-                description = "新建一个人物档案：称呼必填，关系（family/friend/former_friend）与备注可选。",
-                parametersJson = """{"type":"object","properties":{"name":{"type":"string"},"relation":{"type":"string"},"notes":{"type":"string"}},"required":["name"]}""",
+                description = "新建一个人物档案：称呼必填，关系（family/friend/former_friend）可选；note 是一句话备注，notes 是正文。",
+                parametersJson = """{"type":"object","properties":{"name":{"type":"string"},"relation":{"type":"string"},"note":{"type":"string"},"notes":{"type":"string"}},"required":["name"]}""",
             ),
             AiToolSpec(
                 name = TOOL_UPDATE_PERSON,
-                description = "更新一个人物档案：只改你给出的字段，其余保持不变。",
-                parametersJson = """{"type":"object","properties":{"person_id":{"type":"string"},"name":{"type":"string"},"relation":{"type":"string"},"notes":{"type":"string"}},"required":["person_id"]}""",
+                description = "更新一个人物档案：只改你给出的字段（note 备注、notes 正文），其余保持不变。",
+                parametersJson = """{"type":"object","properties":{"person_id":{"type":"string"},"name":{"type":"string"},"relation":{"type":"string"},"note":{"type":"string"},"notes":{"type":"string"}},"required":["person_id"]}""",
             ),
         )
     }

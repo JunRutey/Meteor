@@ -32,7 +32,6 @@ import com.meteor.memory.core.storage.PrivatePersonQueries
 import com.meteor.memory.core.storage.PrivateRecordScanner
 import com.meteor.memory.core.storage.PrivateStorageRouter
 import com.meteor.memory.core.storage.RecordScanner
-import com.meteor.memory.core.storage.Relation
 import com.meteor.memory.core.storage.StorageLayout
 import com.meteor.memory.core.storage.StorageRouter
 import com.meteor.memory.core.time.SystemTimeModule
@@ -40,7 +39,6 @@ import com.meteor.memory.core.time.TimeModule
 import com.meteor.memory.feature.ai.AiModule
 import com.meteor.memory.feature.ai.FilePersonaStore
 import com.meteor.memory.feature.ai.MeteorAiModule
-import com.meteor.memory.feature.ai.PersonWriter
 import com.meteor.memory.feature.editor.EditorModule
 import com.meteor.memory.feature.editor.MarkdownEditorModule
 import com.meteor.memory.feature.settings.AppSettings
@@ -185,14 +183,6 @@ object AppModule {
         rootDir = File(context.filesDir, StorageLayout.ROOT_NAME),
         scanner = recordScanner,
         personQueries = personQueries,
-        personWriter = object : PersonWriter {
-            override fun create(displayName: String, relation: Relation?, notes: String): String =
-                personQueries.create(displayName, relation, notes)
-
-            override fun update(personId: String, displayName: String, relation: Relation?, notes: String) {
-                personQueries.update(personId, displayName, relation, notes)
-            }
-        },
         moodQueries = moodQueries,
         diaryQueries = diaryQueries,
         personaStore = FilePersonaStore(storageRouter),
