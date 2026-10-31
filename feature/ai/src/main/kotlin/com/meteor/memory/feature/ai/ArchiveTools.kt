@@ -32,6 +32,7 @@ class ArchiveTools(
     private val rootDir: File,
     private val scanner: RecordScanner,
     private val personQueries: PersonQueries,
+    private val personWriter: PersonWriter,
     private val moodQueries: MoodQueries,
     private val diaryQueries: DiaryQueries,
     private val writeEnabled: Boolean = false,
@@ -396,7 +397,7 @@ class ArchiveTools(
         if (!writeEnabled) return errorJson("write-disabled")
         val displayName = name.trim()
         if (displayName.isBlank()) return errorJson("empty-name")
-        val id = personQueries.create(
+        val id = personWriter.create(
             displayName,
             relation.trim().takeIf { it.isNotBlank() }?.let { Relation.fromCode(it) },
             notes.trim().take(MAX_WRITE_CHARS),
@@ -412,7 +413,7 @@ class ArchiveTools(
             ?: existing.relation
         // Positional on purpose: parameter *names* of this interface differ
         // across compiled variants, but the types are stable.
-        personQueries.update(
+        personWriter.update(
             personId,
             name.trim().ifBlank { existing.displayName },
             chosenRelation,
