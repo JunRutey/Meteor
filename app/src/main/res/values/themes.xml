@@ -1,4 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <style name="Theme.Meteor" parent="android:Theme.Material.Light.NoActionBar" />
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!--
+        Transparent system bars: the app paints its own background edge-to-edge and
+        MeteorRoot pads the content by WindowInsets.safeDrawing (ADR-024).
+        The light-icon attributes are the startup default; MeteorTheme re-applies the
+        correct icons once the (possibly user-forced) dark/light theme is known.
+        windowLightNavigationBar / windowLayoutInDisplayCutoutMode are API 27 and are
+        simply ignored below that (minSdk 26) — hence the NewApi suppression.
+    -->
+    <style name="Theme.Meteor" parent="android:Theme.Material.Light.NoActionBar" tools:ignore="NewApi">
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
 </resources>

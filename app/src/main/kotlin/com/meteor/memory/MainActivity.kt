@@ -3,6 +3,7 @@ package com.meteor.memory
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.compose.setContent
+import androidx.core.view.WindowCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import com.meteor.memory.core.crypto.AppLock
@@ -29,6 +30,12 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Edge-to-edge in one place (ADR-024): the app draws behind the bars and
+        // MeteorRoot pads by the insets. Without this the client still believes the
+        // decor fits the system windows, and Android falls back to *panning* the
+        // whole window — header included — when the IME appears.
+        WindowCompat.setDecorFitsSystemWindows(window, false)
 
         appLog.info(
             "AppStart",

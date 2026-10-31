@@ -3,12 +3,12 @@ package com.meteor.memory.feature.people
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -32,11 +32,17 @@ import com.meteor.memory.core.storage.Relation
 import com.meteor.memory.feature.editor.MarkdownField
 
 /**
- * Editing an existing person (ADR-020, ADR-023).
+ * Editing an existing person (ADR-020, ADR-023, ADR-024).
  *
- * The form is **scrollable** with a fixed-height body editor: a `weight(1f)`
- * column collapses to nothing as soon as the keyboard eats the screen, which is
- * exactly how the note field ended up as a one-line sliver.
+ * Layout rules, in priority order:
+ *
+ * 1. The header (标题 + 保存 / 返回) is **pinned**. The keyboard used to push it off
+ *    the screen, which is why saving required closing the keyboard first.
+ * 2. The page itself never scrolls and never moves: the identity fields sit above,
+ *    the body editor takes whatever height is left. When the IME appears only the
+ *    editor shrinks, so nothing jumps.
+ * 3. The identity block *may* scroll, but only inside a capped box: on a short
+ *    screen that keeps the editor usable instead of squeezing it to zero.
  *
  * 备注 and 正文 are separate fields because they answer different questions —
  * "怎么称呼、记着点什么" versus "关于这个人的正文".
@@ -65,86 +71,79 @@ fun PersonEditScreen(
 ) {
     var previewing by rememberSaveable { mutableStateOf(false) }
 
-    Column(modifier = modifier.fillMaxSize().imePadding()) {
-        // Save lives in the header: a pinned footer competed with the keyboard for
-        // the little height that was left.
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column {
-                Text(
-                    text = stringResource(R.string.people_edit_title),
-                    style = MaterialTheme.typography.headlineSmall,
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val fieldsMaxHeight = maxHeight * FIELDS_MAX_FRACTION
+
+        Column(modifier = Modifier.fillMaxSize()) {
+            Header(
+                saved = saved,
+                saving = saving,
+                canSave = displayName.isNotBlank(),
+                onSave = onSave,
+                onBack = onBack,
+            )
+
+            HorizontalDivider()
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = fieldsMaxHeight)
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                OutlinedTextField(
+                    value = displayName,
+                    onValueChange = onNameChanged,
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text(text = stringResource(R.string.people_label_name)) },
+                    placeholder = { Text(text = stringResource(R.string.people_name_hint)) },
                 )
-                Text(
-                    text = if (saved) {
-                        stringResource(R.string.people_saved)
-                    } else {
-                        stringResource(R.string.people_edit_subtitle)
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (saved) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(
-                    onClick = onSave,
-                    enabled = !saving && displayName.isNotBlank(),
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Text(
-                        text = stringResource(
-                            if (saving) R.string.people_saving else R.string.people_save,
-                        ),
-                        color = MaterialTheme.colorScheme.primary,
+                        text = stringResource(R.string.people_label_relation),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    RelationPicker(
+                        selected = relation,
+                        onSelect = onRelationChanged,
+                        modifier = Modifier.weight(1f),
                     )
                 }
-                TextButton(onClick = onBack) {
-                    Text(text = stringResource(R.string.people_back))
+
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = onNoteChanged,
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text(text = stringResource(R.string.people_label_note)) },
+                    placeholder = { Text(text = stringResource(R.string.people_note_hint)) },
+                )
+
+                error?.let { message ->
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
                 }
             }
-        }
 
-        HorizontalDivider()
-
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            SectionLabel(stringResource(R.string.people_label_name))
-            OutlinedTextField(
-                value = displayName,
-                onValueChange = onNameChanged,
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                placeholder = { Text(text = stringResource(R.string.people_name_hint)) },
-            )
-
-            SectionLabel(stringResource(R.string.people_label_relation))
-            RelationPicker(selected = relation, onSelect = onRelationChanged)
-
-            SectionLabel(stringResource(R.string.people_label_note))
-            OutlinedTextField(
-                value = note,
-                onValueChange = onNoteChanged,
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                placeholder = { Text(text = stringResource(R.string.people_note_hint)) },
-            )
-
-            SectionLabel(stringResource(R.string.people_label_body))
-
-            // Fixed height, not weight: the parent scrolls, so a weighted child
-            // would be measured against an infinite height and collapse.
-            Box(modifier = Modifier.fillMaxWidth().height(BODY_EDITOR_HEIGHT)) {
+            // The editor owns everything the other blocks did not take, so it is the
+            // only thing that changes size when the keyboard animates in.
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 8.dp),
+            ) {
                 MarkdownField(
                     text = notes,
                     previewing = previewing,
@@ -159,27 +158,58 @@ fun PersonEditScreen(
                     resolveImage = resolveImage,
                 )
             }
-
-            error?.let { message ->
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.padding(vertical = 4.dp),
-                )
-            }
         }
     }
 }
 
 @Composable
-private fun SectionLabel(text: String) {
-    Text(
-        text = text,
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = 4.dp),
-    )
+private fun Header(
+    saved: Boolean,
+    saving: Boolean,
+    canSave: Boolean,
+    onSave: () -> Unit,
+    onBack: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        // weight(1f): a long subtitle or a large font scale must never squeeze the
+        // 保存 / 返回 buttons off the header.
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(R.string.people_edit_title),
+                style = MaterialTheme.typography.headlineSmall,
+            )
+            Text(
+                text = if (saved) {
+                    stringResource(R.string.people_saved)
+                } else {
+                    stringResource(R.string.people_edit_subtitle)
+                },
+                style = MaterialTheme.typography.labelSmall,
+                color = if (saved) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            TextButton(onClick = onSave, enabled = !saving && canSave) {
+                Text(
+                    text = stringResource(
+                        if (saving) R.string.people_saving else R.string.people_save,
+                    ),
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            TextButton(onClick = onBack) {
+                Text(text = stringResource(R.string.people_back))
+            }
+        }
+    }
 }
 
 /**
@@ -190,11 +220,13 @@ private fun SectionLabel(text: String) {
  * way to clear a relationship.
  */
 @Composable
-private fun RelationPicker(selected: Relation?, onSelect: (Relation?) -> Unit) {
+private fun RelationPicker(
+    selected: Relation?,
+    onSelect: (Relation?) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
+        modifier = modifier.horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -220,4 +252,9 @@ private fun RelationChip(label: String, selected: Boolean, onClick: () -> Unit) 
     }
 }
 
-private val BODY_EDITOR_HEIGHT = 320.dp
+/**
+ * Share of the available height the identity block may claim. Everything above the
+ * editor is fixed furniture; keeping it under half guarantees the editor stays
+ * usable with the keyboard open, even on a short screen.
+ */
+private const val FIELDS_MAX_FRACTION = 0.42f

@@ -11,9 +11,16 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Meteor">
 
+        <!--
+            adjustResize is what stops the platform from panning the whole window
+            when the keyboard opens (ADR-024). Edge-to-edge means the window is not
+            literally resized; the IME inset is delivered to Compose instead, and
+            the tree pads once at the root.
+        -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.Meteor">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

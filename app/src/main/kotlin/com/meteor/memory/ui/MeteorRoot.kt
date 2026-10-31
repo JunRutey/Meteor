@@ -4,7 +4,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -27,8 +27,9 @@ import com.meteor.memory.ui.theme.MeteorTheme
  * App shell above the NavHost: themes from [RootViewModel.settings] and shows
  * the lock gate when the session is locked.
  *
- * Content is padded by the system bars because targetSdk 35 forces
- * edge-to-edge; the Surface itself still paints behind the status bar.
+ * The app is edge-to-edge (ADR-024), so the **only** inset handling lives here:
+ * `WindowInsets.safeDrawing` covers status/navigation bars, display cutout and the
+ * keyboard. Individual screens must not add their own `imePadding()`.
  */
 @Composable
 fun MeteorRoot(versionName: String) {
@@ -72,7 +73,10 @@ fun MeteorRoot(versionName: String) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .windowInsetsPadding(WindowInsets.systemBars),
+                    // safeDrawing = system bars + display cutout + IME: one padding
+                    // for everything the system can cover. Applied once here so a
+                    // screen never has to guess how the keyboard was handled.
+                    .windowInsetsPadding(WindowInsets.safeDrawing),
             ) {
                 when (locked) {
                     // Preference not read yet: show nothing rather than a frame

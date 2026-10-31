@@ -28,7 +28,6 @@
     <string name="people_label_name">称呼</string>
     <string name="people_label_relation">关系</string>
     <string name="people_label_note">备注</string>
-    <string name="people_label_body">正文</string>
     <string name="people_note_hint">一句话，比如「大学同学」</string>
     <string name="people_body_hint">关于这个人，想记点什么？可以插图、加链接</string>
     <string name="people_save">保存</string>
