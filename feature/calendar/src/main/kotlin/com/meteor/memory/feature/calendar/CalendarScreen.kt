@@ -64,11 +64,10 @@ fun Mood.emoji(): String = when (this) {
 }
 
 /**
- * Month grid with a mood per day.
+ * 首页：月份网格 + 选中日卡片 + 右下角搜索/AI 圆钮 + 快捷入口。
  *
- * Hand-rolled instead of pulling in a calendar library: the grid is a few dozen
- * cells and every dependency here would need API verification we cannot do
- * without a local build (ADR-017).
+ * 日历仍然手写（ADR-017）：格子是几十个、依赖 API 无法本地验证，手写 150 行更稳。
+ * 齿轮/放大镜/星芒同样是 Canvas 手绘，避免为此引入 material-icons 依赖。
  */
 @Composable
 fun CalendarScreen(
@@ -120,7 +119,7 @@ fun CalendarScreen(
                         .semantics { contentDescription = settingsLabel },
                     contentAlignment = Alignment.Center,
                 ) {
-                    GearIcon(contentDescription = settingsLabel)
+                    GearIcon(label = settingsLabel)
                 }
             }
 
@@ -196,7 +195,7 @@ fun CalendarScreen(
                 shape = CircleShape,
                 modifier = Modifier.semantics { contentDescription = searchLabel },
             ) {
-                MagnifierIcon(contentDescription = searchLabel)
+                MagnifierIcon(label = searchLabel)
             }
 
             onOpenAi?.let { open ->
@@ -206,7 +205,7 @@ fun CalendarScreen(
                     shape = CircleShape,
                     modifier = Modifier.semantics { contentDescription = aiLabel },
                 ) {
-                    AiSparkIcon(contentDescription = aiLabel)
+                    AiSparkIcon(label = aiLabel)
                 }
             }
         }
@@ -397,9 +396,9 @@ private fun Mood.label(): String = stringResource(
 )
 
 @Composable
-private fun GearIcon(contentDescription: String) {
+private fun GearIcon(label: String) {
     val tint = LocalContentColor.current
-    Canvas(Modifier.size(22.dp).semantics { this.contentDescription = contentDescription }) {
+    Canvas(Modifier.size(22.dp).semantics { contentDescription = label }) {
         val c = center
         val r = size.minDimension / 2f
         repeat(8) { i ->
@@ -416,9 +415,9 @@ private fun GearIcon(contentDescription: String) {
 }
 
 @Composable
-private fun MagnifierIcon(contentDescription: String) {
+private fun MagnifierIcon(label: String) {
     val tint = LocalContentColor.current
-    Canvas(Modifier.size(22.dp).semantics { this.contentDescription = contentDescription }) {
+    Canvas(Modifier.size(22.dp).semantics { contentDescription = label }) {
         val stroke = size.minDimension * 0.11f
         val radius = size.minDimension * 0.30f
         val c = Offset(size.width * 0.42f, size.height * 0.42f)
@@ -434,9 +433,9 @@ private fun MagnifierIcon(contentDescription: String) {
 }
 
 @Composable
-private fun AiSparkIcon(contentDescription: String) {
+private fun AiSparkIcon(label: String) {
     val tint = LocalContentColor.current
-    Canvas(Modifier.size(22.dp).semantics { this.contentDescription = contentDescription }) {
+    Canvas(Modifier.size(22.dp).semantics { contentDescription = label }) {
         val cx = size.width / 2f
         val cy = size.height / 2f
         val big = size.minDimension / 2f
