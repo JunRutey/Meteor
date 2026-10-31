@@ -35,9 +35,10 @@ class LogViewModel @Inject constructor(
 
         viewModelScope.launch {
             val result = withContext(Dispatchers.IO) { logExporter.export() }
-            if (result.success && result.location != null) {
-                appLog.info(TAG, "log exported to ${result.location}")
-                _state.value = LogUiState.Done(result.location)
+            val location = result.location
+            if (result.success && location != null) {
+                appLog.info(TAG, "log exported to $location")
+                _state.value = LogUiState.Done(location)
             } else {
                 val message = result.error ?: "unknown"
                 appLog.error(TAG, "log export failed: $message")
