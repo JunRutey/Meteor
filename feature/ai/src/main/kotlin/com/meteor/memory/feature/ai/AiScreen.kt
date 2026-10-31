@@ -1,6 +1,5 @@
 package com.meteor.memory.feature.ai
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -204,7 +203,9 @@ fun AiScreen(
                 }
             }
 
-            AnimatedVisibility(
+            // Fully qualified: inside a Column the ColumnScope overload would win
+            // scope resolution and refuse the BoxScope modifier.
+            androidx.compose.animation.AnimatedVisibility(
                 visible = scrolled,
                 modifier = Modifier.align(Alignment.TopCenter),
             ) {
