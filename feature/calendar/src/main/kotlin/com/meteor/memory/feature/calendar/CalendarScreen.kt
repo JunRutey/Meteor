@@ -8,28 +8,37 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -63,67 +72,144 @@ fun Mood.emoji(): String = when (this) {
  */
 @Composable
 fun CalendarScreen(
+    appName: String,
     month: YearMonth,
     today: LocalDate,
     moods: Map<LocalDate, Mood>,
     selectedDate: LocalDate?,
+    diaryDates: Set<LocalDate>,
+    imageDates: Set<LocalDate>,
     onPreviousMonth: () -> Unit,
     onNextMonth: () -> Unit,
     onSelectDate: (LocalDate) -> Unit,
     onPickMood: (LocalDate, Mood) -> Unit,
+    onOpenSettings: () -> Unit,
     onOpenDiary: (LocalDate) -> Unit,
-    onBack: () -> Unit,
+    onEditDiary: (LocalDate) -> Unit,
+    onOpenImages: (LocalDate) -> Unit,
+    onPickImage: (LocalDate) -> Unit,
+    onOpenSearch: () -> Unit,
+    onOpenAi: (() -> Unit)?,
+    onOpenGallery: () -> Unit,
+    onOpenChats: () -> Unit,
+    onOpenPeople: () -> Unit,
     modifier: Modifier = Modifier,
-    /** Days that already have a diary entry, for the ✓✓ marker on the day card. */
-    diaryDates: Set<LocalDate> = emptySet(),
 ) {
     val locale = Locale.getDefault()
     val monthLabel = DateTimeFormatter.ofPattern("LLLL yyyy", locale).format(month.atDay(1))
 
-    Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+    Box(modifier = modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
         ) {
-            Text(text = stringResource(R.string.calendar_title), style = MaterialTheme.typography.headlineSmall)
-            TextButton(onClick = onBack) { Text(stringResource(R.string.calendar_back)) }
-        }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(text = appName, style = MaterialTheme.typography.headlineSmall)
+                val settingsLabel = stringResource(R.string.calendar_open_settings)
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(CircleShape)
+                        .clickable(onClick = onOpenSettings)
+                        .semantics { contentDescription = settingsLabel },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    GearIcon(contentDescription = settingsLabel)
+                }
+            }
 
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            TextButton(onClick = onPreviousMonth) { Text("‹") }
-            Text(text = monthLabel, style = MaterialTheme.typography.titleMedium)
-            TextButton(onClick = onNextMonth) { Text("›") }
-        }
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                TextButton(onClick = onPreviousMonth) { Text("‹") }
+                Text(text = monthLabel, style = MaterialTheme.typography.titleMedium)
+                TextButton(onClick = onNextMonth) { Text("›") }
+            }
 
-        WeekdayHeader(locale)
+            WeekdayHeader(locale)
 
-        MonthGrid(
-            month = month,
-            today = today,
-            moods = moods,
-            selectedDate = selectedDate,
-            onSelectDate = onSelectDate,
-        )
-
-        HorizontalDivider(Modifier.padding(vertical = 12.dp))
-
-        selectedDate?.let { date ->
-            DayCard(
-                date = date,
-                mood = moods[date],
-                hasDiary = date in diaryDates,
-                onPickMood = { mood -> onPickMood(date, mood) },
-                onOpenDiary = { onOpenDiary(date) },
+            MonthGrid(
+                month = month,
+                today = today,
+                moods = moods,
+                selectedDate = selectedDate,
+                onSelectDate = onSelectDate,
             )
-        } ?: Text(
-            text = stringResource(R.string.calendar_select_hint),
-            style = MaterialTheme.typography.bodySmall,
-        )
+
+            HorizontalDivider(Modifier.padding(vertical = 12.dp))
+
+            selectedDate?.let { date ->
+                DayCard(
+                    date = date,
+                    today = today,
+                    mood = moods[date],
+                    hasDiary = date in diaryDates,
+                    hasImages = date in imageDates,
+                    onPickMood = { mood -> onPickMood(date, mood) },
+                    onRightClick = {
+                        if (date in diaryDates) onOpenDiary(date) else onEditDiary(date)
+                    },
+                    onLeftClick = {
+                        if (date in imageDates) onOpenImages(date) else onPickImage(date)
+                    },
+                )
+            }
+
+            Spacer(Modifier.height(20.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(onClick = onOpenGallery, modifier = Modifier.weight(1f)) {
+                    Text(text = stringResource(R.string.calendar_open_gallery), fontSize = 12.sp)
+                }
+                OutlinedButton(onClick = onOpenChats, modifier = Modifier.weight(1f)) {
+                    Text(text = stringResource(R.string.calendar_open_chats), fontSize = 12.sp)
+                }
+                OutlinedButton(onClick = onOpenPeople, modifier = Modifier.weight(1f)) {
+                    Text(text = stringResource(R.string.calendar_open_people), fontSize = 12.sp)
+                }
+            }
+
+            Spacer(Modifier.height(96.dp))
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            val searchLabel = stringResource(R.string.calendar_open_search)
+            FloatingActionButton(
+                onClick = onOpenSearch,
+                shape = CircleShape,
+                modifier = Modifier.semantics { contentDescription = searchLabel },
+            ) {
+                MagnifierIcon(contentDescription = searchLabel)
+            }
+
+            onOpenAi?.let { open ->
+                val aiLabel = stringResource(R.string.calendar_open_ai)
+                FloatingActionButton(
+                    onClick = open,
+                    shape = CircleShape,
+                    modifier = Modifier.semantics { contentDescription = aiLabel },
+                ) {
+                    AiSparkIcon(contentDescription = aiLabel)
+                }
+            }
+        }
     }
 }
 
@@ -216,10 +302,13 @@ private fun DayCell(
 @Composable
 private fun DayCard(
     date: LocalDate,
+    today: LocalDate,
     mood: Mood?,
     hasDiary: Boolean,
+    hasImages: Boolean,
     onPickMood: (Mood) -> Unit,
-    onOpenDiary: () -> Unit,
+    onRightClick: () -> Unit,
+    onLeftClick: () -> Unit,
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -269,8 +358,27 @@ private fun DayCard(
                 }
             }
 
-            Button(onClick = onOpenDiary, modifier = Modifier.fillMaxWidth()) {
-                Text(text = stringResource(R.string.calendar_open_diary))
+            val leftLabel = if (hasImages) {
+                R.string.calendar_view_images
+            } else {
+                R.string.calendar_save_image
+            }
+            val rightLabel = when {
+                hasDiary -> R.string.calendar_view_diary
+                date == today -> R.string.calendar_record_now
+                else -> R.string.calendar_backfill_diary
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(onClick = onLeftClick, modifier = Modifier.weight(1f)) {
+                    Text(text = stringResource(leftLabel))
+                }
+                Button(onClick = onRightClick, modifier = Modifier.weight(1f)) {
+                    Text(text = stringResource(rightLabel))
+                }
             }
         }
     }
@@ -287,6 +395,66 @@ private fun Mood.label(): String = stringResource(
         Mood.ANGRY -> R.string.mood_angry
     },
 )
+
+@Composable
+private fun GearIcon(contentDescription: String) {
+    val tint = LocalContentColor.current
+    Canvas(Modifier.size(22.dp).semantics { this.contentDescription = contentDescription }) {
+        val c = center
+        val r = size.minDimension / 2f
+        repeat(8) { i ->
+            rotate(degrees = i * 45f, pivot = c) {
+                drawRect(
+                    color = tint,
+                    topLeft = Offset(c.x - r * 0.11f, c.y - r),
+                    size = androidx.compose.ui.geometry.Size(r * 0.22f, r * 0.34f),
+                )
+            }
+        }
+        drawCircle(color = tint, radius = r * 0.58f, style = Stroke(width = r * 0.20f))
+    }
+}
+
+@Composable
+private fun MagnifierIcon(contentDescription: String) {
+    val tint = LocalContentColor.current
+    Canvas(Modifier.size(22.dp).semantics { this.contentDescription = contentDescription }) {
+        val stroke = size.minDimension * 0.11f
+        val radius = size.minDimension * 0.30f
+        val c = Offset(size.width * 0.42f, size.height * 0.42f)
+        drawCircle(color = tint, radius = radius, center = c, style = Stroke(width = stroke))
+        drawLine(
+            color = tint,
+            start = Offset(c.x + radius * 0.75f, c.y + radius * 0.75f),
+            end = Offset(size.width * 0.92f, size.height * 0.92f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
+    }
+}
+
+@Composable
+private fun AiSparkIcon(contentDescription: String) {
+    val tint = LocalContentColor.current
+    Canvas(Modifier.size(22.dp).semantics { this.contentDescription = contentDescription }) {
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        val big = size.minDimension / 2f
+        val small = big * 0.26f
+        val star = Path().apply {
+            moveTo(cx, cy - big)
+            lineTo(cx + small, cy - small)
+            lineTo(cx + big, cy)
+            lineTo(cx + small, cy + small)
+            lineTo(cx, cy + big)
+            lineTo(cx - small, cy + small)
+            lineTo(cx - big, cy)
+            lineTo(cx - small, cy - small)
+            close()
+        }
+        drawPath(star, color = tint)
+    }
+}
 
 /**
  * WhatsApp-style double tick: two overlapping check paths, drawn rather than

@@ -1,11 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="calendar_title">心情日历</string>
-    <string name="calendar_back">返回</string>
-    <string name="calendar_select_hint">点选一天查看或记录心情</string>
     <string name="calendar_no_mood">这天还没有记录心情</string>
-    <string name="calendar_open_diary">查看当天日记</string>
     <string name="calendar_has_diary">这天已写日记</string>
+    <string name="calendar_open_settings">设置</string>
+    <string name="calendar_view_diary">查看当天日记</string>
+    <string name="calendar_backfill_diary">补写日记</string>
+    <string name="calendar_record_now">记录当下</string>
+    <string name="calendar_view_images">查看记忆图片</string>
+    <string name="calendar_save_image">存张记忆</string>
+    <string name="calendar_open_search">搜索</string>
+    <string name="calendar_open_ai">AI 对话</string>
+    <string name="calendar_open_gallery">图片总览</string>
+    <string name="calendar_open_chats">聊天记录</string>
+    <string name="calendar_open_people">人际关系</string>
 
     <string name="mood_happy">开心</string>
     <string name="mood_calm">平静</string>
