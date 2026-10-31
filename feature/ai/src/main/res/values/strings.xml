@@ -58,7 +58,7 @@
     <string name="ai_settings_enable">启用 AI</string>
     <string name="ai_settings_enable_desc">关闭后不发出任何网络请求，首页入口也会隐藏。</string>
     <string name="ai_settings_consent_title">开启前请确认</string>
-    <string name="ai_settings_consent_body">开启后，你输入的内容与相关档案片段会通过 HTTPS 直接发送到你配置的 AI 提供商（DeepSeek / OpenAI / 自定义接口）。\n\nMeteor 没有后端：作者不接收、不收集、不记录任何内容，也不做埋点或跟踪。\n\nAPI Key 只在本机加密保存；聊天记录不会落盘。是否使用、用哪家提供商，完全由你决定。</string>
+    <string name="ai_settings_consent_body">开启后，你输入的内容与相关档案片段（包括导入并索引的文本记录）会通过 HTTPS 直接发送到你配置的 AI 提供商（DeepSeek / OpenAI / 自定义接口）。照片和视频不会发送给 AI。\n\nMeteor 没有后端：作者不接收、不收集、不记录任何内容，也不做埋点或跟踪。\n\nAPI Key 只在本机加密保存；聊天记录不会落盘。是否使用、用哪家提供商，完全由你决定。</string>
     <string name="ai_settings_consent_accept">我已了解，开启</string>
     <string name="ai_settings_cancel">取消</string>
     <string name="ai_settings_provider">提供商</string>

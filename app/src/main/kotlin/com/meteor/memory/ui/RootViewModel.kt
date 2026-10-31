@@ -126,6 +126,7 @@ class RootViewModel @Inject constructor(
                     }
                 }.getOrDefault(false)
             }
+            searchService.clearAttachmentIndex()
             if (wasEnabled) {
                 appLog.info(TAG, "entered background, lock re-armed")
                 _locked.value = true

@@ -56,6 +56,7 @@ import com.meteor.memory.ui.ai.AiViewModel
 import com.meteor.memory.ui.ai.PersonaViewModel
 import com.meteor.memory.ui.backup.BackupActions
 import com.meteor.memory.ui.chats.ChatsScreen
+import com.meteor.memory.ui.chats.ChatsViewModel
 import com.meteor.memory.ui.calendar.CalendarViewModel
 import com.meteor.memory.ui.diagnostics.StorageDiagnosticsScreen
 import com.meteor.memory.ui.diary.DiaryEditScreen
@@ -68,6 +69,7 @@ import com.meteor.memory.ui.log.LogActions
 import com.meteor.memory.ui.people.PeopleViewModel
 import com.meteor.memory.ui.people.PersonDetailViewModel
 import com.meteor.memory.ui.people.PersonEditViewModel
+import com.meteor.memory.ui.people.PersonAttachmentView
 import com.meteor.memory.ui.search.SearchScreen
 import com.meteor.memory.ui.search.SearchViewModel
 import com.meteor.memory.ui.settings.AiTestState
@@ -209,6 +211,16 @@ fun MeteorNavHost(
             val viewModel: PersonDetailViewModel = hiltViewModel()
             val state by viewModel.state.collectAsStateWithLifecycle()
             val personId = entry.arguments?.getString(PersonDetailViewModel.ARG_PERSON_ID).orEmpty()
+            val pickAttachments = rememberAttachmentPicker(viewModel::importAttachments)
+            var pendingExportId by remember { mutableStateOf<String?>(null) }
+            var pendingExportName by remember { mutableStateOf("attachment") }
+            val exporter = rememberLauncherForActivityResult(
+                ActivityResultContracts.CreateDocument("application/octet-stream"),
+            ) { uri ->
+                val id = pendingExportId
+                pendingExportId = null
+                if (uri != null && id != null) viewModel.export(id, uri)
+            }
 
             RefreshOnResume { viewModel.load() }
 
@@ -223,7 +235,7 @@ fun MeteorNavHost(
                         dateLabel = it.dateLabel,
                         typeLabel = recordTypeLabel(it.type),
                     )
-                },
+                } + state.attachments.map { attachment -> attachment.toRecordRow() },
                 onBack = { navController.popBackStack() },
                 onEdit = { navController.navigate("people/$personId/edit") },
                 onEditNote = { navController.navigate("people/$personId/edit") },
@@ -236,6 +248,22 @@ fun MeteorNavHost(
                         )
                     }
                 },
+                onAddRecord = pickAttachments,
+                attachmentsError = state.attachmentsError,
+                importingAttachments = state.isImporting,
+                importedAttachmentCount = state.importSummary?.imported,
+                failedAttachmentCount = state.importSummary?.failed ?: 0,
+                skippedAttachmentCount = state.importSummary?.skipped ?: 0,
+                attachmentIndexFailed = state.importSummary?.indexFailed == true,
+                onExportAttachment = { id ->
+                    val attachment = state.attachments.firstOrNull { it.id == id }
+                    if (attachment != null) {
+                        pendingExportId = attachment.id
+                        pendingExportName = attachment.fileName
+                        exporter.launch(pendingExportName)
+                    }
+                },
+                exportFailed = state.exportFailed,
             )
         }
 
@@ -278,10 +306,11 @@ fun MeteorNavHost(
                     defaultValue = null
                 },
             ),
-        ) { entry ->
+        ) {
             val viewModel: GalleryViewModel = hiltViewModel()
             val days by viewModel.days.collectAsStateWithLifecycle()
             val loading by viewModel.loading.collectAsStateWithLifecycle()
+            val filterLabel by viewModel.filterLabel.collectAsStateWithLifecycle()
 
             RefreshOnResume { viewModel.refresh() }
 
@@ -291,7 +320,7 @@ fun MeteorNavHost(
                 onOpen = { token -> navController.navigate("gallery/${Uri.encode(token)}") },
                 onDelete = viewModel::delete,
                 onBack = { navController.popBackStack() },
-                title = entry.arguments?.getString(GalleryViewModel.ARG_DATE),
+                title = filterLabel,
             )
         }
 
@@ -467,7 +496,32 @@ fun MeteorNavHost(
         }
 
         composable(ROUTE_CHATS) {
-            ChatsScreen(onBack = { navController.popBackStack() })
+            val viewModel: ChatsViewModel = hiltViewModel()
+            val state by viewModel.state.collectAsStateWithLifecycle()
+            val pickAttachments = rememberAttachmentPicker(viewModel::importFiles)
+            var pendingExportId by remember { mutableStateOf<String?>(null) }
+            var pendingExportName by remember { mutableStateOf("attachment") }
+            val exporter = rememberLauncherForActivityResult(
+                ActivityResultContracts.CreateDocument("application/octet-stream"),
+            ) { uri ->
+                val id = pendingExportId
+                pendingExportId = null
+                if (uri != null && id != null) viewModel.export(id, uri)
+            }
+            RefreshOnResume { viewModel.refresh() }
+
+            ChatsScreen(
+                state = state,
+                onPersonSelected = viewModel::selectPerson,
+                onImportFiles = pickAttachments,
+                onExport = { row ->
+                    pendingExportId = row.id
+                    pendingExportName = row.fileName
+                    exporter.launch(pendingExportName)
+                },
+                onDelete = { row -> viewModel.delete(row.id) },
+                onBack = { navController.popBackStack() },
+            )
         }
 
         composable(
@@ -629,6 +683,23 @@ private fun rememberImagePicker(onBytes: (ByteArray) -> Unit): () -> Unit {
     }
     return { launcher.launch("image/*") }
 }
+
+@Composable
+private fun rememberAttachmentPicker(onUris: (List<Uri>) -> Unit): () -> Unit {
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) onUris(uris)
+    }
+    return { launcher.launch(arrayOf("*/*")) }
+}
+
+private fun PersonAttachmentView.toRecordRow(): PersonRecordRow =
+    PersonRecordRow(
+        recordId = id,
+        dateLabel = dateLabel,
+        typeLabel = mimeType,
+        title = fileName,
+        sizeBytes = sizeBytes,
+    )
 
 @Composable
 private fun RefreshOnResume(block: () -> Unit) {

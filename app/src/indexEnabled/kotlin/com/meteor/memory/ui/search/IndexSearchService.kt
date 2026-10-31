@@ -22,6 +22,7 @@ import javax.inject.Singleton
 class IndexSearchService @Inject constructor(
     private val index: MeteorIndex,
     private val appLog: AppLog,
+    private val attachmentTextIndex: AttachmentTextIndex,
 ) : SearchService {
 
     private val rebuildMutex = Mutex()
@@ -34,7 +35,7 @@ class IndexSearchService @Inject constructor(
 
     override suspend fun search(query: String, maxHits: Int, snippetChars: Int): List<SearchMatch> {
         if (query.isBlank()) return emptyList()
-        return index.search(
+        val recordHits = index.search(
             QueryPlan(ftsExpression = query, maxHits = maxHits, snippetChars = snippetChars),
         ).map { hit ->
             SearchMatch(
@@ -42,12 +43,18 @@ class IndexSearchService @Inject constructor(
                 type = hit.type,
                 timestamp = hit.timestamp,
                 snippet = hit.snippet,
+                score = hit.score,
             )
         }
+        val attachmentHits = attachmentTextIndex.search(query, maxHits, snippetChars)
+        return (recordHits + attachmentHits)
+            .sortedWith(compareByDescending<SearchMatch> { it.score }.thenByDescending { it.timestamp })
+            .take(maxHits.coerceAtLeast(1))
     }
 
     override suspend fun rebuild() {
         index.rebuild()
+        attachmentTextIndex.rebuild()
     }
 
     override suspend fun summary(): SearchIndexSummary? = runCatching {
@@ -72,6 +79,14 @@ class IndexSearchService @Inject constructor(
             )
         }
 
+    override suspend fun refreshAttachmentIndex() {
+        attachmentTextIndex.rebuild()
+    }
+
+    override suspend fun clearAttachmentIndex() {
+        attachmentTextIndex.clear()
+    }
+
     override suspend fun rebuildOnLaunch() {
         if (System.currentTimeMillis() < blockedUntilMillis) {
             appLog.info(TAG, "index rebuild skipped (backoff active)")
@@ -81,7 +96,10 @@ class IndexSearchService @Inject constructor(
         rebuildMutex.withLock {
             if (System.currentTimeMillis() < blockedUntilMillis) return
 
-            runCatching { index.rebuild() }.fold(
+            runCatching {
+                index.rebuild()
+                attachmentTextIndex.rebuild()
+            }.fold(
                 onSuccess = {
                     consecutiveFailures = 0
                     blockedUntilMillis = 0
@@ -135,7 +153,8 @@ object SearchModule {
     fun provideSearchService(
         index: MeteorIndex,
         appLog: AppLog,
-    ): SearchService = IndexSearchService(index, appLog)
+        attachmentTextIndex: AttachmentTextIndex,
+    ): SearchService = IndexSearchService(index, appLog, attachmentTextIndex)
 
     @dagger.Provides
     @Singleton

@@ -4,14 +4,16 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -45,61 +47,74 @@ fun AboutScreen(
     val aboutMd = remember { readAsset(context, "about.md").orEmpty() }
     val changelogMd = remember { readAsset(context, "changelog.md").orEmpty() }
     val donate = remember { readDonate(context) }
+    val aboutLines = remember(aboutMd) { aboutMd.lines() }
+    val changelogLines = remember(changelogMd) { changelogMd.lines() }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+    LazyColumn(
+        modifier = modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column {
-                Text(
-                    text = stringResource(R.string.app_name),
-                    style = MaterialTheme.typography.headlineSmall,
-                )
-                Text(
-                    text = stringResource(R.string.about_version, versionName),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column {
+                    Text(
+                        text = stringResource(R.string.app_name),
+                        style = MaterialTheme.typography.headlineSmall,
+                    )
+                    Text(
+                        text = stringResource(R.string.about_version, versionName),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                TextButton(onClick = onBack) { Text(text = stringResource(R.string.about_back)) }
             }
-            TextButton(onClick = onBack) { Text(text = stringResource(R.string.about_back)) }
         }
 
-        DocsText(aboutMd)
+        items(aboutLines) { line -> DocsLine(line) }
 
-        OutlinedButton(onClick = onOpenRepository, modifier = Modifier.fillMaxWidth()) {
-            Text(text = stringResource(R.string.about_repository))
+        item {
+            Spacer(Modifier.height(8.dp))
+            OutlinedButton(onClick = onOpenRepository, modifier = Modifier.fillMaxWidth()) {
+                Text(text = stringResource(R.string.about_repository))
+            }
         }
 
         if (donate != null) {
+            item { HorizontalDivider() }
+            item {
+                Text(
+                    text = stringResource(R.string.about_donate),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            item {
+                Image(
+                    bitmap = donate.asImageBitmap(),
+                    contentDescription = stringResource(R.string.about_donate),
+                    modifier = Modifier.fillMaxWidth(),
+                    contentScale = ContentScale.Fit,
+                )
+            }
+        }
+
+        item {
+            Spacer(Modifier.height(8.dp))
             HorizontalDivider()
+        }
+        item {
             Text(
-                text = stringResource(R.string.about_donate),
+                text = stringResource(R.string.about_changelog),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.primary,
             )
-            Image(
-                bitmap = donate.asImageBitmap(),
-                contentDescription = stringResource(R.string.about_donate),
-                modifier = Modifier.fillMaxWidth(),
-                contentScale = ContentScale.Fit,
-            )
         }
-
-        HorizontalDivider()
-        Text(
-            text = stringResource(R.string.about_changelog),
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        DocsText(changelogMd)
+        items(changelogLines) { line -> DocsLine(line) }
     }
 }
 

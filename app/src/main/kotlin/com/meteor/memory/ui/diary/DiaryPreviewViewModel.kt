@@ -68,8 +68,6 @@ class DiaryPreviewViewModel @Inject constructor(
         }
     }
 
-    fun imageFor(token: String): ImageBitmap? = _state.value.images[token]
-
     private fun refreshImages(body: String) {
         val known = _state.value.images.keys + _state.value.missingImages
         val tokens = MarkdownEditing.imagesOf(body).map { it.token }.filter { it !in known }

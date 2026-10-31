@@ -20,8 +20,10 @@ import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.log.FileAppLogger
 import com.meteor.memory.core.log.LogExporter
 import com.meteor.memory.core.storage.AiChatStore
+import com.meteor.memory.core.storage.AttachmentStore
 import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.storage.EncryptedAiChatStore
+import com.meteor.memory.core.storage.EncryptedAttachmentStore
 import com.meteor.memory.core.storage.EncryptedImageStore
 import com.meteor.memory.core.storage.ImageStore
 import com.meteor.memory.core.storage.MoodQueries
@@ -45,6 +47,7 @@ import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.SettingsRepository
 import com.meteor.memory.ui.ai.AiGate
 import com.meteor.memory.ui.ai.AiSettingsReader
+import com.meteor.memory.ui.attachments.AttachmentRecordScanner
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -175,13 +178,18 @@ object AppModule {
     fun provideAiModule(
         @ApplicationContext context: Context,
         recordScanner: RecordScanner,
+        attachmentStore: AttachmentStore,
         personQueries: PersonQueries,
         moodQueries: MoodQueries,
         diaryQueries: DiaryQueries,
         storageRouter: StorageRouter,
     ): AiModule = MeteorAiModule(
         rootDir = File(context.filesDir, StorageLayout.ROOT_NAME),
-        scanner = recordScanner,
+        scanner = AttachmentRecordScanner(
+            records = recordScanner,
+            attachments = attachmentStore,
+            rootDir = File(context.filesDir, StorageLayout.ROOT_NAME),
+        ),
         personQueries = personQueries,
         moodQueries = moodQueries,
         diaryQueries = diaryQueries,
@@ -242,6 +250,16 @@ object AppModule {
     ): RecordScanner = PrivateRecordScanner(
         rootDir = File(context.filesDir, StorageLayout.ROOT_NAME),
         router = storageRouter,
+    )
+
+    @Provides
+    @Singleton
+    fun provideAttachmentStore(
+        @ApplicationContext context: Context,
+        crypto: FileCrypto,
+    ): AttachmentStore = EncryptedAttachmentStore(
+        rootDir = File(context.filesDir, StorageLayout.ROOT_NAME),
+        crypto = crypto,
     )
 
     @Provides

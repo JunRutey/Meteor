@@ -15,9 +15,6 @@
     <string name="people_secondary_missing">仅创建了目录</string>
     <string name="nav_back">返回</string>
 
-    <string name="diary_title">日记</string>
-    <string name="diary_write_today">写今天</string>
-    <string name="diary_empty">还没有日记，点「写今天」开始。</string>
     <string name="diary_row_empty">（空白）</string>
     <string name="diary_hint">今天发生了什么？</string>
     <string name="diary_save">保存</string>
@@ -37,7 +34,7 @@
     <string name="backup_import_done">已导入 %1$d 个文件，并按本机密钥重新加密</string>
     <string name="backup_failed">备份操作失败</string>
     <string name="backup_warning_title">备份包是明文</string>
-    <string name="backup_warning_body">导出的 zip 内是可以直接阅读的 Markdown 与图片，任何拿到该文件的人都能看到你的全部记忆内容。请自行妥善保管，不要上传到网盘或聊天工具。</string>
+    <string name="backup_warning_body">导出的 zip 内是可以直接阅读的 Markdown 与图片，任何拿到该文件的人都能看到你的全部记忆内容。附件（图片、文档等）的明文与从中抽取的文本也会一并导出。请自行妥善保管，不要上传到网盘或聊天工具。</string>
     <string name="backup_warning_confirm">我已了解，继续导出</string>
     <string name="backup_warning_cancel">取消</string>
 
@@ -78,9 +75,31 @@
     <string name="about_donate">打赏</string>
     <string name="about_changelog">更新日志</string>
 
-    <string name="chats_title">聊天记录</string>
+    <string name="chats_title">记录</string>
     <string name="chats_back">返回</string>
-    <string name="chats_empty">聊天记录总览尚未开放</string>
+    <string name="chats_empty">还没有导入文件记录</string>
+    <string name="records_empty_for_person">这个人还没有记录</string>
+    <string name="records_import">导入文件</string>
+    <string name="records_importing">导入中…</string>
+    <string name="records_import_progress">正在导入 %1$d/%2$d</string>
+    <string name="records_export">导出</string>
+    <string name="records_delete">删除</string>
+    <string name="records_delete_confirm_title">删除这条记录？</string>
+    <string name="records_delete_confirm_body">文件已加密存储，删除后无法恢复。</string>
+    <string name="records_delete_confirm_ok">删除</string>
+    <string name="records_delete_confirm_cancel">取消</string>
+    <string name="records_export_done">已导出</string>
+    <string name="records_export_failed">导出失败</string>
+    <string name="records_owner_label">新文件归属：%1$s</string>
+    <string name="records_choose_person">选择人物</string>
+    <string name="records_unassigned">未关联人物</string>
+    <string name="records_attachment_details">%1$s · %2$s · %3$s</string>
+    <string name="records_attachment_owner">人物：%1$s</string>
+    <string name="records_load_failed">文件记录加载失败，请稍后重试</string>
+    <string name="records_import_summary">成功导入 %1$d 个，失败 %2$d 个</string>
+    <string name="records_import_skipped">%1$d 个文件超过 256 MB，已跳过</string>
+    <string name="records_import_failed">文件导入失败，请检查文件后重试</string>
+    <string name="records_index_failed">文件已保存，但文本索引更新失败</string>
 
     <string name="diary_preview_edit">修改日记</string>
     <string name="diary_preview_back">返回</string>

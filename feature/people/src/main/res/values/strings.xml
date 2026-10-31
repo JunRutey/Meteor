@@ -11,6 +11,15 @@
     <string name="people_empty">还没有人物档案，点「新建」开始。</string>
     <string name="people_records">相关记录</string>
     <string name="people_records_empty">这个人物下还没有记录</string>
+    <string name="people_record_add">导入文件</string>
+    <string name="people_record_importing">导入中…</string>
+    <string name="people_record_export">导出</string>
+    <string name="people_record_export_done">已导出</string>
+    <string name="people_record_export_failed">导出失败</string>
+    <string name="people_records_load_failed">相关文件记录加载失败</string>
+    <string name="people_record_import_summary">导入成功 %1$d 个，失败 %2$d 个</string>
+    <string name="people_record_import_skipped">%1$d 个文件超过 256 MB，已跳过</string>
+    <string name="people_record_index_failed">文件已保存，但文本索引更新失败</string>
 
     <string name="people_note_section">备注</string>
     <string name="people_note_add">添加备注</string>
