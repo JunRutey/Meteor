@@ -253,6 +253,7 @@ fun MeteorNavHost(
                 importingAttachments = state.isImporting,
                 importedAttachmentCount = state.importSummary?.imported,
                 failedAttachmentCount = state.importSummary?.failed ?: 0,
+                skippedAttachmentCount = state.importSummary?.skipped ?: 0,
                 attachmentIndexFailed = state.importSummary?.indexFailed == true,
                 onExportAttachment = { id ->
                     val attachment = state.attachments.firstOrNull { it.id == id }

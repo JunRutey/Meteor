@@ -1,6 +1,7 @@
 package com.meteor.memory.ui.attachments
 
 import android.content.Context
+import android.content.ContentResolver
 import android.net.Uri
 import android.provider.OpenableColumns
 import com.meteor.memory.core.log.AppLog
@@ -13,7 +14,10 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.InputStream
+import java.io.OutputStream
+import java.util.UUID
 import java.util.zip.ZipInputStream
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -26,7 +30,41 @@ class AttachmentImporter @Inject constructor(
 
     suspend fun import(uri: Uri, personId: String?): StoredAttachment = withContext(Dispatchers.IO) {
         val resolver = context.contentResolver
-        val fileName = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+        val fileName = resolveFileName(resolver, uri)
+        val mimeType = resolver.getType(uri) ?: mimeTypeFor(fileName)
+        val size = resolveSize(resolver, uri)
+        if (size != null && size > MAX_ATTACHMENT_BYTES) throw AttachmentTooLargeException()
+
+        val temp = File(context.cacheDir, "attachment-import-${UUID.randomUUID()}")
+        try {
+            resolver.openInputStream(uri)?.use { input ->
+                temp.outputStream().use { output -> copyBounded(input, output) }
+            } ?: error("selected file cannot be opened")
+
+            val indexedText = if (AttachmentTextExtractor.supports(fileName, mimeType)) {
+                temp.inputStream().use { AttachmentTextExtractor.extract(fileName, mimeType, it) }
+                    ?.takeIf(String::isNotBlank)
+                    ?.let { text -> "File: ${fileName.replace('\n', ' ').replace('\r', ' ')}\n$text" }
+            } else {
+                null
+            }
+
+            temp.inputStream().use { input ->
+                attachmentStore.save(
+                    input = input,
+                    fileName = fileName,
+                    mimeType = mimeType,
+                    personId = personId,
+                    indexedText = indexedText,
+                )
+            }
+        } finally {
+            temp.delete()
+        }
+    }
+
+    private fun resolveFileName(resolver: ContentResolver, uri: Uri): String =
+        resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
             ?.use { cursor ->
                 val column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                 if (column >= 0 && cursor.moveToFirst()) cursor.getString(column) else null
@@ -34,27 +72,32 @@ class AttachmentImporter @Inject constructor(
             ?.takeIf(String::isNotBlank)
             ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf(String::isNotBlank)
             ?: error("selected file name is unavailable")
-        val mimeType = resolver.getType(uri) ?: mimeTypeFor(fileName)
 
-        val indexedText = if (AttachmentTextExtractor.supports(fileName, mimeType)) {
-            resolver.openInputStream(uri)?.use { input ->
-                AttachmentTextExtractor.extract(fileName, mimeType, input)
-                    ?.takeIf(String::isNotBlank)
-                    ?.let { text -> "File: ${fileName.replace('\n', ' ').replace('\r', ' ')}\n$text" }
-            } ?: error("selected file cannot be opened")
-        } else {
-            null
-        }
+    private fun resolveSize(resolver: ContentResolver, uri: Uri): Long? =
+        runCatching {
+            resolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                val column = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (column >= 0 && cursor.moveToFirst() && !cursor.isNull(column)) cursor.getLong(column) else null
+            }
+        }.getOrNull()
 
-        val input = resolver.openInputStream(uri) ?: error("selected file cannot be opened")
-        input.use {
-            attachmentStore.save(
-                input = it,
-                fileName = fileName,
-                mimeType = mimeType,
-                personId = personId,
-                indexedText = indexedText,
-            )
+    private fun copyBounded(input: InputStream, output: OutputStream) {
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        var total = 0L
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            if (read == 0) {
+                val single = input.read()
+                if (single < 0) break
+                if (total == MAX_ATTACHMENT_BYTES) throw AttachmentTooLargeException()
+                output.write(single)
+                total++
+            } else {
+                if (read > MAX_ATTACHMENT_BYTES - total) throw AttachmentTooLargeException()
+                output.write(buffer, 0, read)
+                total += read
+            }
         }
     }
 
@@ -65,7 +108,13 @@ class AttachmentImporter @Inject constructor(
             "zip" -> "application/zip"
             else -> EncryptedAttachmentStore.MIME_OCTET_STREAM
         }
+
+    private companion object {
+        const val MAX_ATTACHMENT_BYTES = 256L * 1024 * 1024
+    }
 }
+
+internal class AttachmentTooLargeException : Exception("attachment is too large")
 
 @Singleton
 class AttachmentImportCoordinator @Inject constructor(
@@ -77,10 +126,13 @@ class AttachmentImportCoordinator @Inject constructor(
     suspend fun importAll(uris: List<Uri>, personId: String?): AttachmentImportSummary {
         var imported = 0
         var failed = 0
+        var skipped = 0
         for (uri in uris) {
             try {
                 importer.import(uri, personId)
                 imported++
+            } catch (tooLarge: AttachmentTooLargeException) {
+                skipped++
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -102,7 +154,12 @@ class AttachmentImportCoordinator @Inject constructor(
                 true
             }
         }
-        return AttachmentImportSummary(imported = imported, failed = failed, indexFailed = indexFailed)
+        return AttachmentImportSummary(
+            imported = imported,
+            failed = failed,
+            skipped = skipped,
+            indexFailed = indexFailed,
+        )
     }
 
     private companion object {
@@ -113,6 +170,7 @@ class AttachmentImportCoordinator @Inject constructor(
 data class AttachmentImportSummary(
     val imported: Int,
     val failed: Int,
+    val skipped: Int,
     val indexFailed: Boolean,
 )
 

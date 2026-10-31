@@ -220,6 +220,13 @@ private fun ImportSummary(summary: AttachmentImportSummary) {
             modifier = Modifier.padding(vertical = 8.dp),
         )
     }
+    if (summary.skipped > 0) {
+        Text(
+            text = stringResource(R.string.records_import_skipped, summary.skipped),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+    }
     if (summary.indexFailed) {
         Text(
             text = stringResource(R.string.records_index_failed),

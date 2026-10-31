@@ -60,6 +60,7 @@ fun PersonDetailScreen(
     importingAttachments: Boolean = false,
     importedAttachmentCount: Int? = null,
     failedAttachmentCount: Int = 0,
+    skippedAttachmentCount: Int = 0,
     attachmentIndexFailed: Boolean = false,
     onExportAttachment: (String) -> Unit = {},
 ) {
@@ -149,6 +150,13 @@ fun PersonDetailScreen(
                     imported,
                     failedAttachmentCount,
                 ),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+            )
+        }
+        if (skippedAttachmentCount > 0) {
+            Text(
+                text = stringResource(R.string.people_record_import_skipped, skippedAttachmentCount),
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
             )
