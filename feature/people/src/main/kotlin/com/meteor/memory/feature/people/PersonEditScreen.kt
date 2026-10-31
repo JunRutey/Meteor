@@ -2,13 +2,16 @@ package com.meteor.memory.feature.people
 
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -29,22 +32,27 @@ import com.meteor.memory.core.storage.Relation
 import com.meteor.memory.feature.editor.MarkdownField
 
 /**
- * Editing an existing person (ADR-020): name, relationship, and the free-form
- * notes field, which is a Markdown body edited by `:feature-editor`.
+ * Editing an existing person (ADR-020, ADR-023).
  *
- * Laid out like the detail page it came from — same header line, same section
- * rhythm — so moving between 详情 and 编辑 does not feel like two different apps.
+ * The form is **scrollable** with a fixed-height body editor: a `weight(1f)`
+ * column collapses to nothing as soon as the keyboard eats the screen, which is
+ * exactly how the note field ended up as a one-line sliver.
+ *
+ * 备注 and 正文 are separate fields because they answer different questions —
+ * "怎么称呼、记着点什么" versus "关于这个人的正文".
  */
 @Composable
 fun PersonEditScreen(
     displayName: String,
     relation: Relation?,
+    note: String,
     notes: String,
     saving: Boolean,
     saved: Boolean,
     error: String?,
     onNameChanged: (String) -> Unit,
     onRelationChanged: (Relation?) -> Unit,
+    onNoteChanged: (String) -> Unit,
     onNotesChanged: (String) -> Unit,
     onInsertLink: (String, String?) -> Unit,
     onPickImage: () -> Unit,
@@ -57,15 +65,11 @@ fun PersonEditScreen(
 ) {
     var previewing by rememberSaveable { mutableStateOf(false) }
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .imePadding()
-            .padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
+    Column(modifier = modifier.fillMaxSize().imePadding()) {
+        // Save lives in the header: a pinned footer competed with the keyboard for
+        // the little height that was left.
         Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
@@ -88,58 +92,82 @@ fun PersonEditScreen(
                     },
                 )
             }
-            TextButton(onClick = onBack) {
-                Text(text = stringResource(R.string.people_back))
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(
+                    onClick = onSave,
+                    enabled = !saving && displayName.isNotBlank(),
+                ) {
+                    Text(
+                        text = stringResource(
+                            if (saving) R.string.people_saving else R.string.people_save,
+                        ),
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
+                TextButton(onClick = onBack) {
+                    Text(text = stringResource(R.string.people_back))
+                }
             }
         }
 
         HorizontalDivider()
 
-        SectionLabel(stringResource(R.string.people_label_name))
-        OutlinedTextField(
-            value = displayName,
-            onValueChange = onNameChanged,
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            placeholder = { Text(text = stringResource(R.string.people_name_hint)) },
-        )
-
-        SectionLabel(stringResource(R.string.people_label_relation))
-        RelationPicker(selected = relation, onSelect = onRelationChanged)
-
-        SectionLabel(stringResource(R.string.people_label_notes))
-        MarkdownField(
-            text = notes,
-            previewing = previewing,
-            onTextChanged = onNotesChanged,
-            onPreviewToggle = { previewing = !previewing },
-            onInsertLink = onInsertLink,
-            onPickImage = onPickImage,
-            onRemoveImage = onRemoveImage,
-            modifier = Modifier.weight(1f),
-            placeholder = { Text(text = stringResource(R.string.people_notes_hint)) },
-            missingImages = missingImages,
-            resolveImage = resolveImage,
-        )
-
-        error?.let { message ->
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-            )
-        }
-
-        Button(
-            onClick = onSave,
-            enabled = !saving && displayName.isNotBlank(),
-            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(
-                text = stringResource(
-                    if (saving) R.string.people_saving else R.string.people_save,
-                ),
+            SectionLabel(stringResource(R.string.people_label_name))
+            OutlinedTextField(
+                value = displayName,
+                onValueChange = onNameChanged,
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                placeholder = { Text(text = stringResource(R.string.people_name_hint)) },
             )
+
+            SectionLabel(stringResource(R.string.people_label_relation))
+            RelationPicker(selected = relation, onSelect = onRelationChanged)
+
+            SectionLabel(stringResource(R.string.people_label_note))
+            OutlinedTextField(
+                value = note,
+                onValueChange = onNoteChanged,
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                placeholder = { Text(text = stringResource(R.string.people_note_hint)) },
+            )
+
+            SectionLabel(stringResource(R.string.people_label_body))
+
+            // Fixed height, not weight: the parent scrolls, so a weighted child
+            // would be measured against an infinite height and collapse.
+            Box(modifier = Modifier.fillMaxWidth().height(BODY_EDITOR_HEIGHT)) {
+                MarkdownField(
+                    text = notes,
+                    previewing = previewing,
+                    onTextChanged = onNotesChanged,
+                    onPreviewToggle = { previewing = !previewing },
+                    onInsertLink = onInsertLink,
+                    onPickImage = onPickImage,
+                    onRemoveImage = onRemoveImage,
+                    modifier = Modifier.fillMaxSize(),
+                    placeholder = { Text(text = stringResource(R.string.people_body_hint)) },
+                    missingImages = missingImages,
+                    resolveImage = resolveImage,
+                )
+            }
+
+            error?.let { message ->
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(vertical = 4.dp),
+                )
+            }
         }
     }
 }
@@ -170,17 +198,26 @@ private fun RelationPicker(selected: Relation?, onSelect: (Relation?) -> Unit) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (selected == null) {
-            Button(onClick = { onSelect(null) }) { Text(relationLabel(null)) }
-        } else {
-            TextButton(onClick = { onSelect(null) }) { Text(relationLabel(null)) }
-        }
+        RelationChip(label = relationLabel(null), selected = selected == null) { onSelect(null) }
         Relation.entries.forEach { candidate ->
-            if (candidate == selected) {
-                Button(onClick = { onSelect(candidate) }) { Text(relationLabel(candidate)) }
-            } else {
-                TextButton(onClick = { onSelect(candidate) }) { Text(relationLabel(candidate)) }
+            RelationChip(label = relationLabel(candidate), selected = candidate == selected) {
+                onSelect(candidate)
             }
         }
     }
 }
+
+@Composable
+private fun RelationChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    if (selected) {
+        Button(onClick = onClick) {
+            Text(text = label, style = MaterialTheme.typography.labelLarge)
+        }
+    } else {
+        TextButton(onClick = onClick) {
+            Text(text = label, style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+private val BODY_EDITOR_HEIGHT = 320.dp

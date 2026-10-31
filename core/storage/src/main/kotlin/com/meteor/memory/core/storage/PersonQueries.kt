@@ -25,9 +25,24 @@ interface PersonQueries {
     fun read(personId: String): PersonProfile?
 
     /** Creates the directory + profile and returns the new `person_id`. */
-    fun create(displayName: String, relation: Relation?, notes: String = ""): String
+    fun create(
+        displayName: String,
+        relation: Relation?,
+        note: String = "",
+        notes: String = "",
+    ): String
 
-    fun update(personId: String, displayName: String, relation: Relation?, notes: String)
+    /**
+     * Overwrites the whole profile. [note] is the one-line reminder, [notes] the
+     * Markdown body — they are separate fields by design (ADR-023).
+     */
+    fun update(
+        personId: String,
+        displayName: String,
+        relation: Relation?,
+        note: String,
+        notes: String,
+    )
 }
 
 class PrivatePersonQueries(
@@ -71,21 +86,33 @@ class PrivatePersonQueries(
         return PersonProfileCodec.decode(body)
     }
 
-    override fun create(displayName: String, relation: Relation?, notes: String): String {
+    override fun create(
+        displayName: String,
+        relation: Relation?,
+        note: String,
+        notes: String,
+    ): String {
         // 32 hex chars, satisfies PERSON_ID_PATTERN and stays opaque.
         val personId = UUID.randomUUID().toString().replace("-", "")
-        writeProfile(personId, displayName, relation, notes)
+        writeProfile(personId, displayName, relation, note, notes)
         return personId
     }
 
-    override fun update(personId: String, displayName: String, relation: Relation?, notes: String) {
-        writeProfile(personId, displayName, relation, notes)
+    override fun update(
+        personId: String,
+        displayName: String,
+        relation: Relation?,
+        note: String,
+        notes: String,
+    ) {
+        writeProfile(personId, displayName, relation, note, notes)
     }
 
     private fun writeProfile(
         personId: String,
         displayName: String,
         relation: Relation?,
+        note: String,
         notes: String,
     ) {
         val file = profileFile(personId) ?: error("illegal person_id: $personId")
@@ -100,7 +127,12 @@ class PrivatePersonQueries(
                 timestamp = existing?.timestamp ?: Instant.now(),
                 source = RecordSource.USER,
                 body = PersonProfileCodec.encode(
-                    PersonProfile(displayName = displayName, relation = relation, notes = notes),
+                    PersonProfile(
+                        displayName = displayName,
+                        relation = relation,
+                        note = note,
+                        notes = notes,
+                    ),
                 ),
             ),
         )

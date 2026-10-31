@@ -30,6 +30,9 @@ import javax.inject.Inject
 data class PersonEditState(
     val displayName: String = "",
     val relation: Relation? = null,
+    /** One-line reminder shown under the name on the profile page. */
+    val note: String = "",
+    /** Markdown body (正文) — the part that can carry images. */
     val notes: String = "",
     val images: Map<String, ImageBitmap> = emptyMap(),
     /** Referenced images whose bytes exist but produced no bitmap. */
@@ -77,6 +80,7 @@ class PersonEditViewModel @Inject constructor(
                 it.copy(
                     displayName = profile?.displayName ?: personId.take(SHORT_ID),
                     relation = profile?.relation,
+                    note = profile?.note.orEmpty(),
                     notes = profile?.notes.orEmpty(),
                 )
             }
@@ -90,6 +94,10 @@ class PersonEditViewModel @Inject constructor(
 
     fun onRelationChanged(value: Relation?) {
         _state.update { it.copy(relation = value, saved = false) }
+    }
+
+    fun onNoteChanged(value: String) {
+        _state.update { it.copy(note = value, saved = false, error = null) }
     }
 
     fun onNotesChanged(value: String) {
@@ -144,7 +152,13 @@ class PersonEditViewModel @Inject constructor(
         viewModelScope.launch {
             val result = runCatching {
                 withContext(Dispatchers.IO) {
-                    personQueries.update(personId, name, current.relation, current.notes)
+                    personQueries.update(
+                        personId = personId,
+                        displayName = name,
+                        relation = current.relation,
+                        note = current.note.trim(),
+                        notes = current.notes,
+                    )
                 }
             }
             result.fold(

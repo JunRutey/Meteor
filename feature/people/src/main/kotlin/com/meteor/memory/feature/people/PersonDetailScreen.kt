@@ -33,20 +33,22 @@ data class PersonRecordRow(
  * Logical aggregation of one person: profile from the file, records from the
  * index. The two live in different places on disk by design (archive v0.5).
  *
- * The notes are Markdown, so they are rendered the same way a diary is — and the
- * section carries its own 编辑备注 entry, because until now the only way to touch
- * them was to find the 编辑 button in the header.
+ * The profile has **two** text fields (ADR-023): a one-line 备注 and the
+ * Markdown 正文. They are shown — and edited — separately, because until now
+ * everything the user typed ended up in the same place under the wrong label.
  */
 @Composable
 fun PersonDetailScreen(
     displayName: String,
     relation: Relation?,
+    note: String,
     notes: String,
     records: List<PersonRecordRow>,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     onEdit: () -> Unit = {},
-    onEditNotes: () -> Unit = onEdit,
+    onEditNote: () -> Unit = onEdit,
+    onEditBody: () -> Unit = onEdit,
     resolveImage: (String) -> ImageBitmap? = { null },
     onActivate: (String) -> Unit = {},
 ) {
@@ -72,37 +74,40 @@ fun PersonDetailScreen(
 
         HorizontalDivider()
 
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
+        SectionHeader(
+            title = stringResource(R.string.people_note_section),
+            action = stringResource(
+                if (note.isBlank()) R.string.people_note_add else R.string.people_note_edit,
+            ),
+            onAction = onEditNote,
+        )
+        if (note.isBlank()) {
+            Placeholder(stringResource(R.string.people_note_empty))
+        } else {
             Text(
-                text = stringResource(R.string.people_notes),
-                style = MaterialTheme.typography.titleSmall,
+                text = note,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
             )
-            TextButton(onClick = onEditNotes) {
-                Text(
-                    text = stringResource(
-                        if (notes.isBlank()) R.string.people_notes_add else R.string.people_notes_edit,
-                    ),
-                    style = MaterialTheme.typography.labelLarge,
-                )
-            }
         }
 
+        HorizontalDivider(Modifier.padding(top = 8.dp))
+
+        SectionHeader(
+            title = stringResource(R.string.people_body_section),
+            action = stringResource(
+                if (notes.isBlank()) R.string.people_body_add else R.string.people_body_edit,
+            ),
+            onAction = onEditBody,
+        )
         if (notes.isBlank()) {
-            Text(
-                text = stringResource(R.string.people_notes_empty),
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-            )
+            Placeholder(stringResource(R.string.people_body_empty))
         } else {
             MarkdownPreview(
                 body = notes,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 220.dp)
+                    .heightIn(max = 240.dp)
                     .padding(horizontal = 4.dp),
                 resolveImage = resolveImage,
                 onActivate = onActivate,
@@ -118,11 +123,7 @@ fun PersonDetailScreen(
         )
 
         if (records.isEmpty()) {
-            Text(
-                text = stringResource(R.string.people_records_empty),
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(horizontal = 16.dp),
-            )
+            Placeholder(stringResource(R.string.people_records_empty))
         }
 
         LazyColumn(modifier = Modifier.weight(1f)) {
@@ -141,4 +142,27 @@ fun PersonDetailScreen(
             }
         }
     }
+}
+
+@Composable
+private fun SectionHeader(title: String, action: String, onAction: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(text = title, style = MaterialTheme.typography.titleSmall)
+        TextButton(onClick = onAction) {
+            Text(text = action, style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+@Composable
+private fun Placeholder(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+    )
 }

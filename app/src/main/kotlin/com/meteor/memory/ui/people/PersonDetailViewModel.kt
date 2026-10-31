@@ -35,6 +35,9 @@ data class PersonRecordView(
 data class PersonViewState(
     val displayName: String = "",
     val relation: Relation? = null,
+    /** One-line reminder, shown right under the name. */
+    val note: String = "",
+    /** Markdown body (正文), rendered with images. */
     val notes: String = "",
     /** Decrypted images referenced by the notes, so the page can render them. */
     val images: Map<String, ImageBitmap> = emptyMap(),
@@ -70,6 +73,7 @@ class PersonDetailViewModel @Inject constructor(
                 it.copy(
                     displayName = profile?.displayName ?: personId.take(SHORT_ID),
                     relation = profile?.relation,
+                    note = profile?.note.orEmpty(),
                     notes = profile?.notes.orEmpty(),
                     records = records.map { record -> record.toView(locale) },
                     loaded = true,

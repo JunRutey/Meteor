@@ -196,6 +196,7 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
             PersonDetailScreen(
                 displayName = state.displayName,
                 relation = state.relation,
+                note = state.note,
                 notes = state.notes,
                 records = state.records.map {
                     PersonRecordRow(
@@ -206,7 +207,8 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
                 },
                 onBack = { navController.popBackStack() },
                 onEdit = { navController.navigate("people/$personId/edit") },
-                onEditNotes = { navController.navigate("people/$personId/edit") },
+                onEditNote = { navController.navigate("people/$personId/edit") },
+                onEditBody = { navController.navigate("people/$personId/edit") },
                 resolveImage = viewModel::imageFor,
                 onActivate = { target ->
                     if (target.startsWith("meteor://image/")) {
@@ -229,12 +231,14 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
             PersonEditScreen(
                 displayName = state.displayName,
                 relation = state.relation,
+                note = state.note,
                 notes = state.notes,
                 saving = state.saving,
                 saved = state.saved,
                 error = state.error,
                 onNameChanged = viewModel::onNameChanged,
                 onRelationChanged = viewModel::onRelationChanged,
+                onNoteChanged = viewModel::onNoteChanged,
                 onNotesChanged = viewModel::onNotesChanged,
                 onInsertLink = viewModel::insertLink,
                 onPickImage = pickImage,
