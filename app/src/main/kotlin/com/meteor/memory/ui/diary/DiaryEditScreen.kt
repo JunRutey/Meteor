@@ -38,6 +38,7 @@ fun DiaryEditScreen(
     onSave: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    resolveImage: (String) -> androidx.compose.ui.graphics.ImageBitmap? = { null },
 ) {
     var showLinkDialog by remember { mutableStateOf(false) }
 
@@ -88,7 +89,7 @@ fun DiaryEditScreen(
                     .fillMaxWidth()
                     .weight(1f),
             ) {
-                MarkdownPreview(body = state.text)
+                MarkdownPreview(body = state.text, resolveImage = resolveImage)
             }
         } else {
             OutlinedTextField(

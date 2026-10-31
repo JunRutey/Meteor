@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="gallery_title">图片</string>
+    <string name="gallery_back">返回</string>
+    <string name="gallery_loading">正在解密图片…</string>
+    <string name="gallery_empty">还没有图片。在日记里插入图片后会出现在这里。</string>
+</resources>

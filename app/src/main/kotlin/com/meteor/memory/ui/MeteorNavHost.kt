@@ -46,6 +46,8 @@ import com.meteor.memory.BuildConfig
 import com.meteor.memory.R
 import com.meteor.memory.core.storage.RecordType
 import com.meteor.memory.feature.calendar.CalendarScreen
+import com.meteor.memory.feature.gallery.GalleryItem
+import com.meteor.memory.feature.gallery.GalleryScreen
 import com.meteor.memory.feature.people.PeopleListScreen
 import com.meteor.memory.feature.people.PeopleRow
 import com.meteor.memory.feature.people.PersonDetailScreen
@@ -58,6 +60,7 @@ import com.meteor.memory.ui.diary.DiaryEditScreen
 import com.meteor.memory.ui.diary.DiaryEditViewModel
 import com.meteor.memory.ui.diary.DiaryListScreen
 import com.meteor.memory.ui.diary.DiaryListViewModel
+import com.meteor.memory.ui.gallery.GalleryViewModel
 import com.meteor.memory.ui.log.LogActions
 import com.meteor.memory.ui.people.PeopleViewModel
 import com.meteor.memory.ui.people.PersonDetailViewModel
@@ -78,6 +81,7 @@ private const val ROUTE_SEARCH = "search"
 private const val ROUTE_CALENDAR = "calendar"
 private const val ROUTE_PEOPLE = "people"
 private const val ROUTE_PERSON = "people/{personId}"
+private const val ROUTE_GALLERY = "gallery"
 
 /** Shown in the About section; must match README.md. */
 private const val REPOSITORY_URL = "https://github.com/JunRutey/Meteor"
@@ -115,6 +119,7 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
                 onOpenSearch = { navController.navigate(ROUTE_SEARCH) },
                 onOpenCalendar = { navController.navigate(ROUTE_CALENDAR) },
                 onOpenPeople = { navController.navigate(ROUTE_PEOPLE) },
+                onOpenGallery = { navController.navigate(ROUTE_GALLERY) },
                 onOpenDiagnostics = if (BuildConfig.DEBUG) {
                     { navController.navigate(ROUTE_DIAGNOSTICS) }
                 } else {
@@ -189,6 +194,20 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
                         typeLabel = recordTypeLabel(it.type),
                     )
                 },
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(ROUTE_GALLERY) {
+            val viewModel: GalleryViewModel = hiltViewModel()
+            val items by viewModel.items.collectAsStateWithLifecycle()
+            val loading by viewModel.loading.collectAsStateWithLifecycle()
+
+            RefreshOnResume { viewModel.refresh() }
+
+            GalleryScreen(
+                items = items.map { GalleryItem(it.token, it.bitmap, it.caption) },
+                loading = loading,
                 onBack = { navController.popBackStack() },
             )
         }
@@ -285,6 +304,7 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
                 onPickImage = { pickImage.launch("image/*") },
                 onSave = viewModel::save,
                 onBack = { navController.popBackStack() },
+                resolveImage = viewModel::imageFor,
             )
         }
     }
@@ -320,6 +340,7 @@ private fun HomeScreen(
     onOpenSearch: () -> Unit,
     onOpenCalendar: () -> Unit,
     onOpenPeople: () -> Unit,
+    onOpenGallery: () -> Unit,
     onOpenDiagnostics: (() -> Unit)?,
 ) {
     Column(
@@ -343,6 +364,9 @@ private fun HomeScreen(
         }
         OutlinedButton(onClick = onOpenPeople, modifier = Modifier.padding(top = 8.dp)) {
             Text(text = stringResource(R.string.home_open_people))
+        }
+        OutlinedButton(onClick = onOpenGallery, modifier = Modifier.padding(top = 8.dp)) {
+            Text(text = stringResource(R.string.home_open_gallery))
         }
         OutlinedButton(onClick = onOpenSettings, modifier = Modifier.padding(top = 8.dp)) {
             Text(text = stringResource(R.string.home_open_settings))

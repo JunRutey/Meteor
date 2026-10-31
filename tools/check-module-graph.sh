@@ -12,6 +12,7 @@ app feature-settings
 app feature-calendar
 app feature-editor
 app feature-people
+app feature-gallery
 app core-backup
 app core-storage
 app core-crypto

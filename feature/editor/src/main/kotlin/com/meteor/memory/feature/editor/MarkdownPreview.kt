@@ -1,5 +1,6 @@
 package com.meteor.memory.feature.editor
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,6 +13,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -29,7 +32,16 @@ import androidx.compose.ui.unit.dp
  * composable without touching [EditorModule].
  */
 @Composable
-fun MarkdownPreview(body: String, modifier: Modifier = Modifier) {
+fun MarkdownPreview(
+    body: String,
+    modifier: Modifier = Modifier,
+    /**
+     * Resolves a `meteor://image/<token>` reference to a decrypted bitmap.
+     * Returning null falls back to a placeholder, which is what happens when
+     * the image was deleted or the caller has no access to `:core-storage`.
+     */
+    resolveImage: (String) -> ImageBitmap? = { null },
+) {
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -40,15 +52,17 @@ fun MarkdownPreview(body: String, modifier: Modifier = Modifier) {
         SelectionContainer {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 body.lines().forEach { line ->
-                    PreviewLine(line)
+                    PreviewLine(line, resolveImage)
                 }
             }
         }
     }
 }
 
+private val IMAGE_REF = Regex("""\]\(meteor://image/([^)]+)\)""")
+
 @Composable
-private fun PreviewLine(line: String) {
+private fun PreviewLine(line: String, resolveImage: (String) -> ImageBitmap?) {
     val trimmed = line.trimEnd()
     when {
         trimmed.isBlank() -> Unit
@@ -68,11 +82,24 @@ private fun PreviewLine(line: String) {
             style = MaterialTheme.typography.titleLarge,
         )
 
-        trimmed.startsWith("!") && trimmed.contains("](") -> Text(
-            text = stringResource(R.string.editor_image_placeholder),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.primary,
-        )
+        trimmed.startsWith("!") && trimmed.contains("](") -> {
+            val token = IMAGE_REF.find(trimmed)?.groupValues?.getOrNull(1)
+            val bitmap = token?.let(resolveImage)
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = stringResource(R.string.editor_image_placeholder),
+                    modifier = Modifier.fillMaxWidth(),
+                    contentScale = ContentScale.FillWidth,
+                )
+            } else {
+                Text(
+                    text = stringResource(R.string.editor_image_placeholder),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
 
         trimmed.startsWith("- ") -> Text(
             text = inline("• ${trimmed.removePrefix("- ")}"),

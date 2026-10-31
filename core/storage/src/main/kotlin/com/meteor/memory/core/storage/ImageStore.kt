@@ -11,6 +11,13 @@ import java.util.UUID
  * Images carry no frontmatter (archive §5.2): the directory decides ownership and
  * the filename is a random token, so nothing sensitive leaks through the path.
  */
+/** One encrypted image on disk, addressed by its token. */
+data class StoredImage(
+    val token: String,
+    val sizeBytes: Long,
+    val modifiedAt: Instant,
+)
+
 interface ImageStore {
 
     /**
@@ -21,6 +28,9 @@ interface ImageStore {
 
     /** Reads and decrypts the image for [token], or null when it is gone. */
     fun load(token: String): ByteArray?
+
+    /** Every stored image, newest first — powers the standalone gallery. */
+    fun list(): List<StoredImage>
 
     companion object {
         /** Markdown URL scheme used inside a record body. */
@@ -52,6 +62,23 @@ class EncryptedImageStore(
         val file = File(rootDir, relative)
         if (!file.isFile) return null
         return runCatching { crypto.decrypt(file.readBytes()) }.getOrNull()
+    }
+
+    override fun list(): List<StoredImage> {
+        val imagesRoot = File(rootDir, "${StorageLayout.LEGACY}/${StorageLayout.IMAGES}")
+        if (!imagesRoot.isDirectory) return emptyList()
+
+        return imagesRoot.walkTopDown()
+            .filter { it.isFile && it.name.endsWith(EXTENSION) }
+            .map { file ->
+                StoredImage(
+                    token = file.relativeTo(rootDir).invariantSeparatorsPath,
+                    sizeBytes = file.length(),
+                    modifiedAt = Instant.ofEpochMilli(file.lastModified()),
+                )
+            }
+            .sortedByDescending { it.modifiedAt }
+            .toList()
     }
 
     companion object {

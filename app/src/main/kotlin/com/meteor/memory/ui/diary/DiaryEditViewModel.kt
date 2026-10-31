@@ -1,11 +1,15 @@
 package com.meteor.memory.ui.diary
 
+import android.graphics.BitmapFactory
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.storage.Document
+import com.meteor.memory.core.storage.ImageStore
 import com.meteor.memory.core.storage.RecordSource
 import com.meteor.memory.core.storage.RecordType
 import com.meteor.memory.core.storage.StorageRouter
@@ -28,6 +32,7 @@ import java.util.Locale
 import javax.inject.Inject
 
 data class DiaryEditorState(
+    /** Localized `yyyy/MM/dd HH:mm` — the moment this record was last written. */
     val dateLabel: String,
     val text: String,
     /** Localized `meteor-sig` watermark, shown as metadata — never in the body. */
@@ -45,31 +50,35 @@ class DiaryEditViewModel @Inject constructor(
     private val appLog: AppLog,
     private val searchService: SearchService,
     private val editorModule: EditorModule,
+    private val imageStore: ImageStore,
     private val storageRouter: StorageRouter,
 ) : ViewModel() {
 
     private val date: LocalDate = LocalDate.parse(checkNotNull(savedStateHandle.get<String>(ARG_DATE)))
 
     private val _state = MutableStateFlow(
-        DiaryEditorState(
-            dateLabel = timeModule.formatDate(date, Locale.getDefault()),
-            text = "",
-        ),
+        DiaryEditorState(dateLabel = formatSavedAt(Instant.now()), text = ""),
     )
     val state: StateFlow<DiaryEditorState> = _state.asStateFlow()
 
     /** The record being edited; created lazily for a brand-new day. */
     private var document: Document = newDocument()
 
+    /** Decrypted bitmaps for the images referenced by the current body. */
+    private var images: Map<String, ImageBitmap> = emptyMap()
+
     init {
         viewModelScope.launch {
             val loaded = withContext(Dispatchers.IO) { diaryQueries.read(date) }
             if (loaded != null) document = loaded
             appLog.debug(TAG, "opened $date chars=${loaded?.body?.length ?: 0}")
+
             _state.value = _state.value.copy(
+                dateLabel = formatSavedAt(document.timestamp),
                 text = document.body,
-                signedAtLabel = document.signedAt?.let(::formatStamp),
+                signedAtLabel = document.signedAt?.let(::formatSavedAt),
             )
+            refreshImages(document.body)
         }
     }
 
@@ -77,12 +86,15 @@ class DiaryEditViewModel @Inject constructor(
         _state.value = _state.value.copy(text = text, saved = false, error = null)
     }
 
-    /** Compresses + encrypts the image and appends its Markdown reference. */
+    /** Bitmap for a `meteor://image/<token>` reference, or null when unknown. */
+    fun imageFor(token: String): ImageBitmap? = images[token]
+
     fun insertImage(bytes: ByteArray) {
         runCatching { editorModule.insertImage(document, bytes, personId = null) }
             .onSuccess { updated ->
                 document = updated
                 _state.value = _state.value.copy(text = updated.body, saved = false)
+                refreshImages(updated.body)
             }
             .onFailure { appLog.warn(TAG, "insert image failed", it) }
     }
@@ -99,15 +111,15 @@ class DiaryEditViewModel @Inject constructor(
         _state.value = snapshot.copy(isSaving = true, error = null)
 
         viewModelScope.launch {
-            val toSave = document.copy(body = snapshot.text)
+            // Writing refreshes the timestamp: the record shows when it was last
+            // saved, which is what the editor label promises.
+            val toSave = document.copy(body = snapshot.text, timestamp = Instant.now())
             val result = runCatching { editorModule.save(toSave) }
             result.fold(
                 onSuccess = { appLog.info(TAG, "diary saved: $date") },
                 onFailure = { appLog.error(TAG, "diary save failed: $date", it) },
             )
 
-            // Re-read so the watermark reflects the stamp actually written, and
-            // push the fresh plaintext into the index (archive §9).
             val stored = if (result.isSuccess) {
                 withContext(Dispatchers.IO) { runCatching { diaryQueries.read(date) }.getOrNull() }
             } else {
@@ -123,8 +135,30 @@ class DiaryEditViewModel @Inject constructor(
                 isSaving = false,
                 saved = result.isSuccess,
                 error = result.exceptionOrNull()?.message,
-                signedAtLabel = stored?.signedAt?.let(::formatStamp) ?: _state.value.signedAtLabel,
+                dateLabel = stored?.let { formatSavedAt(it.timestamp) } ?: _state.value.dateLabel,
+                signedAtLabel = stored?.signedAt?.let(::formatSavedAt) ?: _state.value.signedAtLabel,
             )
+        }
+    }
+
+    /** Decodes every image referenced by [body] once, off the main thread. */
+    private fun refreshImages(body: String) {
+        val tokens = IMAGE_REF.findAll(body).map { it.groupValues[1] }.distinct().take(MAX_IMAGES).toList()
+        if (tokens.isEmpty()) {
+            images = emptyMap()
+            return
+        }
+
+        viewModelScope.launch {
+            images = withContext(Dispatchers.IO) {
+                tokens.mapNotNull { token ->
+                    val bytes = imageStore.load(token) ?: return@mapNotNull null
+                    val options = BitmapFactory.Options().apply { inSampleSize = 2 }
+                    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+                        ?: return@mapNotNull null
+                    token to bitmap.asImageBitmap()
+                }.toMap()
+            }
         }
     }
 
@@ -137,8 +171,8 @@ class DiaryEditViewModel @Inject constructor(
         body = "",
     )
 
-    private fun formatStamp(instant: Instant): String =
-        DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)
+    private fun formatSavedAt(instant: Instant): String =
+        DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT)
             .withLocale(Locale.getDefault())
             .withZone(ZoneId.systemDefault())
             .format(instant)
@@ -146,5 +180,7 @@ class DiaryEditViewModel @Inject constructor(
     companion object {
         const val ARG_DATE = "date"
         private const val TAG = "DiaryEdit"
+        private const val MAX_IMAGES = 20
+        private val IMAGE_REF = Regex("""\]\(meteor://image/([^)]+)\)""")
     }
 }
