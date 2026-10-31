@@ -7,24 +7,32 @@ import org.junit.Test
  * Hiding markup characters shortens the rendered text, so the offset mapping is
  * the only thing keeping the caret in place. These tests pin both the visible
  * text and the mapping boundaries.
+ *
+ * Only bold is hidden (ADR-019). Colour and italic markup is shown as literal
+ * text so it stays deletable, while the preview still renders it.
  */
 class EditorRenderingTest {
 
     @Test
     fun `bold markers are hidden`() {
-        val rendered = EditorRendering.of("**粗**")
-        assertEquals("粗", rendered.text.text)
+        assertEquals("粗", EditorRendering.of("**粗**").text.text)
     }
 
     @Test
-    fun `italic markers are hidden`() {
-        assertEquals("斜", EditorRendering.of("*斜*").text.text)
+    fun `italic markers stay visible`() {
+        assertEquals("*斜*", EditorRendering.of("*斜*").text.text)
     }
 
     @Test
-    fun `nested colour and bold hide both pairs of markers`() {
+    fun `colour tags stay visible`() {
+        val source = """<span style="color:#E53935">红</span>"""
+        assertEquals(source, EditorRendering.of(source).text.text)
+    }
+
+    @Test
+    fun `bold around legacy colour markup hides only the markers`() {
         val source = """**<span style="color:#E53935">红</span>**"""
-        assertEquals("红", EditorRendering.of(source).text.text)
+        assertEquals("""<span style="color:#E53935">红</span>""", EditorRendering.of(source).text.text)
     }
 
     @Test

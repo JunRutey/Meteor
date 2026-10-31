@@ -24,6 +24,7 @@ feature-settings core-backup
 feature-calendar core-storage
 feature-editor core-storage
 feature-people core-storage
+feature-people feature-editor
 core-backup core-storage
 core-backup core-crypto
 core-index core-storage

@@ -12,6 +12,13 @@
     <string name="people_records">相关记录</string>
     <string name="people_records_empty">这个人物下还没有记录</string>
 
+    <string name="people_edit">编辑</string>
+    <string name="people_edit_title">编辑人物</string>
+    <string name="people_notes_hint">关于这个人，想记点什么？</string>
+    <string name="people_save">保存</string>
+    <string name="people_saving">保存中…</string>
+    <string name="people_saved">已保存并加密</string>
+
     <string name="people_relation_family">家人</string>
     <string name="people_relation_friend">朋友</string>
     <string name="people_relation_former">绝交的朋友</string>

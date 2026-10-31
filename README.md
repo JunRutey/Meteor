@@ -5,7 +5,8 @@
 你的日记、人物档案、聊天记录以 **AES-256-GCM 加密文件**存放在应用私有目录，
 密钥绑定设备 Keystore，不可导出、不上传、无云端同步。
 
-> 状态：**v0.3.0**。日记、全文搜索、心情日历可用；富文本、人物档案、AI 尚未实现。
+> 状态：**v0.4.0**。日记、全文搜索、心情日历、人际关系、Markdown 编辑器可用；
+> AI 与数字人格尚未实现。
 
 ---
 
@@ -25,20 +26,26 @@
 
 ```
 :app                    组装、DI、导航、主题
- ├── :feature-settings  设置页（DataStore 偏好）
- ├── :core-backup       明文 zip 备份 / 按新设备密钥重新加密导入
- ├── :core-storage      目录路由、frontmatter、透明加解密
- ├── :core-index        FTS 全文索引（FTS5 → FTS4 → LIKE 运行时降级）
- ├── :core-crypto       Keystore AES-GCM、应用锁
- ├── :core-backup       明文 zip 备份 / 导入重加密
- ├── :core-log          按天落盘的诊断日志与导出
- └── :core-time         时间水印、locale 格式化
+ ├── :feature-editor     Markdown 编辑与预览（加粗、图片、链接）
+ ├── :feature-people     人际关系档案、档案编辑
+ ├── :feature-gallery    加密图片浏览
+ ├── :feature-calendar   心情日历
+ ├── :feature-settings   设置页（DataStore 偏好）
+ ├── :core-backup        明文 zip 备份 / 按新设备密钥重新加密导入
+ ├── :core-storage       目录路由、frontmatter、透明加解密、图片存储
+ ├── :core-index         FTS 全文索引（FTS5 → FTS4 → LIKE 运行时降级）
+ ├── :core-crypto        Keystore AES-GCM、应用锁
+ ├── :core-log           按天落盘的诊断日志与导出
+ └── :core-time          时间水印、locale 格式化
 ```
 
 依赖严格单向、无环，由 `tools/check-module-graph.sh` 在 CI 中强制；
 `:core-index` 可被 `-Pmeteor.excludeModules=core-index` 整体移除（CI 有专门任务验证）。
 
-规划中的模块：`:feature-editor`、`:feature-persona`、`:feature-ai`。
+规划中的模块：`:feature-persona`、`:feature-ai`。
+
+关键取舍记录在 [`docs/adr`](docs/adr)：人物目录用 `person_id`、CJK 分词、
+FTS 运行时降级、心情独立成记录、编辑器只保留加粗、人物档案可编辑与图片可删除。
 
 ## 版本路线
 
@@ -46,9 +53,9 @@
 |---|---|---|
 | v0.1 | 核心日记 + 基础设置 | ✅ 已发布 |
 | v0.2 | 索引与搜索 | ✅ |
-| v0.3 | 日历与心情 | ✅ |
-| v0.4 | Markdown 编辑器（非所见即所得） | ✅ 已定稿 |
-| v0.5 | 人际关系档案 | 计划中 |
+| v0.3 | 日历与心情 | ✅ 已发布 |
+| v0.4 | Markdown 编辑器 + 人际关系编辑 | ✅ |
+| v0.5 | 人际关系档案 | ✅ |
 | v0.6 | 数字人格与 AI | 计划中 |
 | v1.0 | 打磨发布 | 计划中 |
 

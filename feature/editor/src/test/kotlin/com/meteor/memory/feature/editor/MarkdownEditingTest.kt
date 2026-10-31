@@ -33,6 +33,75 @@ class MarkdownEditingTest {
         assertEquals("[https://example.com](https://example.com)", result)
     }
 
+    // ---- attached images ----------------------------------------------------
+
+    @Test
+    fun `finds every image reference in document order`() {
+        val body = "开头\n\n![](meteor://image/a.enc)\n\n![](meteor://image/b.enc)\n"
+        assertEquals(
+            listOf("meteor://image/a.enc", "meteor://image/b.enc"),
+            MarkdownEditing.imagesOf(body).map { it.token },
+        )
+    }
+
+    @Test
+    fun `keeps the alt text of a reference`() {
+        val body = "![生日](meteor://image/a.enc)"
+        assertEquals("生日", MarkdownEditing.imagesOf(body).single().label)
+    }
+
+    @Test
+    fun `ignores plain links and external images`() {
+        val body = "[看图](https://example.com/x.png) ![远程](https://example.com/y.png)"
+        assertTrue(MarkdownEditing.imagesOf(body).isEmpty())
+    }
+
+    @Test
+    fun `reports a repeated reference only once`() {
+        val body = "![](meteor://image/a.enc)\n![](meteor://image/a.enc)"
+        assertEquals(1, MarkdownEditing.imagesOf(body).size)
+    }
+
+    // ---- image removal ------------------------------------------------------
+
+    @Test
+    fun `removing a block image takes the blank line with it`() {
+        val body = "今天很好\n\n![](meteor://image/t/a.enc)\n"
+        assertEquals("今天很好", MarkdownEditing.removeImage(body, "t/a.enc"))
+    }
+
+    @Test
+    fun `removing an inline image keeps the surrounding text`() {
+        val body = "看图 ![](meteor://image/t/a.enc) 不错"
+        assertEquals("看图 不错", MarkdownEditing.removeImage(body, "t/a.enc"))
+    }
+
+    @Test
+    fun `a body that only held the image becomes empty`() {
+        val body = "![](meteor://image/t/a.enc)\n"
+        assertEquals("", MarkdownEditing.removeImage(body, "t/a.enc"))
+    }
+
+    @Test
+    fun `removing one image leaves the others alone`() {
+        val body = "![](meteor://image/t/a.enc)\n\n![](meteor://image/t/b.enc)\n"
+        assertEquals(
+            "![](meteor://image/t/b.enc)",
+            MarkdownEditing.removeImage(body, "t/a.enc"),
+        )
+    }
+
+    @Test
+    fun `removing an unknown token changes nothing`() {
+        val body = "正文\n\n![](meteor://image/t/a.enc)\n"
+        assertEquals(body, MarkdownEditing.removeImage(body, "t/missing.enc"))
+    }
+
+    @Test
+    fun `removing an image from plain text changes nothing`() {
+        assertEquals("普通文字", MarkdownEditing.removeImage("普通文字", "t/a.enc"))
+    }
+
     // ---- bold ---------------------------------------------------------------
 
     @Test
@@ -62,46 +131,6 @@ class MarkdownEditingTest {
         assertEquals("abc****", result.text)
         assertEquals(5, result.selectionStart)
         assertEquals(5, result.selectionEnd)
-    }
-
-    // ---- italic -------------------------------------------------------------
-
-    @Test
-    fun `italic wraps the selection`() {
-        assertEquals("*斜*", MarkdownEditing.toggleItalic("斜", 0, 1).text)
-    }
-
-    @Test
-    fun `italic with no selection inserts a marker pair`() {
-        val result = MarkdownEditing.toggleItalic("", 0, 0)
-        assertEquals("**", result.text)
-        assertEquals(1, result.selectionStart)
-    }
-
-    // ---- colour -------------------------------------------------------------
-
-    @Test
-    fun `colour wraps the selection in a span`() {
-        assertEquals(
-            """<span style="color:#E53935">重要</span>""",
-            MarkdownEditing.toggleColor("重要", 0, 2, "#E53935").text,
-        )
-    }
-
-    @Test
-    fun `colour and bold can be nested`() {
-        val bold = MarkdownEditing.toggleBold("重要", 0, 2).text
-        val colored = MarkdownEditing.toggleColor(bold, 2, 4, "#1E88E5").text
-        assertEquals("""**<span style="color:#1E88E5">重要</span>**""", colored)
-    }
-
-    @Test
-    fun `colour with no selection parks the caret inside the tags`() {
-        val result = MarkdownEditing.toggleColor("", 0, 0, "#43A047")
-        val open = """<span style="color:#43A047">"""
-        assertEquals("$open</span>", result.text)
-        assertEquals(open.length, result.selectionStart)
-        assertEquals(open.length, result.selectionEnd)
     }
 
     // ---- guards -------------------------------------------------------------

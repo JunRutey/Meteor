@@ -15,12 +15,14 @@ import com.meteor.memory.core.storage.RecordType
 import com.meteor.memory.core.storage.StorageRouter
 import com.meteor.memory.core.time.TimeModule
 import com.meteor.memory.feature.editor.EditorModule
+import com.meteor.memory.feature.editor.MarkdownEditing
 import com.meteor.memory.ui.search.SearchService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.Instant
@@ -37,6 +39,8 @@ data class DiaryEditorState(
     val text: String,
     /** Localized `meteor-sig` watermark, shown as metadata — never in the body. */
     val signedAtLabel: String? = null,
+    /** Decrypted bitmaps for the images referenced by [text]. */
+    val images: Map<String, ImageBitmap> = emptyMap(),
     val isSaving: Boolean = false,
     val saved: Boolean = false,
     val error: String? = null,
@@ -64,8 +68,12 @@ class DiaryEditViewModel @Inject constructor(
     /** The record being edited; created lazily for a brand-new day. */
     private var document: Document = newDocument()
 
-    /** Decrypted bitmaps for the images referenced by the current body. */
-    private var images: Map<String, ImageBitmap> = emptyMap()
+    /**
+     * Images the user removed from the body. Their files are deleted only after
+     * a successful save — otherwise an abandoned edit would destroy pictures the
+     * stored record still points at.
+     */
+    private val pendingDeletes = mutableSetOf<String>()
 
     init {
         viewModelScope.launch {
@@ -73,22 +81,23 @@ class DiaryEditViewModel @Inject constructor(
             if (loaded != null) document = loaded
             appLog.debug(TAG, "opened $date chars=${loaded?.body?.length ?: 0}")
 
-            _state.value = _state.value.copy(
-                dateLabel = formatSavedAt(document.timestamp),
-                text = document.body,
-                signedAtLabel = document.signedAt?.let(::formatSavedAt),
-            )
+            _state.update {
+                it.copy(
+                    dateLabel = formatSavedAt(document.timestamp),
+                    text = document.body,
+                    signedAtLabel = document.signedAt?.let(::formatSavedAt),
+                )
+            }
             refreshImages(document.body)
         }
     }
 
     fun onTextChanged(text: String) {
-        _state.value = _state.value.copy(text = text, saved = false, error = null)
+        _state.update { it.copy(text = text, saved = false, error = null) }
     }
 
     /** Bitmap for a `meteor://image/<token>` reference, or null when unknown. */
-    /** Bitmap for a `meteor://image/<token>` reference, or null when unknown. */
-    fun imageFor(token: String): ImageBitmap? = images[token]
+    fun imageFor(token: String): ImageBitmap? = _state.value.images[token]
 
     fun insertImage(bytes: ByteArray) {
         // Base on what the user has typed right now, not on the stale document:
@@ -97,7 +106,7 @@ class DiaryEditViewModel @Inject constructor(
         runCatching { editorModule.insertImage(document, bytes, personId = null) }
             .onSuccess { updated ->
                 document = updated
-                _state.value = _state.value.copy(text = updated.body, saved = false)
+                _state.update { it.copy(text = updated.body, saved = false) }
                 refreshImages(updated.body)
             }
             .onFailure { appLog.warn(TAG, "insert image failed", it) }
@@ -108,13 +117,24 @@ class DiaryEditViewModel @Inject constructor(
         // Same trap as insertImage: append to the live text, or the editor text
         // that has not been saved yet disappears.
         document = editorModule.insertLink(document.copy(body = _state.value.text), target, label)
-        _state.value = _state.value.copy(text = document.body, saved = false)
+        _state.update { it.copy(text = document.body, saved = false) }
+    }
+
+    /** Drops one image from the body and schedules its file for deletion on save. */
+    fun removeImage(token: String) {
+        val current = _state.value
+        val body = MarkdownEditing.removeImage(current.text, token)
+        if (body == current.text) return
+
+        pendingDeletes += token
+        _state.update { it.copy(text = body, images = it.images - token, saved = false) }
+        appLog.debug(TAG, "image detached, will delete on save: $token")
     }
 
     fun save() {
         val snapshot = _state.value
         if (snapshot.isSaving) return
-        _state.value = snapshot.copy(isSaving = true, error = null)
+        _state.update { it.copy(isSaving = true, error = null) }
 
         viewModelScope.launch {
             // Writing refreshes the timestamp: the record shows when it was last
@@ -136,27 +156,44 @@ class DiaryEditViewModel @Inject constructor(
                 runCatching { searchService.indexDocument(stored) }
                     .onFailure { appLog.warn(TAG, "index update failed", it) }
             }
+            if (result.isSuccess) purgeDeletedImages()
 
-            _state.value = _state.value.copy(
-                isSaving = false,
-                saved = result.isSuccess,
-                error = result.exceptionOrNull()?.message,
-                dateLabel = stored?.let { formatSavedAt(it.timestamp) } ?: _state.value.dateLabel,
-                signedAtLabel = stored?.signedAt?.let(::formatSavedAt) ?: _state.value.signedAtLabel,
-            )
+            _state.update {
+                it.copy(
+                    isSaving = false,
+                    saved = result.isSuccess,
+                    error = result.exceptionOrNull()?.message,
+                    dateLabel = stored?.let { doc -> formatSavedAt(doc.timestamp) } ?: it.dateLabel,
+                    signedAtLabel = stored?.signedAt?.let(::formatSavedAt) ?: it.signedAtLabel,
+                )
+            }
+        }
+    }
+
+    /** The record no longer references these tokens, so the ciphertext can go. */
+    private suspend fun purgeDeletedImages() {
+        if (pendingDeletes.isEmpty()) return
+        val tokens = pendingDeletes.toList()
+        pendingDeletes.clear()
+        withContext(Dispatchers.IO) {
+            tokens.forEach { token ->
+                runCatching { imageStore.delete(token) }
+                    .onSuccess { deleted -> appLog.info(TAG, "image deleted=$deleted $token") }
+                    .onFailure { appLog.warn(TAG, "image delete failed: $token", it) }
+            }
         }
     }
 
     /** Decodes every image referenced by [body] once, off the main thread. */
     private fun refreshImages(body: String) {
-        val tokens = IMAGE_REF.findAll(body).map { it.groupValues[1] }.distinct().take(MAX_IMAGES).toList()
-        if (tokens.isEmpty()) {
-            images = emptyMap()
-            return
-        }
+        val tokens = MarkdownEditing.imagesOf(body)
+            .map { it.token }
+            .take(MAX_IMAGES)
+            .filter { it !in _state.value.images }
+        if (tokens.isEmpty()) return
 
         viewModelScope.launch {
-            images = withContext(Dispatchers.IO) {
+            val decoded = withContext(Dispatchers.IO) {
                 tokens.mapNotNull { token ->
                     val bytes = imageStore.load(token) ?: return@mapNotNull null
                     val options = BitmapFactory.Options().apply { inSampleSize = 2 }
@@ -164,6 +201,9 @@ class DiaryEditViewModel @Inject constructor(
                         ?: return@mapNotNull null
                     token to bitmap.asImageBitmap()
                 }.toMap()
+            }
+            if (decoded.isNotEmpty()) {
+                _state.update { it.copy(images = it.images + decoded) }
             }
         }
     }
@@ -187,6 +227,5 @@ class DiaryEditViewModel @Inject constructor(
         const val ARG_DATE = "date"
         private const val TAG = "DiaryEdit"
         private const val MAX_IMAGES = 20
-        private val IMAGE_REF = Regex("""\]\(meteor://image/([^)]+)\)""")
     }
 }

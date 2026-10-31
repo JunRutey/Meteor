@@ -12,38 +12,38 @@ import androidx.compose.ui.text.style.TextDecoration
 internal const val TAG_TARGET = "meteor-target"
 
 /**
- * Inline parser shared by the preview and the editing surface.
+ * Inline parser behind the **read-only preview**.
  *
  * Markup nests, so `**<span style="color:#E53935">红粗</span>**` renders bold *and*
  * red: a match recurses into its own content instead of guessing with one flat
  * regex.
  *
- * **Length invariant**: in editor mode every original character is emitted in
- * order, so [OffsetMapping.Identity] stays valid and the caret cannot drift.
+ * Colour and italic are still parsed even though the toolbar no longer offers
+ * them (ADR-019 §3): records written by v0.4-rc and earlier keep their look.
+ * The editing surface deliberately does **not** use this parser — see
+ * [EditorRendering].
  */
 object MarkdownStyles {
 
     private val COLOR = Regex("""<span style="color:(#[0-9A-Fa-f]{6})">(.*?)</span>""", RegexOption.DOT_MATCHES_ALL)
-    private val IMAGE = Regex("""!\[([^\]]*)\]\(([^)]*)\)""")
-    private val LINK = Regex("""\[([^\]]*)\]\(([^)]*)\)""")
+    private val IMAGE = Regex("""!\[([^\]]*)]\(([^)]*)\)""")
+    private val LINK = Regex("""\[([^\]]*)]\(([^)]*)\)""")
     private val BOLD = Regex("""\*\*(.+?)\*\*""", RegexOption.DOT_MATCHES_ALL)
     private val ITALIC = Regex("""\*([^*]+?)\*""")
 
     /**
-     * @param imageLabel non-null renders for display (images collapse to this
-     *   label, links keep only their text). Null keeps raw characters for the
-     *   editor.
+     * @param imageLabel text that replaces an image reference; links keep only
+     *   their label.
      */
-    fun annotate(text: String, imageLabel: String?): AnnotatedString = buildAnnotatedString {
-        appendRange(text, 0, text.length, imageLabel, editorMode = imageLabel == null)
+    fun annotate(text: String, imageLabel: String): AnnotatedString = buildAnnotatedString {
+        appendRange(text, 0, text.length, imageLabel)
     }
 
     private fun AnnotatedString.Builder.appendRange(
         text: String,
         from: Int,
         to: Int,
-        imageLabel: String?,
-        editorMode: Boolean,
+        imageLabel: String,
     ) {
         var cursor = from
         while (cursor < to) {
@@ -55,60 +55,38 @@ object MarkdownStyles {
             if (match.range.first > cursor) append(text.substring(cursor, match.range.first))
 
             when (match.kind) {
-                Kind.COLOR -> {
-                    val innerStart = match.groupStart
-                    val innerEnd = match.groupEnd
-                    pushStyle(SpanStyle(color = parseColor(match.extra)))
-                    if (editorMode) append(text.substring(match.range.first, innerStart))
-                    appendRange(text, innerStart, innerEnd, imageLabel, editorMode)
-                    if (editorMode) append(text.substring(innerEnd, match.range.last + 1))
-                    pop()
-                }
-
-                Kind.BOLD -> {
-                    val innerStart = match.groupStart
-                    val innerEnd = match.groupEnd
-                    pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
-                    if (editorMode) append(text.substring(match.range.first, innerStart))
-                    appendRange(text, innerStart, innerEnd, imageLabel, editorMode)
-                    if (editorMode) append(text.substring(innerEnd, match.range.last + 1))
-                    pop()
-                }
-
-                Kind.ITALIC -> {
-                    val innerStart = match.groupStart
-                    val innerEnd = match.groupEnd
-                    pushStyle(SpanStyle(fontStyle = FontStyle.Italic))
-                    if (editorMode) append(text.substring(match.range.first, innerStart))
-                    appendRange(text, innerStart, innerEnd, imageLabel, editorMode)
-                    if (editorMode) append(text.substring(innerEnd, match.range.last + 1))
-                    pop()
-                }
+                Kind.COLOR -> styled(match, text, imageLabel, SpanStyle(color = parseColor(match.extra)))
+                Kind.BOLD -> styled(match, text, imageLabel, SpanStyle(fontWeight = FontWeight.Bold))
+                Kind.ITALIC -> styled(match, text, imageLabel, SpanStyle(fontStyle = FontStyle.Italic))
 
                 Kind.IMAGE -> {
-                    if (imageLabel != null) {
-                        val start = length
-                        append(if (match.extra.isBlank()) imageLabel else imageLabel)
-                        addStringAnnotation(TAG_TARGET, match.target, start, length)
-                    } else {
-                        append(text.substring(match.range.first, match.range.last + 1))
-                    }
+                    val start = length
+                    append(imageLabel)
+                    addStringAnnotation(TAG_TARGET, match.target, start, length)
                 }
 
                 Kind.LINK -> {
-                    if (imageLabel != null) {
-                        val start = length
-                        pushStyle(SpanStyle(textDecoration = TextDecoration.Underline))
-                        append(match.label)
-                        pop()
-                        addStringAnnotation(TAG_TARGET, match.target, start, length)
-                    } else {
-                        append(text.substring(match.range.first, match.range.last + 1))
-                    }
+                    val start = length
+                    pushStyle(SpanStyle(textDecoration = TextDecoration.Underline))
+                    append(match.label)
+                    pop()
+                    addStringAnnotation(TAG_TARGET, match.target, start, length)
                 }
             }
             cursor = match.range.last + 1
         }
+    }
+
+    /** Renders the inner range with [style], leaving the markers out. */
+    private fun AnnotatedString.Builder.styled(
+        match: InlineMatch,
+        text: String,
+        imageLabel: String,
+        style: SpanStyle,
+    ) {
+        pushStyle(style)
+        appendRange(text, match.groupStart, match.groupEnd, imageLabel)
+        pop()
     }
 
     internal enum class Kind { COLOR, BOLD, ITALIC, IMAGE, LINK }
@@ -123,56 +101,88 @@ object MarkdownStyles {
         val target: String = "",
     )
 
-    /** Earliest match starting at or after [from] and ending before [to]. */
-    internal fun earliest(text: String, from: Int, to: Int): InlineMatch? {
-        val candidates = listOfNotNull(
-            COLOR.find(text, from)?.takeIf { it.range.last < to }?.let {
-                val inner = it.groups[2]!!
-                InlineMatch(
-                    kind = Kind.COLOR,
-                    range = it.range,
-                    groupStart = inner.range.first,
-                    groupEnd = inner.range.last + 1,
-                    extra = it.groupValues[1],
-                )
-            },
-            IMAGE.find(text, from)?.takeIf { it.range.last < to }?.let {
-                InlineMatch(
-                    kind = Kind.IMAGE,
-                    range = it.range,
-                    label = it.groupValues[1],
-                    target = it.groupValues[2],
-                )
-            },
-            LINK.find(text, from)?.takeIf { it.range.last < to }?.let {
-                InlineMatch(
-                    kind = Kind.LINK,
-                    range = it.range,
-                    label = it.groupValues[1],
-                    target = it.groupValues[2],
-                )
-            },
-            BOLD.find(text, from)?.takeIf { it.range.last < to }?.let {
-                val inner = it.groups[1]!!
-                InlineMatch(
-                    kind = Kind.BOLD,
-                    range = it.range,
-                    groupStart = inner.range.first,
-                    groupEnd = inner.range.last + 1,
-                )
-            },
-            ITALIC.find(text, from)?.takeIf { it.range.last < to }?.let {
-                val inner = it.groups[1]!!
-                InlineMatch(
-                    kind = Kind.ITALIC,
-                    range = it.range,
-                    groupStart = inner.range.first,
-                    groupEnd = inner.range.last + 1,
-                )
-            },
-        )
+    /**
+     * Earliest match starting at or after [from] and ending before [to].
+     *
+     * [kinds] narrows the scan: the editing surface only asks for [Kind.BOLD] and
+     * lets every other construct through as literal text.
+     */
+    internal fun earliest(
+        text: String,
+        from: Int,
+        to: Int,
+        kinds: Set<Kind> = ALL_KINDS,
+    ): InlineMatch? {
+        val candidates = buildList {
+            if (Kind.COLOR in kinds) {
+                COLOR.find(text, from)?.takeIf { it.range.last < to }?.let {
+                    val inner = it.groups[2]!!
+                    add(
+                        InlineMatch(
+                            kind = Kind.COLOR,
+                            range = it.range,
+                            groupStart = inner.range.first,
+                            groupEnd = inner.range.last + 1,
+                            extra = it.groupValues[1],
+                        ),
+                    )
+                }
+            }
+            if (Kind.IMAGE in kinds) {
+                IMAGE.find(text, from)?.takeIf { it.range.last < to }?.let {
+                    add(
+                        InlineMatch(
+                            kind = Kind.IMAGE,
+                            range = it.range,
+                            label = it.groupValues[1],
+                            target = it.groupValues[2],
+                        ),
+                    )
+                }
+            }
+            if (Kind.LINK in kinds) {
+                LINK.find(text, from)?.takeIf { it.range.last < to }?.let {
+                    add(
+                        InlineMatch(
+                            kind = Kind.LINK,
+                            range = it.range,
+                            label = it.groupValues[1],
+                            target = it.groupValues[2],
+                        ),
+                    )
+                }
+            }
+            if (Kind.BOLD in kinds) {
+                BOLD.find(text, from)?.takeIf { it.range.last < to }?.let {
+                    val inner = it.groups[1]!!
+                    add(
+                        InlineMatch(
+                            kind = Kind.BOLD,
+                            range = it.range,
+                            groupStart = inner.range.first,
+                            groupEnd = inner.range.last + 1,
+                        ),
+                    )
+                }
+            }
+            if (Kind.ITALIC in kinds) {
+                ITALIC.find(text, from)?.takeIf { it.range.last < to }?.let {
+                    val inner = it.groups[1]!!
+                    add(
+                        InlineMatch(
+                            kind = Kind.ITALIC,
+                            range = it.range,
+                            groupStart = inner.range.first,
+                            groupEnd = inner.range.last + 1,
+                        ),
+                    )
+                }
+            }
+        }
         return candidates.minByOrNull { it.range.first }
     }
+
+    private val ALL_KINDS: Set<Kind> = Kind.entries.toSet()
 
     fun parseColor(hex: String): Color =
         runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrDefault(Color.Unspecified)

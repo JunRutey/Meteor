@@ -22,10 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -52,6 +49,7 @@ import com.meteor.memory.feature.gallery.ImageViewerScreen
 import com.meteor.memory.feature.people.PeopleListScreen
 import com.meteor.memory.feature.people.PeopleRow
 import com.meteor.memory.feature.people.PersonDetailScreen
+import com.meteor.memory.feature.people.PersonEditScreen
 import com.meteor.memory.feature.people.PersonRecordRow
 import com.meteor.memory.feature.settings.SettingsScreen
 import com.meteor.memory.ui.backup.BackupActions
@@ -66,6 +64,7 @@ import com.meteor.memory.ui.gallery.ImageViewerViewModel
 import com.meteor.memory.ui.log.LogActions
 import com.meteor.memory.ui.people.PeopleViewModel
 import com.meteor.memory.ui.people.PersonDetailViewModel
+import com.meteor.memory.ui.people.PersonEditViewModel
 import com.meteor.memory.ui.search.SearchScreen
 import com.meteor.memory.ui.search.SearchViewModel
 import com.meteor.memory.ui.settings.SettingsViewModel
@@ -83,6 +82,7 @@ private const val ROUTE_SEARCH = "search"
 private const val ROUTE_CALENDAR = "calendar"
 private const val ROUTE_PEOPLE = "people"
 private const val ROUTE_PERSON = "people/{personId}"
+private const val ROUTE_PERSON_EDIT = "people/{personId}/edit"
 private const val ROUTE_GALLERY = "gallery"
 private const val ROUTE_IMAGE = "gallery/{token}"
 
@@ -182,9 +182,12 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
         composable(
             route = ROUTE_PERSON,
             arguments = listOf(navArgument(PersonDetailViewModel.ARG_PERSON_ID) { type = NavType.StringType }),
-        ) {
+        ) { entry ->
             val viewModel: PersonDetailViewModel = hiltViewModel()
             val state by viewModel.state.collectAsStateWithLifecycle()
+            val personId = entry.arguments?.getString(PersonDetailViewModel.ARG_PERSON_ID).orEmpty()
+
+            RefreshOnResume { viewModel.load() }
 
             PersonDetailScreen(
                 displayName = state.displayName,
@@ -198,6 +201,34 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
                     )
                 },
                 onBack = { navController.popBackStack() },
+                onEdit = { navController.navigate("people/$personId/edit") },
+            )
+        }
+
+        composable(
+            route = ROUTE_PERSON_EDIT,
+            arguments = listOf(navArgument(PersonEditViewModel.ARG_PERSON_ID) { type = NavType.StringType }),
+        ) {
+            val viewModel: PersonEditViewModel = hiltViewModel()
+            val state by viewModel.state.collectAsStateWithLifecycle()
+            val pickImage = rememberImagePicker(viewModel::insertImage)
+
+            PersonEditScreen(
+                displayName = state.displayName,
+                relation = state.relation,
+                notes = state.notes,
+                saving = state.saving,
+                saved = state.saved,
+                error = state.error,
+                onNameChanged = viewModel::onNameChanged,
+                onRelationChanged = viewModel::onRelationChanged,
+                onNotesChanged = viewModel::onNotesChanged,
+                onInsertLink = viewModel::insertLink,
+                onPickImage = pickImage,
+                onRemoveImage = viewModel::removeImage,
+                onSave = viewModel::save,
+                onBack = { navController.popBackStack() },
+                resolveImage = viewModel::imageFor,
             )
         }
 
@@ -296,30 +327,15 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
             val viewModel: DiaryEditViewModel = hiltViewModel()
             val state by viewModel.state.collectAsStateWithLifecycle()
 
-            var previewing by remember { mutableStateOf(false) }
             val context = LocalContext.current
-            val scope = rememberCoroutineScope()
-            val pickImage = rememberLauncherForActivityResult(
-                ActivityResultContracts.GetContent(),
-            ) { uri ->
-                if (uri != null) {
-                    scope.launch {
-                        val bytes = withContext(Dispatchers.IO) {
-                            runCatching { context.contentResolver.openInputStream(uri)?.readBytes() }
-                                .getOrNull()
-                        }
-                        if (bytes != null) viewModel.insertImage(bytes)
-                    }
-                }
-            }
+            val pickImage = rememberImagePicker(viewModel::insertImage)
 
             DiaryEditScreen(
                 state = state,
-                isPreviewing = previewing,
-                onTogglePreview = { previewing = !previewing },
                 onTextChanged = viewModel::onTextChanged,
                 onInsertLink = viewModel::insertLink,
-                onPickImage = { pickImage.launch("image/*") },
+                onPickImage = pickImage,
+                onRemoveImage = viewModel::removeImage,
                 onSave = viewModel::save,
                 onBack = { navController.popBackStack() },
                 resolveImage = viewModel::imageFor,
@@ -358,6 +374,30 @@ private fun recordTypeLabel(type: RecordType): String = stringResource(
         RecordType.PERSONA -> R.string.type_persona
     },
 )
+
+/**
+ * System image picker, reduced to "read these bytes".
+ *
+ * Shared by the diary and person editors: both hand the result to their view
+ * model, which compresses, encrypts and appends the reference itself.
+ */
+@Composable
+private fun rememberImagePicker(onBytes: (ByteArray) -> Unit): () -> Unit {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val bytes = withContext(Dispatchers.IO) {
+                    runCatching { context.contentResolver.openInputStream(uri)?.readBytes() }
+                        .getOrNull()
+                }
+                if (bytes != null) onBytes(bytes)
+            }
+        }
+    }
+    return { launcher.launch("image/*") }
+}
 
 @Composable
 private fun RefreshOnResume(block: () -> Unit) {

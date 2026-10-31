@@ -23,11 +23,6 @@
     <string name="diary_saving">保存中…</string>
     <string name="diary_saved">已保存并加密</string>
     <string name="diary_signed_at">记录于 %1$s</string>
-    <string name="diary_link_title">插入链接</string>
-    <string name="diary_link_target">地址</string>
-    <string name="diary_link_label">显示文字（可留空）</string>
-    <string name="diary_link_confirm">插入</string>
-    <string name="diary_link_cancel">取消</string>
     <string name="diary_back">返回</string>
 
     <string name="lock_title">已锁定</string>

@@ -27,6 +27,9 @@ android {
 
 dependencies {
     api(project(":core-storage"))
+    // Editing a person's notes uses the same Markdown surface as a diary entry
+    // (ADR-020), so the caret/markup rules live in exactly one place.
+    implementation(project(":feature-editor"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

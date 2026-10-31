@@ -32,6 +32,17 @@ interface ImageStore {
     /** Every stored image, newest first — powers the standalone gallery. */
     fun list(): List<StoredImage>
 
+    /**
+     * Removes the encrypted image behind [token].
+     *
+     * Deleting is irreversible and leaves no tombstone: callers must already have
+     * dropped the Markdown reference from every body that pointed here.
+     *
+     * @return true when a file was actually removed, false for an unknown token
+     *   or a rejected path.
+     */
+    fun delete(token: String): Boolean
+
     companion object {
         /** Markdown URL scheme used inside a record body. */
         const val IMAGE_SCHEME = "meteor://image/"
@@ -57,11 +68,22 @@ class EncryptedImageStore(
     }
 
     override fun load(token: String): ByteArray? {
-        val relative = token.trim().removePrefix("/")
-        if (relative.contains("..")) return null
-        val file = File(rootDir, relative)
+        val file = resolve(token) ?: return null
         if (!file.isFile) return null
         return runCatching { crypto.decrypt(file.readBytes()) }.getOrNull()
+    }
+
+    override fun delete(token: String): Boolean {
+        val file = resolve(token) ?: return false
+        if (!file.isFile) return false
+        return runCatching { file.delete() }.getOrDefault(false)
+    }
+
+    /** Turns a stored token back into a file, refusing anything that escapes. */
+    private fun resolve(token: String): File? {
+        val relative = token.trim().removePrefix("/")
+        if (relative.isEmpty() || relative.contains("..")) return null
+        return File(rootDir, relative)
     }
 
     override fun list(): List<StoredImage> {

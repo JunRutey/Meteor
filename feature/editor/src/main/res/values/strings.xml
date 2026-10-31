@@ -1,11 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="editor_image_placeholder">［图片］</string>
-    <string name="editor_bold">加粗</string>
-    <string name="editor_italic">斜体</string>
+    <string name="editor_image_short">图片</string>
     <string name="editor_link">链接</string>
     <string name="editor_image">图片</string>
     <string name="editor_preview">预览</string>
     <string name="editor_edit">编辑</string>
-    <string name="editor_color">颜色 %1$d</string>
+
+    <string name="editor_link_title">插入链接</string>
+    <string name="editor_link_target">地址</string>
+    <string name="editor_link_label">显示文字（可留空）</string>
+    <string name="editor_link_confirm">插入</string>
+    <string name="editor_link_cancel">取消</string>
+
+    <string name="editor_remove_image">删除图片</string>
+    <string name="editor_remove_image_title">删除这张图片？</string>
+    <string name="editor_remove_image_body">正文里的引用和已加密的图片文件会一起删除，无法恢复。</string>
+    <string name="editor_remove">删除</string>
+    <string name="editor_cancel">取消</string>
 </resources>

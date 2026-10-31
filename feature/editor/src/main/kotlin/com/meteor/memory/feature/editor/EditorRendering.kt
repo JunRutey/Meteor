@@ -3,7 +3,6 @@ package com.meteor.memory.feature.editor
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
@@ -11,12 +10,16 @@ import androidx.compose.ui.text.input.VisualTransformation
 
 /**
  * Renders the editing surface without the markup characters — true WYSIWYG for
- * bold, italic and colour.
+ * **bold**, which is the only inline style the editor still offers (ADR-019).
  *
  * Hiding characters means the transformed text is shorter than the source, so a
  * real [OffsetMapping] is mandatory: without it the caret jumps every time the
- * user types next to a hidden marker. Image and link syntax stays visible on
- * purpose — those are the parts a user needs to edit or delete.
+ * user types next to a hidden marker.
+ *
+ * Image and link syntax stays visible on purpose — those are the parts a user
+ * needs to edit or delete. Same for the retired `<span>`/`*italic*` markup:
+ * leaving it as literal text keeps it removable, and the preview still renders
+ * it for older records.
  */
 class EditorRendering internal constructor(
     val text: AnnotatedString,
@@ -52,37 +55,21 @@ private class Builder(private val source: String) {
     private fun walk(from: Int, to: Int) {
         var cursor = from
         while (cursor < to) {
-            val match = MarkdownStyles.earliest(source, cursor, to)
+            val match = MarkdownStyles.earliest(source, cursor, to, STYLED_KINDS)
             if (match == null) {
                 plain(cursor, to)
                 return
             }
             if (match.range.first > cursor) plain(cursor, match.range.first)
 
-            when (match.kind) {
-                MarkdownStyles.Kind.BOLD ->
-                    styled(match, SpanStyle(fontWeight = FontWeight.Bold))
+            hide(match.range.first, match.groupStart)
+            val start = out.length
+            walk(match.groupStart, match.groupEnd)
+            spans += Triple(start, out.length, BOLD)
+            hide(match.groupEnd, match.range.last + 1)
 
-                MarkdownStyles.Kind.ITALIC ->
-                    styled(match, SpanStyle(fontStyle = FontStyle.Italic))
-
-                MarkdownStyles.Kind.COLOR ->
-                    styled(match, SpanStyle(color = MarkdownStyles.parseColor(match.extra)))
-
-                // Images and links keep their raw syntax: the user still needs to
-                // see (and be able to edit) the target.
-                else -> plain(match.range.first, match.range.last + 1)
-            }
             cursor = match.range.last + 1
         }
-    }
-
-    private fun styled(match: MarkdownStyles.InlineMatch, style: SpanStyle) {
-        hide(match.range.first, match.groupStart)
-        val start = out.length
-        walk(match.groupStart, match.groupEnd)
-        spans += Triple(start, out.length, style)
-        hide(match.groupEnd, match.range.last + 1)
     }
 
     private fun plain(from: Int, to: Int) {
@@ -109,6 +96,12 @@ private class Builder(private val source: String) {
 
         override fun transformedToOriginal(offset: Int): Int =
             transformedToOriginal[offset.coerceIn(0, transformedToOriginal.lastIndex)]
+    }
+
+    private companion object {
+        /** Only bold is hidden; every other construct is shown as written. */
+        val STYLED_KINDS = setOf(MarkdownStyles.Kind.BOLD)
+        val BOLD = SpanStyle(fontWeight = FontWeight.Bold)
     }
 }
 

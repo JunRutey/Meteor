@@ -40,6 +40,7 @@ fun PersonDetailScreen(
     records: List<PersonRecordRow>,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onEdit: () -> Unit = {},
 ) {
     Column(modifier = modifier.fillMaxSize()) {
         Row(
@@ -55,7 +56,10 @@ fun PersonDetailScreen(
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
-            TextButton(onClick = onBack) { Text(stringResource(R.string.people_back)) }
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = onEdit) { Text(stringResource(R.string.people_edit)) }
+                TextButton(onClick = onBack) { Text(stringResource(R.string.people_back)) }
+            }
         }
 
         HorizontalDivider()
