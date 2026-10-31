@@ -13,11 +13,15 @@ import com.meteor.memory.core.backup.PlaintextBackupModule
 import com.meteor.memory.core.crypto.AppLock
 import com.meteor.memory.core.crypto.EncryptedPrefsAppLock
 import com.meteor.memory.core.crypto.FileCrypto
+import com.meteor.memory.core.crypto.SecretStore
 import com.meteor.memory.core.crypto.androidKeystoreFileCrypto
+import com.meteor.memory.core.crypto.androidKeystoreSecretStore
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.log.FileAppLogger
 import com.meteor.memory.core.log.LogExporter
+import com.meteor.memory.core.storage.AiChatStore
 import com.meteor.memory.core.storage.DiaryQueries
+import com.meteor.memory.core.storage.EncryptedAiChatStore
 import com.meteor.memory.core.storage.EncryptedImageStore
 import com.meteor.memory.core.storage.ImageStore
 import com.meteor.memory.core.storage.MoodQueries
@@ -32,10 +36,15 @@ import com.meteor.memory.core.storage.StorageLayout
 import com.meteor.memory.core.storage.StorageRouter
 import com.meteor.memory.core.time.SystemTimeModule
 import com.meteor.memory.core.time.TimeModule
+import com.meteor.memory.feature.ai.AiModule
+import com.meteor.memory.feature.ai.FilePersonaStore
+import com.meteor.memory.feature.ai.MeteorAiModule
 import com.meteor.memory.feature.editor.EditorModule
 import com.meteor.memory.feature.editor.MarkdownEditorModule
 import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.SettingsRepository
+import com.meteor.memory.ui.ai.AiGate
+import com.meteor.memory.ui.ai.AiSettingsReader
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -127,6 +136,62 @@ object AppModule {
         storageRouter: StorageRouter,
         imageStore: ImageStore,
     ): EditorModule = MarkdownEditorModule(storageRouter, imageStore)
+
+    /** AI credentials share the archive's Keystore AES-256-GCM key (ADR-027). */
+    @Provides
+    @Singleton
+    fun provideSecretStore(
+        @ApplicationContext context: Context,
+        fileCrypto: FileCrypto,
+    ): SecretStore = androidKeystoreSecretStore(context, fileCrypto)
+
+    /** Chat history is encrypted with the same key and never scanned as records. */
+    @Provides
+    @Singleton
+    fun provideAiChatStore(
+        @ApplicationContext context: Context,
+        fileCrypto: FileCrypto,
+    ): AiChatStore = EncryptedAiChatStore(File(context.filesDir, StorageLayout.ROOT_NAME), fileCrypto)
+
+    @Provides
+    @Singleton
+    fun provideAiSettingsReader(
+        settingsRepository: SettingsRepository,
+        secretStore: SecretStore,
+    ): AiSettingsReader = AiSettingsReader(settingsRepository, secretStore)
+
+    @Provides
+    @Singleton
+    fun provideAiGate(reader: AiSettingsReader): AiGate = AiGate(reader)
+
+    /**
+     * The AI domain (ADR-027): skills, a bounded read-only agent and the user's
+     * own provider credentials. Records are read through [RecordScanner], the
+     * persona snapshot is written through the frozen [StorageRouter], and the
+     * skill assets are loaded from this APK.
+     */
+    @Provides
+    @Singleton
+    fun provideAiModule(
+        @ApplicationContext context: Context,
+        recordScanner: RecordScanner,
+        personQueries: PersonQueries,
+        moodQueries: MoodQueries,
+        diaryQueries: DiaryQueries,
+        storageRouter: StorageRouter,
+    ): AiModule = MeteorAiModule(
+        rootDir = File(context.filesDir, StorageLayout.ROOT_NAME),
+        scanner = recordScanner,
+        personQueries = personQueries,
+        moodQueries = moodQueries,
+        diaryQueries = diaryQueries,
+        personaStore = FilePersonaStore(storageRouter),
+        skillLoader = { path ->
+            runCatching {
+                context.assets.open(path).bufferedReader(Charsets.UTF_8).use { it.readText() }
+            }.getOrNull()
+        },
+    )
 
     /**
      * `:core-backup` may not depend on `:feature-settings` (that edge runs the

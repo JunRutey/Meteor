@@ -94,6 +94,7 @@ fun MeteorRoot(versionName: String) {
                     false -> MeteorNavHost(
                         versionName = versionName,
                         animationsEnabled = settings.animationsEnabled,
+                        aiEnabled = settings.aiEnabled,
                     )
                 }
             }

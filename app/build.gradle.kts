@@ -25,8 +25,8 @@ android {
         applicationId = "com.meteor.memory"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 9
+        versionName = "0.6.3"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -84,6 +84,7 @@ dependencies {
     implementation(project(":feature-editor"))
     implementation(project(":feature-people"))
     implementation(project(":feature-gallery"))
+    implementation(project(":feature-ai"))
     implementation(project(":core-backup"))
     implementation(project(":core-storage"))
     implementation(project(":core-crypto"))

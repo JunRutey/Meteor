@@ -1,7 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- No INTERNET permission in v0.1: the app is fully offline until v0.6 (AI). -->
+    <!--
+        Only the AI feature goes online, and only to the endpoint the user
+        configured; nothing is sent unless they enable AI and accept the
+        warning. See ADR-027.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:name=".MeteorApp"

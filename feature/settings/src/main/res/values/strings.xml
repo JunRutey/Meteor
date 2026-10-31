@@ -4,6 +4,7 @@
 
     <string name="settings_section_appearance">外观</string>
     <string name="settings_section_security">安全</string>
+    <string name="settings_section_ai">AI</string>
     <string name="settings_section_backup">备份</string>
     <string name="settings_section_logs">日志</string>
     <string name="settings_section_about">关于</string>
