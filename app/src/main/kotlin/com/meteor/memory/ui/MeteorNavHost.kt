@@ -305,10 +305,11 @@ fun MeteorNavHost(
                     defaultValue = null
                 },
             ),
-        ) { entry ->
+        ) {
             val viewModel: GalleryViewModel = hiltViewModel()
             val days by viewModel.days.collectAsStateWithLifecycle()
             val loading by viewModel.loading.collectAsStateWithLifecycle()
+            val filterLabel by viewModel.filterLabel.collectAsStateWithLifecycle()
 
             RefreshOnResume { viewModel.refresh() }
 
@@ -318,7 +319,7 @@ fun MeteorNavHost(
                 onOpen = { token -> navController.navigate("gallery/${Uri.encode(token)}") },
                 onDelete = viewModel::delete,
                 onBack = { navController.popBackStack() },
-                title = entry.arguments?.getString(GalleryViewModel.ARG_DATE),
+                title = filterLabel,
             )
         }
 

@@ -39,6 +39,9 @@ class GalleryViewModel @Inject constructor(
     private val _loading = MutableStateFlow(true)
     val loading: StateFlow<Boolean> = _loading.asStateFlow()
 
+    private val _filterLabel = MutableStateFlow<String?>(null)
+    val filterLabel: StateFlow<String?> = _filterLabel.asStateFlow()
+
     init {
         refresh()
     }
@@ -64,6 +67,9 @@ class GalleryViewModel @Inject constructor(
             val dayFormat = DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)
                 .withLocale(locale)
                 .withZone(ZoneId.systemDefault())
+            _filterLabel.value = filterDate?.let { date ->
+                dayFormat.format(date.atStartOfDay(ZoneId.systemDefault()).toInstant())
+            }
             val zone = ZoneId.systemDefault()
 
             val decoded = withContext(Dispatchers.IO) {
