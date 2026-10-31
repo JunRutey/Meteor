@@ -15,6 +15,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -27,6 +28,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import com.meteor.memory.R
+import com.meteor.memory.feature.editor.EditResult
 import com.meteor.memory.feature.editor.EditorToolbar
 import com.meteor.memory.feature.editor.MarkdownEditing
 import com.meteor.memory.feature.editor.MarkdownPreview
@@ -48,14 +50,18 @@ fun DiaryEditScreen(
 ) {
     var showLinkDialog by remember { mutableStateOf(false) }
 
-    // Keeps the caret position so bold/italic can act on the current selection.
-    var field by remember(state.text) {
-        mutableStateOf(TextFieldValue(state.text, TextRange(state.text.length)))
+    // Local editing value keeps the caret and selection; it only resyncs when the
+    // text changes from outside (link/image insertion).
+    var field by remember { mutableStateOf(TextFieldValue(state.text)) }
+    LaunchedEffect(state.text) {
+        if (state.text != field.text) {
+            field = TextFieldValue(state.text, TextRange(state.text.length))
+        }
     }
 
-    fun applyFormatted(newText: String) {
-        field = TextFieldValue(newText, TextRange(newText.length))
-        onTextChanged(newText)
+    fun apply(result: EditResult) {
+        field = TextFieldValue(result.text, TextRange(result.selectionStart, result.selectionEnd))
+        onTextChanged(result.text)
     }
 
     Column(
@@ -94,20 +100,10 @@ fun DiaryEditScreen(
 
         EditorToolbar(
             isPreviewing = isPreviewing,
-            onBold = {
-                applyFormatted(
-                    MarkdownEditing.blockQuote(field.text, field.selection.start, field.selection.end),
-                )
-            },
-            onItalic = {
-                applyFormatted(
-                    MarkdownEditing.italicize(field.text, field.selection.start, field.selection.end),
-                )
-            },
+            onBold = { apply(MarkdownEditing.toggleBold(field.text, field.selection.min, field.selection.max)) },
+            onItalic = { apply(MarkdownEditing.toggleItalic(field.text, field.selection.min, field.selection.max)) },
             onColor = { hex ->
-                applyFormatted(
-                    MarkdownEditing.colorize(field.text, field.selection.start, field.selection.end, hex),
-                )
+                apply(MarkdownEditing.toggleColor(field.text, field.selection.min, field.selection.max, hex))
             },
             onLink = { showLinkDialog = true },
             onImage = onPickImage,

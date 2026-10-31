@@ -2,14 +2,13 @@ package com.meteor.memory.feature.editor
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -35,10 +34,10 @@ object EditorColors {
 }
 
 /**
- * Formatting bar. Stateless: it only emits intents.
+ * Formatting bar laid out in two fixed rows.
  *
- * The preview toggle sits **outside** the scrollable group so it is always
- * reachable on narrow screens.
+ * No horizontal scrolling: every action must stay on screen, including 图片 and
+ * 预览 (a scrolling row previously pushed 图片 out of reach).
  */
 @Composable
 fun EditorToolbar(
@@ -51,15 +50,9 @@ fun EditorToolbar(
     onTogglePreview: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier.fillMaxWidth().padding(horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
+    Column(modifier = modifier.fillMaxWidth()) {
         Row(
-            modifier = Modifier
-                .weight(1f)
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TextButton(onClick = onBold, enabled = !isPreviewing) {
@@ -69,34 +62,45 @@ fun EditorToolbar(
                 Text("I", style = MaterialTheme.typography.bodyLarge.copy(fontStyle = FontStyle.Italic))
             }
 
-            EditorColors.all.forEachIndexed { index, hex ->
-                val label = stringResource(R.string.editor_color, index + 1)
-                Box(
-                    modifier = Modifier
-                        .size(28.dp)
-                        .clip(CircleShape)
-                        .background(MarkdownStyles.parseColor(hex))
-                        .clickable(enabled = !isPreviewing) { onColor(hex) }
-                        .semantics { contentDescription = label },
-                )
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                EditorColors.all.forEachIndexed { index, hex ->
+                    val label = stringResource(R.string.editor_color, index + 1)
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(MarkdownStyles.parseColor(hex))
+                            .clickable(enabled = !isPreviewing) { onColor(hex) }
+                            .semantics { contentDescription = label },
+                    )
+                }
             }
 
+            TextButton(onClick = onTogglePreview) {
+                Text(
+                    text = stringResource(
+                        if (isPreviewing) R.string.editor_edit else R.string.editor_preview,
+                    ),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             TextButton(onClick = onLink, enabled = !isPreviewing) {
                 Text(stringResource(R.string.editor_link), style = MaterialTheme.typography.labelLarge)
             }
             TextButton(onClick = onImage, enabled = !isPreviewing) {
                 Text(stringResource(R.string.editor_image), style = MaterialTheme.typography.labelLarge)
             }
-        }
-
-        TextButton(onClick = onTogglePreview) {
-            Text(
-                text = stringResource(
-                    if (isPreviewing) R.string.editor_edit else R.string.editor_preview,
-                ),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-            )
         }
     }
 }

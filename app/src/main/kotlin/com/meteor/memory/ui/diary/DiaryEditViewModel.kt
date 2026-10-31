@@ -91,6 +91,9 @@ class DiaryEditViewModel @Inject constructor(
     fun imageFor(token: String): ImageBitmap? = images[token]
 
     fun insertImage(bytes: ByteArray) {
+        // Base on what the user has typed right now, not on the stale document:
+        // otherwise the inserted image would overwrite unsaved text.
+        document = document.copy(body = _state.value.text)
         runCatching { editorModule.insertImage(document, bytes, personId = null) }
             .onSuccess { updated ->
                 document = updated
@@ -98,6 +101,14 @@ class DiaryEditViewModel @Inject constructor(
                 refreshImages(updated.body)
             }
             .onFailure { appLog.warn(TAG, "insert image failed", it) }
+    }
+
+    fun insertLink(target: String, label: String?) {
+        if (target.isBlank()) return
+        // Same trap as insertImage: append to the live text, or the editor text
+        // that has not been saved yet disappears.
+        document = editorModule.insertLink(document.copy(body = _state.value.text), target, label)
+        _state.value = _state.value.copy(text = document.body, saved = false)
     }
 
     fun insertLink(target: String, label: String?) {

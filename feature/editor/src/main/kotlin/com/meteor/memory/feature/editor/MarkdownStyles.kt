@@ -15,97 +15,166 @@ import androidx.compose.ui.text.style.TextDecoration
 internal const val TAG_TARGET = "meteor-target"
 
 /**
- * One inline parser shared by the preview and the editing surface.
+ * Inline parser shared by the preview and the editing surface.
  *
- * Supports `**bold**`, `*italic*`, `[label](target)`, `![alt](target)` and
- * `<span style="color:#E53935">text</span>`.
+ * Markup nests, so `**<span style="color:#E53935">红粗</span>**` renders bold *and*
+ * red: a match recurses into its own content instead of guessing with one flat
+ * regex.
  *
- * **Length invariant**: in editor mode every original character is emitted, in
- * order, so a identity [OffsetMapping] stays valid and the caret does not drift.
- * Dropping markers there would make the transformed text shorter than the input
- * and Compose rejects that with an exception.
+ * **Length invariant**: in editor mode every original character is emitted in
+ * order, so [OffsetMapping.Identity] stays valid and the caret cannot drift.
  */
 object MarkdownStyles {
 
-    private val INLINE = Regex(
-        """<span style="color:(#[0-9A-Fa-f]{6})">(.*?)</span>""" +
-            """|\*\*([^*]+)\*\*""" +
-            """|\*([^*]+)\*""" +
-            """|!\[([^\]]*)\]\(([^)]*)\)""" +
-            """|\[([^\]]*)\]\(([^)]*)\)""",
-        RegexOption.DOT_MATCHES_ALL,
-    )
+    private val COLOR = Regex("""<span style="color:(#[0-9A-Fa-f]{6})">(.*?)</span>""", RegexOption.DOT_MATCHES_ALL)
+    private val IMAGE = Regex("""!\[([^\]]*)\]\(([^)]*)\)""")
+    private val LINK = Regex("""\[([^\]]*)\]\(([^)]*)\)""")
+    private val BOLD = Regex("""\*\*(.+?)\*\*""", RegexOption.DOT_MATCHES_ALL)
+    private val ITALIC = Regex("""\*([^*]+?)\*""")
 
     /**
-     * @param imageLabel non-null renders for display (images collapse to the
-     *   label, links keep only their text). Null keeps every raw character for
-     *   the editor.
+     * @param imageLabel non-null renders for display (images collapse to this
+     *   label, links keep only their text). Null keeps raw characters for the
+     *   editor.
      */
     fun annotate(text: String, imageLabel: String?): AnnotatedString = buildAnnotatedString {
-        val editorMode = imageLabel == null
-        var cursor = 0
+        appendRange(text, 0, text.length, imageLabel, editorMode = imageLabel == null)
+    }
 
-        for (match in INLINE.findAll(text)) {
+    private fun AnnotatedString.Builder.appendRange(
+        text: String,
+        from: Int,
+        to: Int,
+        imageLabel: String?,
+        editorMode: Boolean,
+    ) {
+        var cursor = from
+        while (cursor < to) {
+            val match = earliest(text, cursor, to) ?: run {
+                append(text.substring(cursor, to))
+                return
+            }
+
             if (match.range.first > cursor) append(text.substring(cursor, match.range.first))
 
-            val groups = match.groupValues
-            val colorHex = groups[1]
-            val colorText = groups[2]
-            val bold = groups[3]
-            val italic = groups[4]
-            val imageTarget = groups[6]
-            val linkLabel = groups[7]
-            val linkTarget = groups[8]
-
-            when {
-                colorHex.isNotEmpty() -> {
-                    val openTag = """<span style="color:$colorHex">"""
-                    if (editorMode) append(openTag)
-                    pushStyle(SpanStyle(color = parseColor(colorHex)))
-                    append(colorText)
+            when (match.kind) {
+                Kind.COLOR -> {
+                    val innerStart = match.groupStart
+                    val innerEnd = match.groupEnd
+                    pushStyle(SpanStyle(color = parseColor(match.extra)))
+                    if (editorMode) append(text.substring(match.range.first, innerStart))
+                    appendRange(text, innerStart, innerEnd, imageLabel, editorMode)
+                    if (editorMode) append(text.substring(innerEnd, match.range.last + 1))
                     pop()
-                    if (editorMode) append("</span>")
                 }
 
-                bold.isNotEmpty() -> {
-                    if (editorMode) append("**")
+                Kind.BOLD -> {
+                    val innerStart = match.groupStart
+                    val innerEnd = match.groupEnd
                     pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
-                    append(bold)
+                    if (editorMode) append(text.substring(match.range.first, innerStart))
+                    appendRange(text, innerStart, innerEnd, imageLabel, editorMode)
+                    if (editorMode) append(text.substring(innerEnd, match.range.last + 1))
                     pop()
-                    if (editorMode) append("**")
                 }
 
-                italic.isNotEmpty() -> {
-                    if (editorMode) append("*")
+                Kind.ITALIC -> {
+                    val innerStart = match.groupStart
+                    val innerEnd = match.groupEnd
                     pushStyle(SpanStyle(fontStyle = FontStyle.Italic))
-                    append(italic)
+                    if (editorMode) append(text.substring(match.range.first, innerStart))
+                    appendRange(text, innerStart, innerEnd, imageLabel, editorMode)
+                    if (editorMode) append(text.substring(innerEnd, match.range.last + 1))
                     pop()
-                    if (editorMode) append("*")
                 }
 
-                imageTarget.isNotEmpty() && imageLabel != null -> {
-                    val start = length
-                    append(imageLabel)
-                    addStringAnnotation(TAG_TARGET, imageTarget, start, length)
+                Kind.IMAGE -> {
+                    if (imageLabel != null) {
+                        val start = length
+                        append(if (match.extra.isBlank()) imageLabel else imageLabel)
+                        addStringAnnotation(TAG_TARGET, match.target, start, length)
+                    } else {
+                        append(text.substring(match.range.first, match.range.last + 1))
+                    }
                 }
 
-                imageTarget.isNotEmpty() -> append(match.value)
-
-                linkTarget.isNotEmpty() && imageLabel != null -> {
-                    val start = length
-                    pushStyle(SpanStyle(textDecoration = TextDecoration.Underline))
-                    append(linkLabel)
-                    pop()
-                    addStringAnnotation(TAG_TARGET, linkTarget, start, length)
+                Kind.LINK -> {
+                    if (imageLabel != null) {
+                        val start = length
+                        pushStyle(SpanStyle(textDecoration = TextDecoration.Underline))
+                        append(match.label)
+                        pop()
+                        addStringAnnotation(TAG_TARGET, match.target, start, length)
+                    } else {
+                        append(text.substring(match.range.first, match.range.last + 1))
+                    }
                 }
-
-                linkTarget.isNotEmpty() -> append(match.value)
-
-                else -> append(match.value)
             }
             cursor = match.range.last + 1
         }
-        if (cursor < text.length) append(text.substring(cursor))
+    }
+
+    private enum class Kind { COLOR, BOLD, ITALIC, IMAGE, LINK }
+
+    private class InlineMatch(
+        val kind: Kind,
+        val range: IntRange,
+        val groupStart: Int = 0,
+        val groupEnd: Int = 0,
+        val extra: String = "",
+        val label: String = "",
+        val target: String = "",
+    )
+
+    /** Earliest match starting at or after [from] and ending before [to]. */
+    private fun earliest(text: String, from: Int, to: Int): InlineMatch? {
+        val candidates = listOfNotNull(
+            COLOR.find(text, from)?.takeIf { it.range.last < to }?.let {
+                val inner = it.groups[2]!!
+                InlineMatch(
+                    kind = Kind.COLOR,
+                    range = it.range,
+                    groupStart = inner.range.first,
+                    groupEnd = inner.range.last + 1,
+                    extra = it.groupValues[1],
+                )
+            },
+            IMAGE.find(text, from)?.takeIf { it.range.last < to }?.let {
+                InlineMatch(
+                    kind = Kind.IMAGE,
+                    range = it.range,
+                    label = it.groupValues[1],
+                    target = it.groupValues[2],
+                )
+            },
+            LINK.find(text, from)?.takeIf { it.range.last < to }?.let {
+                InlineMatch(
+                    kind = Kind.LINK,
+                    range = it.range,
+                    label = it.groupValues[1],
+                    target = it.groupValues[2],
+                )
+            },
+            BOLD.find(text, from)?.takeIf { it.range.last < to }?.let {
+                val inner = it.groups[1]!!
+                InlineMatch(
+                    kind = Kind.BOLD,
+                    range = it.range,
+                    groupStart = inner.range.first,
+                    groupEnd = inner.range.last + 1,
+                )
+            },
+            ITALIC.find(text, from)?.takeIf { it.range.last < to }?.let {
+                val inner = it.groups[1]!!
+                InlineMatch(
+                    kind = Kind.ITALIC,
+                    range = it.range,
+                    groupStart = inner.range.first,
+                    groupEnd = inner.range.last + 1,
+                )
+            },
+        )
+        return candidates.minByOrNull { it.range.first }
     }
 
     fun parseColor(hex: String): Color =
@@ -113,8 +182,7 @@ object MarkdownStyles {
 }
 
 /**
- * Styles the editing surface in place while keeping every Markdown character, so
- * typing, selection and the caret all behave like a plain text field.
+ * Styles the editing surface in place while keeping every Markdown character.
  */
 class MarkdownStyledTransformation : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText =
