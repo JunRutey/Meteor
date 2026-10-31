@@ -65,6 +65,7 @@ fun GalleryScreen(
     onOpen: (String) -> Unit,
     onDelete: (List<String>) -> Unit,
     onBack: () -> Unit,
+    title: String? = null,
     modifier: Modifier = Modifier,
 ) {
     var selection by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -78,7 +79,7 @@ fun GalleryScreen(
         ) {
             Column {
                 Text(
-                    text = stringResource(R.string.gallery_title),
+                    text = title ?: stringResource(R.string.gallery_title),
                     style = MaterialTheme.typography.headlineSmall,
                 )
                 if (selection.isEmpty() && days.isNotEmpty()) {

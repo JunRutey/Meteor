@@ -2,6 +2,7 @@ package com.meteor.memory.ui.gallery
 
 import android.graphics.BitmapFactory
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meteor.memory.core.log.AppLog
@@ -24,9 +25,13 @@ import javax.inject.Inject
 
 @HiltViewModel
 class GalleryViewModel @Inject constructor(
+    savedStateHandle: SavedStateHandle,
     private val imageStore: ImageStore,
     private val appLog: AppLog,
 ) : ViewModel() {
+
+    private val filterDate: LocalDate? =
+        savedStateHandle.get<String>(ARG_DATE)?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
 
     private val _days = MutableStateFlow(emptyList<GalleryDay>())
     val days: StateFlow<List<GalleryDay>> = _days.asStateFlow()
@@ -63,13 +68,15 @@ class GalleryViewModel @Inject constructor(
 
             val decoded = withContext(Dispatchers.IO) {
                 imageStore.list().take(MAX_ITEMS).mapNotNull { stored ->
+                    val day = stored.modifiedAt.atZone(zone).toLocalDate()
+                    if (filterDate != null && day != filterDate) return@mapNotNull null
                     val bytes = imageStore.load(stored.token) ?: return@mapNotNull null
                     // Half resolution is plenty for a 3-column grid.
                     val options = BitmapFactory.Options().apply { inSampleSize = 2 }
                     val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
                         ?: return@mapNotNull null
                     Decoded(
-                        date = stored.modifiedAt.atZone(zone).toLocalDate(),
+                        date = day,
                         item = GalleryItem(token = stored.token, bitmap = bitmap.asImageBitmap()),
                         label = dayFormat.format(stored.modifiedAt),
                     )
@@ -87,7 +94,8 @@ class GalleryViewModel @Inject constructor(
 
     private class Decoded(val date: LocalDate, val item: GalleryItem, val label: String)
 
-    private companion object {
+    companion object {
+        const val ARG_DATE = "date"
         const val TAG = "Gallery"
         const val MAX_ITEMS = 120
     }
