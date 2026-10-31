@@ -5,8 +5,9 @@
 你的日记、人物档案、聊天记录以 **AES-256-GCM 加密文件**存放在应用私有目录，
 密钥绑定设备 Keystore，不可导出、不上传、无云端同步。
 
-> 状态：**v0.4.0**。日记、全文搜索、心情日历、人际关系、Markdown 编辑器可用；
-> AI 与数字人格尚未实现。
+> 状态：**v0.6.0**。日记、全文搜索、心情日历、人际关系、Markdown 编辑器、
+> AI 与数字人格均已可用。AI 默认关闭，需自备 API Key；开启前会明确提示
+> 「内容会通过 API 发往你选择的 AI 提供商」。
 
 ---
 
@@ -26,6 +27,7 @@
 
 ```
 :app                    组装、DI、导航、主题
+ ├── :feature-ai         AI 与数字人格（技能 + 只读 Agent，可关闭的联网提供商，ADR-024）
  ├── :feature-editor     Markdown 编辑与预览（图片、链接）
  ├── :feature-people     人际关系档案、档案编辑
  ├── :feature-gallery    加密图片浏览（按天分组、可删除）
@@ -34,18 +36,18 @@
  ├── :core-backup        明文 zip 备份 / 按新设备密钥重新加密导入
  ├── :core-storage       目录路由、frontmatter、透明加解密、图片存储
  ├── :core-index         FTS 全文索引（FTS5 → FTS4 → LIKE 运行时降级）
- ├── :core-crypto        Keystore AES-GCM、应用锁
+ ├── :core-crypto        Keystore AES-GCM、应用锁、AI 凭据加密存储
  ├── :core-log           按天落盘的诊断日志与导出
  └── :core-time          时间水印、locale 格式化
 ```
 
 依赖严格单向、无环，由 `tools/check-module-graph.sh` 在 CI 中强制；
 `:core-index` 可被 `-Pmeteor.excludeModules=core-index` 整体移除（CI 有专门任务验证）。
-
-规划中的模块：`:feature-persona`、`:feature-ai`。
+`:feature-ai` 刻意不依赖 `:core-index`：自己在解密后的记录上检索，索引被排除时 AI 仍可用。
 
 关键取舍记录在 [`docs/adr`](docs/adr)：人物目录用 `person_id`、CJK 分词、
-FTS 运行时降级、心情独立成记录、编辑器只保留加粗、人物档案可编辑与图片可删除。
+FTS 运行时降级、心情独立成记录、编辑器只保留加粗、人物档案可编辑与图片可删除、
+AI 改为可关闭的联网提供商 + 技能驱动（ADR-024，取代 ADR-023）。
 
 ## 版本路线
 
@@ -54,9 +56,15 @@ FTS 运行时降级、心情独立成记录、编辑器只保留加粗、人物�
 | v0.1 | 核心日记 + 基础设置 | ✅ 已发布 |
 | v0.2 | 索引与搜索 | ✅ |
 | v0.3 | 日历与心情 | ✅ 已发布 |
+<<<<<<< HEAD
 | v0.4 | Markdown 编辑器 + 人际关系档案 | ✅ 已发布 |
 | v0.5 | （已并入 v0.4，不单独发版） | 已合并 |
 | v0.6 | 数字人格与 AI | 计划中 |
+=======
+| v0.4 | Markdown 编辑器 + 人际关系编辑 | ✅ |
+| v0.5 | 人际关系档案 | ✅ |
+| v0.6 | 数字人格与 AI（联网、可关闭、技能驱动） | ✅ |
+>>>>>>> 016a04f (feat(ai): v0.6 可关闭的联网 AI、技能与人格蒸馏（ADR-024）)
 | v1.0 | 打磨发布 | 计划中 |
 
 ## 数据安全
@@ -65,6 +73,31 @@ FTS 运行时降级、心情独立成记录、编辑器只保留加粗、人物�
 - 密钥由 Android Keystore 生成，绑定设备，**换机后旧密钥不可恢复**
 - 因此备份导出为明文 zip —— 这是换机恢复的唯一路径，请妥善保管
 - 应用默认 `allowBackup=false`，不参与系统云备份
+
+## AI 与隐私
+
+AI 是这个应用里**唯一会联网**的功能，默认关闭，随时可在设置里关掉。
+
+- **没有后端**：Meteor 不与任何服务器通信。作者不接收、不收集、不记录任何内容，
+  没有埋点、没有崩溃上报、没有使用统计。
+- **内容会离开设备**：开启并在设置里填好 API Key 后，你输入的问题与被选中的档案片段
+  （人物档案、相关日记、聊天记录、心情）会通过 HTTPS 直接发往**你自己选择的** AI 提供商
+  （DeepSeek / OpenAI / 自定义 OpenAI 兼容接口），并受该提供商的隐私条款约束。
+  开启前会弹窗说明这一点，拒绝即保持关闭。
+- **钥匙只在本机**：API Key 存放在 `EncryptedSharedPreferences`（Keystore 派生），
+  不进 DataStore、不进备份、不写日志。
+- **不留聊天记录**：对话只存在于当前页面的内存里，退出即丢；日志只记录事件与错误码，
+  不记录提问、正文或模型输出。
+- **能力受控**：模型只能调用六个**只读**档案工具（列出人物、读人物档案、列相关记录、
+  读单条记录、读心情区间、全档案检索）；没有写、删、导出、转发、执行命令等能力。
+  唯一的写操作是「人格蒸馏」产物，且必须由你确认后才会落到既有的加密记录
+  `数字遗产/数字人格/<person_id>/persona.md`。
+- 技能（人格蒸馏 / 人格对话 / 档案问答）以 Markdown 形式内置，格式参考并致谢 MIT 许可的
+  [nuwa-skill](https://github.com/alchaincyf/nuwa-skill)、
+  [distilly](https://github.com/titanwings/distilly)、
+  [ex-skill](https://github.com/therealXiaomanChu/ex-skill)。
+
+细节见 [ADR-024](docs/adr/ADR-024-ai-networked-skills-agent.md)。
 
 ## 许可
 

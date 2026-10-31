@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ai_title">AI 与数字人格</string>
+    <string name="ai_back">返回</string>
+    <string name="ai_clear">清空</string>
+    <string name="ai_open_settings">去设置</string>
+    <string name="ai_need_consent">先在设置里开启 AI，并阅读隐私提示。</string>
+    <string name="ai_need_key">先在设置里填写 API Key 与模型。</string>
+    <string name="ai_need_config">AI 尚未配置完整。</string>
+    <string name="ai_need_disabled">AI 已关闭，可在设置里重新开启。</string>
+    <string name="ai_skill_persona_chat">人格对话</string>
+    <string name="ai_skill_archive_qa">档案问答</string>
+    <string name="ai_skill_persona_distill">人格蒸馏</string>
+    <string name="ai_skill">技能</string>
+    <string name="ai_scope">对话对象</string>
+    <string name="ai_scope_archive">全档案</string>
+    <string name="ai_persona_ready">人格已蒸馏，可以开始对话。</string>
+    <string name="ai_persona_missing">这个人还没有蒸馏人格，对话会只依据档案回答。</string>
+    <string name="ai_persona_open">查看人格档案</string>
+    <string name="ai_send_to">内容将通过 API 发送至 %1$s 的服务器</string>
+    <string name="ai_privacy_short">作者不收集、不记录、不跟踪；聊天只在本页内存中。</string>
+    <string name="ai_question_hint">说点什么…</string>
+    <string name="ai_send">发送</string>
+    <string name="ai_busy">思考中…</string>
+    <string name="ai_empty_chat">还没有对话。问档案里的任何事，或选一个人物开始对话。</string>
+    <string name="ai_error_auth">API Key 无效或没有权限。</string>
+    <string name="ai_error_rate">请求过于频繁或额度不足。</string>
+    <string name="ai_error_network">网络请求失败，请检查网络与接口地址。</string>
+    <string name="ai_error_empty">模型没有返回内容，请重试。</string>
+    <string name="ai_error_step_limit">工具调用次数达到上限，请重试或换个问法。</string>
+    <string name="ai_error_other">调用失败：%1$s</string>
+
+    <string name="ai_provider_deepseek">DeepSeek</string>
+    <string name="ai_provider_openai">OpenAI</string>
+    <string name="ai_provider_custom">自定义</string>
+
+    <string name="ai_settings_enable">启用 AI</string>
+    <string name="ai_settings_enable_desc">关闭后不发出任何网络请求，首页入口也会隐藏。</string>
+    <string name="ai_settings_consent_title">开启前请确认</string>
+    <string name="ai_settings_consent_body">开启后，你输入的内容与相关档案片段会通过 HTTPS 直接发送到你配置的 AI 提供商（DeepSeek / OpenAI / 自定义接口）。\n\nMeteor 没有后端：作者不接收、不收集、不记录任何内容，也不做埋点或跟踪。\n\nAPI Key 只在本机加密保存；聊天记录不会落盘。是否使用、用哪家提供商，完全由你决定。</string>
+    <string name="ai_settings_consent_accept">我已了解，开启</string>
+    <string name="ai_settings_cancel">取消</string>
+    <string name="ai_settings_provider">提供商</string>
+    <string name="ai_settings_base_url">接口地址（含 /v1）</string>
+    <string name="ai_settings_model">模型</string>
+    <string name="ai_settings_model_hint">留空使用默认模型</string>
+    <string name="ai_settings_key">API Key</string>
+    <string name="ai_settings_key_saved">已保存：仅本机加密存储</string>
+    <string name="ai_settings_key_save">保存</string>
+    <string name="ai_settings_key_clear">清除</string>
+    <string name="ai_settings_test">测试连接</string>
+    <string name="ai_settings_testing">测试中…</string>
+    <string name="ai_settings_test_ok">连接正常</string>
+    <string name="ai_settings_test_fail">连接失败：%1$s</string>
+    <string name="ai_settings_privacy">作者不收集任何内容；请求只发往你填写的接口。</string>
+
+    <string name="persona_title">数字人格</string>
+    <string name="persona_distill">联网蒸馏人格</string>
+    <string name="persona_redistill">重新蒸馏</string>
+    <string name="persona_distilling">正在蒸馏…</string>
+    <string name="persona_body_missing">还没有联网蒸馏过，下面只是本机统计。</string>
+    <string name="persona_generated">生成于 %1$s</string>
+    <string name="persona_by">%1$s · %2$s</string>
+    <string name="persona_stats_records">相关记录 %1$d 条</string>
+    <string name="persona_stats_diaries">日记提及 %1$d 次</string>
+    <string name="persona_topics">常出现的词</string>
+    <string name="persona_topic_weight">%1$d 次</string>
+    <string name="persona_topics_empty">还没有足够的内容归纳主题。</string>
+    <string name="persona_quotes">印象片段</string>
+    <string name="persona_quotes_empty">还没有印象片段。</string>
+    <string name="persona_open_chat">和 TA 聊聊</string>
+    <string name="persona_confirm_title">确认本次蒸馏</string>
+    <string name="persona_confirm_body">将向 %1$s 发送：该人物的档案、相关记录与日记片段（由模型按需读取）。作者不接收、不记录这些内容。</string>
+    <string name="persona_confirm_ok">开始蒸馏</string>
+    <string name="persona_confirm_cancel">取消</string>
+</resources>

@@ -43,6 +43,7 @@ fun SettingsScreen(
     modifier: Modifier = Modifier,
     backupActions: @Composable () -> Unit = {},
     logActions: @Composable () -> Unit = {},
+    aiActions: @Composable () -> Unit = {},
 ) {
     Column(
         modifier = modifier
@@ -101,6 +102,11 @@ fun SettingsScreen(
             checked = settings.appLockEnabled,
             onCheckedChange = onAppLockChanged,
         )
+
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
+        SectionTitle(stringResource(R.string.settings_section_ai))
+        aiActions()
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
 

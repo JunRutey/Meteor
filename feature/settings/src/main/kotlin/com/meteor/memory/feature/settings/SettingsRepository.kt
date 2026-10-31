@@ -29,7 +29,11 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             verboseLogging = prefs[KEY_VERBOSE_LOGGING] ?: false,
             autoBackupEnabled = prefs[KEY_AUTO_BACKUP] ?: true,
             backupRetention = prefs[KEY_BACKUP_RETENTION] ?: AppSettings.DEFAULT_BACKUP_RETENTION,
-            aiEnabled = prefs[KEY_AI_ENABLED] ?: false,
+            aiEnabled = prefs[KEY_AI_ENABLED] ?: true,
+            aiConsentAccepted = prefs[KEY_AI_CONSENT] ?: false,
+            aiProvider = prefs[KEY_AI_PROVIDER] ?: AppSettings.DEFAULT_AI_PROVIDER,
+            aiBaseUrl = prefs[KEY_AI_BASE_URL].orEmpty(),
+            aiModel = prefs[KEY_AI_MODEL].orEmpty(),
         )
     }
 
@@ -52,6 +56,18 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
 
     suspend fun setAiEnabled(enabled: Boolean) = store.edit { it[KEY_AI_ENABLED] = enabled }
 
+    suspend fun setAiConsentAccepted(accepted: Boolean) =
+        store.edit { it[KEY_AI_CONSENT] = accepted }
+
+    suspend fun setAiProvider(provider: String) =
+        store.edit { it[KEY_AI_PROVIDER] = provider.trim() }
+
+    suspend fun setAiBaseUrl(baseUrl: String) =
+        store.edit { it[KEY_AI_BASE_URL] = baseUrl.trim() }
+
+    suspend fun setAiModel(model: String) =
+        store.edit { it[KEY_AI_MODEL] = model.trim() }
+
     private companion object {
         val KEY_DARK_MODE = stringPreferencesKey("dark_mode")
         val KEY_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
@@ -62,5 +78,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val KEY_AUTO_BACKUP = booleanPreferencesKey("auto_backup_enabled")
         val KEY_BACKUP_RETENTION = intPreferencesKey("backup_retention")
         val KEY_AI_ENABLED = booleanPreferencesKey("ai_enabled")
+        val KEY_AI_CONSENT = booleanPreferencesKey("ai_consent_accepted")
+        val KEY_AI_PROVIDER = stringPreferencesKey("ai_provider")
+        val KEY_AI_BASE_URL = stringPreferencesKey("ai_base_url")
+        val KEY_AI_MODEL = stringPreferencesKey("ai_model")
     }
 }

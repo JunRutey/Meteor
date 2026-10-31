@@ -42,6 +42,13 @@ import androidx.navigation.navArgument
 import com.meteor.memory.BuildConfig
 import com.meteor.memory.R
 import com.meteor.memory.core.storage.RecordType
+import com.meteor.memory.feature.ai.AiPersonChip
+import com.meteor.memory.feature.ai.AiScreen
+import com.meteor.memory.feature.ai.AiSettingsSection
+import com.meteor.memory.feature.ai.R as AiR
+import com.meteor.memory.feature.ai.AiSkillChip
+import com.meteor.memory.feature.ai.PersonaScreen
+import com.meteor.memory.feature.ai.aiProviderLabel
 import com.meteor.memory.feature.calendar.CalendarScreen
 import com.meteor.memory.feature.gallery.GalleryScreen
 import com.meteor.memory.feature.gallery.ImageViewerScreen
@@ -51,6 +58,9 @@ import com.meteor.memory.feature.people.PersonDetailScreen
 import com.meteor.memory.feature.people.PersonEditScreen
 import com.meteor.memory.feature.people.PersonRecordRow
 import com.meteor.memory.feature.settings.SettingsScreen
+import com.meteor.memory.ui.ai.AiBlocked
+import com.meteor.memory.ui.ai.AiViewModel
+import com.meteor.memory.ui.ai.PersonaViewModel
 import com.meteor.memory.ui.backup.BackupActions
 import com.meteor.memory.ui.calendar.CalendarViewModel
 import com.meteor.memory.ui.diagnostics.StorageDiagnosticsScreen
@@ -66,6 +76,7 @@ import com.meteor.memory.ui.people.PersonDetailViewModel
 import com.meteor.memory.ui.people.PersonEditViewModel
 import com.meteor.memory.ui.search.SearchScreen
 import com.meteor.memory.ui.search.SearchViewModel
+import com.meteor.memory.ui.settings.AiTestState
 import com.meteor.memory.ui.settings.SettingsViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -84,6 +95,8 @@ private const val ROUTE_PERSON = "people/{personId}"
 private const val ROUTE_PERSON_EDIT = "people/{personId}/edit"
 private const val ROUTE_GALLERY = "gallery"
 private const val ROUTE_IMAGE = "gallery/{token}"
+private const val ROUTE_AI = "ai?personId={personId}"
+private const val ROUTE_PERSONA = "ai/persona/{personId}"
 
 /** Shown in the About section; must match README.md. */
 private const val REPOSITORY_URL = "https://github.com/JunRutey/Meteor"
@@ -95,7 +108,11 @@ private fun Context.openInBrowser(url: String) {
 }
 
 @Composable
-fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
+fun MeteorNavHost(
+    versionName: String,
+    animationsEnabled: Boolean = true,
+    aiEnabled: Boolean = true,
+) {
     val navController = rememberNavController()
 
     // Archive R11: turning animations off must kill screen transitions too.
@@ -122,6 +139,11 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
                 onOpenCalendar = { navController.navigate(ROUTE_CALENDAR) },
                 onOpenPeople = { navController.navigate(ROUTE_PEOPLE) },
                 onOpenGallery = { navController.navigate(ROUTE_GALLERY) },
+                onOpenAi = if (aiEnabled) {
+                    { navController.navigate("ai") }
+                } else {
+                    null
+                },
                 onOpenDiagnostics = if (BuildConfig.DEBUG) {
                     { navController.navigate(ROUTE_DIAGNOSTICS) }
                 } else {
@@ -280,6 +302,73 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
             )
         }
 
+        composable(
+            route = ROUTE_AI,
+            arguments = listOf(
+                navArgument(AiViewModel.ARG_PERSON_ID) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) {
+            val viewModel: AiViewModel = hiltViewModel()
+            val state by viewModel.state.collectAsStateWithLifecycle()
+
+            RefreshOnResume { viewModel.refresh() }
+
+            AiScreen(
+                providerLabel = aiProviderLabel(state.provider),
+                skills = state.skills.map { skill ->
+                    AiSkillChip(skill.name, aiSkillLabel(skill.name), skill.requiresPerson)
+                },
+                selectedSkillId = state.selectedSkill,
+                people = state.people.map { AiPersonChip(it.personId, it.displayName ?: it.personId.take(8)) },
+                selectedPersonId = state.selectedPersonId,
+                messages = state.messages,
+                busy = state.busy,
+                error = aiErrorText(state.errorCode, state.errorDetail),
+                blockedMessage = aiBlockedText(state.blocked),
+                personaStatus = state.selectedPersonId?.let {
+                    stringResource(
+                        if (state.personaDistilled) AiR.string.ai_persona_ready else AiR.string.ai_persona_missing,
+                    )
+                },
+                onSkillSelect = viewModel::selectSkill,
+                onPersonSelect = viewModel::selectPerson,
+                onSend = viewModel::send,
+                onOpenPersona = { personId -> navController.navigate("ai/persona/$personId") },
+                onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
+                onClear = viewModel::clear,
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(
+            route = ROUTE_PERSONA,
+            arguments = listOf(navArgument(PersonaViewModel.ARG_PERSON_ID) { type = NavType.StringType }),
+        ) { entry ->
+            val viewModel: PersonaViewModel = hiltViewModel()
+            val state by viewModel.state.collectAsStateWithLifecycle()
+            val personId = entry.arguments?.getString(PersonaViewModel.ARG_PERSON_ID).orEmpty()
+
+            RefreshOnResume { viewModel.load() }
+
+            val providerLabel = aiProviderLabel(state.provider)
+            PersonaScreen(
+                persona = state.ui.copy(providerLabel = state.ui.providerLabel?.let { aiProviderLabel(it) }),
+                providerLabel = providerLabel,
+                sendsTo = providerLabel,
+                busy = state.busy,
+                error = aiErrorText(state.errorCode, state.errorDetail),
+                blockedMessage = aiBlockedText(state.blocked),
+                onDistill = viewModel::distill,
+                onOpenChat = { navController.navigate("ai?personId=${Uri.encode(personId)}") },
+                onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
+                onBack = { navController.popBackStack() },
+            )
+        }
+
         composable(ROUTE_SEARCH) {
             val viewModel: SearchViewModel = hiltViewModel()
             val state by viewModel.state.collectAsStateWithLifecycle()
@@ -302,6 +391,8 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
             val viewModel: SettingsViewModel = hiltViewModel()
             val settings by viewModel.settings.collectAsStateWithLifecycle()
             val logSizeBytes by viewModel.logSizeBytes.collectAsStateWithLifecycle()
+            val apiKeyPresent by viewModel.apiKeyPresent.collectAsStateWithLifecycle()
+            val aiTest by viewModel.aiTest.collectAsStateWithLifecycle()
             val context = LocalContext.current
 
             RefreshOnResume { viewModel.refreshLogSize() }
@@ -319,6 +410,26 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
                 logSizeBytes = logSizeBytes,
                 backupActions = { BackupActions() },
                 logActions = { LogActions() },
+                aiActions = {
+                    AiSettingsSection(
+                        enabled = settings.aiEnabled,
+                        consentAccepted = settings.aiConsentAccepted,
+                        provider = settings.aiProvider,
+                        baseUrl = settings.aiBaseUrl,
+                        model = settings.aiModel,
+                        apiKeyPresent = apiKeyPresent,
+                        testing = aiTest.running,
+                        testMessage = aiTestText(aiTest),
+                        onEnabledChange = viewModel::setAiEnabled,
+                        onConsentAccepted = viewModel::acceptAiConsent,
+                        onProviderChange = viewModel::setAiProvider,
+                        onBaseUrlChange = viewModel::setAiBaseUrl,
+                        onModelChange = viewModel::setAiModel,
+                        onSaveApiKey = viewModel::saveApiKey,
+                        onClearApiKey = viewModel::clearApiKey,
+                        onTestConnection = viewModel::testAiConnection,
+                    )
+                },
             )
         }
 
@@ -394,6 +505,49 @@ private fun recordTypeLabel(type: RecordType): String = stringResource(
     },
 )
 
+/** Human label for a bundled skill; unknown names fall back to the raw id. */
+@Composable
+private fun aiSkillLabel(name: String): String = when (name) {
+    "meteor-persona-chat" -> stringResource(AiR.string.ai_skill_persona_chat)
+    "meteor-persona-distill" -> stringResource(AiR.string.ai_skill_persona_distill)
+    "meteor-archive-qa" -> stringResource(AiR.string.ai_skill_archive_qa)
+    else -> name
+}
+
+/** Maps a provider error to copy that never includes archive content. */
+@Composable
+private fun aiErrorText(code: Int, detail: String?): String? {
+    if (code == 0 && detail == null) return null
+    return when {
+        detail == "not-configured" || detail == "missing-api-key" -> stringResource(AiR.string.ai_need_config)
+        detail == "empty-response" -> stringResource(AiR.string.ai_error_empty)
+        detail == "step-limit" -> stringResource(AiR.string.ai_error_step_limit)
+        code == 401 || code == 403 -> stringResource(AiR.string.ai_error_auth)
+        code == 429 -> stringResource(AiR.string.ai_error_rate)
+        code >= 500 || code == 0 -> stringResource(AiR.string.ai_error_network)
+        else -> stringResource(AiR.string.ai_error_other, detail ?: code.toString())
+    }
+}
+
+@Composable
+private fun aiBlockedText(blocked: AiBlocked?): String? = when (blocked) {
+    AiBlocked.DISABLED -> stringResource(AiR.string.ai_need_disabled)
+    AiBlocked.NEEDS_CONSENT -> stringResource(AiR.string.ai_need_consent)
+    AiBlocked.NEEDS_KEY -> stringResource(AiR.string.ai_need_key)
+    AiBlocked.NEEDS_CONFIG -> stringResource(AiR.string.ai_need_config)
+    null -> null
+}
+
+@Composable
+private fun aiTestText(test: AiTestState): String? = when {
+    !test.finished -> null
+    test.ok -> stringResource(AiR.string.ai_settings_test_ok)
+    else -> stringResource(
+        AiR.string.ai_settings_test_fail,
+        if (test.code == 0) stringResource(AiR.string.ai_need_config) else "HTTP ${test.code}",
+    )
+}
+
 /**
  * System image picker, reduced to "read these bytes".
  *
@@ -438,6 +592,7 @@ private fun HomeScreen(
     onOpenCalendar: () -> Unit,
     onOpenPeople: () -> Unit,
     onOpenGallery: () -> Unit,
+    onOpenAi: (() -> Unit)?,
     onOpenDiagnostics: (() -> Unit)?,
 ) {
     Column(
@@ -464,6 +619,11 @@ private fun HomeScreen(
         }
         OutlinedButton(onClick = onOpenGallery, modifier = Modifier.padding(top = 8.dp)) {
             Text(text = stringResource(R.string.home_open_gallery))
+        }
+        onOpenAi?.let { open ->
+            OutlinedButton(onClick = open, modifier = Modifier.padding(top = 8.dp)) {
+                Text(text = stringResource(R.string.home_open_ai))
+            }
         }
         OutlinedButton(onClick = onOpenSettings, modifier = Modifier.padding(top = 8.dp)) {
             Text(text = stringResource(R.string.home_open_settings))

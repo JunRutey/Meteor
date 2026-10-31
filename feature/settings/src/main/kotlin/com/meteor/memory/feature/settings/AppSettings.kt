@@ -17,10 +17,24 @@ data class AppSettings(
     val verboseLogging: Boolean = false,
     val autoBackupEnabled: Boolean = true,
     val backupRetention: Int = DEFAULT_BACKUP_RETENTION,
-    val aiEnabled: Boolean = false,
+    /**
+     * AI entry point (ADR-024). Visible by default, but nothing leaves the
+     * device unless [aiConsentAccepted] is true and the user configured a
+     * provider + API key. Turning it off hides the entry and stops all requests.
+     */
+    val aiEnabled: Boolean = true,
+    /** Set only after the user accepted the "content leaves the device" dialog. */
+    val aiConsentAccepted: Boolean = false,
+    /** Provider preset id: `deepseek`, `openai` or `custom`. */
+    val aiProvider: String = DEFAULT_AI_PROVIDER,
+    /** Only used by the `custom` preset; presets carry their own endpoint. */
+    val aiBaseUrl: String = "",
+    /** Empty means "use the preset's default model". */
+    val aiModel: String = "",
 ) {
     companion object {
         const val DEFAULT_BACKUP_RETENTION = 7
+        const val DEFAULT_AI_PROVIDER = "deepseek"
     }
 }
 

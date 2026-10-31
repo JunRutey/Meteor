@@ -13,6 +13,7 @@ app feature-calendar
 app feature-editor
 app feature-people
 app feature-gallery
+app feature-ai
 app core-backup
 app core-storage
 app core-crypto
@@ -24,6 +25,7 @@ feature-settings core-backup
 feature-calendar core-storage
 feature-editor core-storage
 feature-people core-storage
+feature-ai core-storage
 feature-people feature-editor
 core-backup core-storage
 core-backup core-crypto

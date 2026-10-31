@@ -24,3 +24,5 @@ captures/
 
 secrets.properties
 *.env
+# A mis-expanded credential-store path can drop a copy in the tree; never commit it.
+*git-credentials*

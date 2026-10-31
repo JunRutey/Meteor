@@ -1,0 +1,212 @@
+package com.meteor.memory.ui.ai
+
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.meteor.memory.core.log.AppLog
+import com.meteor.memory.core.storage.PersonEntry
+import com.meteor.memory.core.storage.PersonQueries
+import com.meteor.memory.feature.ai.AiChatBubble
+import com.meteor.memory.feature.ai.AiModule
+import com.meteor.memory.feature.ai.AiPresets
+import com.meteor.memory.feature.ai.AiProviderException
+import com.meteor.memory.feature.ai.AiSkill
+import com.meteor.memory.feature.ai.ChatRequest
+import com.meteor.memory.feature.ai.ChatTurn
+import com.meteor.memory.feature.ai.SkillStage
+import com.meteor.memory.feature.settings.AppSettings
+import com.meteor.memory.feature.settings.SettingsRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import javax.inject.Inject
+
+/** Why the chat is unavailable. Mapped to user copy by the UI layer. */
+enum class AiBlocked { DISABLED, NEEDS_CONSENT, NEEDS_KEY, NEEDS_CONFIG }
+
+data class AiUiState(
+    val skills: List<AiSkill> = emptyList(),
+    val selectedSkill: String? = null,
+    val people: List<PersonEntry> = emptyList(),
+    val selectedPersonId: String? = null,
+    val personaDistilled: Boolean = false,
+    val messages: List<AiChatBubble> = emptyList(),
+    val busy: Boolean = false,
+    val errorCode: Int = 0,
+    val errorDetail: String? = null,
+    val blocked: AiBlocked? = null,
+    val provider: String = AiPresets.DEEPSEEK,
+)
+
+@HiltViewModel
+class AiViewModel @Inject constructor(
+    savedStateHandle: SavedStateHandle,
+    private val aiModule: AiModule,
+    private val personQueries: PersonQueries,
+    private val repository: SettingsRepository,
+    private val reader: AiSettingsReader,
+    private val appLog: AppLog,
+) : ViewModel() {
+
+    private val initialPersonId: String? = savedStateHandle.get<String>(ARG_PERSON_ID)
+
+    private val _state = MutableStateFlow(AiUiState())
+    val state: StateFlow<AiUiState> = _state.asStateFlow()
+
+    init {
+        observeReadiness()
+        loadLibrary()
+        initialPersonId?.let { selectPerson(it) }
+    }
+
+    private fun observeReadiness() {
+        viewModelScope.launch {
+            repository.settings.collect { settings ->
+                val blocked = blockedOf(settings)
+                _state.update { it.copy(blocked = blocked, provider = settings.aiProvider) }
+            }
+        }
+    }
+
+    private fun loadLibrary() {
+        viewModelScope.launch {
+            val chatSkills = runCatching { aiModule.skills() }
+                .getOrDefault(emptyList())
+                .filter { it.stage == SkillStage.CHAT }
+            val people = withContext(Dispatchers.IO) { personQueries.list() }
+            _state.update { state ->
+                val default = if (state.selectedPersonId != null) {
+                    chatSkills.firstOrNull { it.requiresPerson }
+                } else {
+                    chatSkills.firstOrNull { !it.requiresPerson }
+                }
+                state.copy(
+                    skills = chatSkills,
+                    people = people,
+                    selectedSkill = state.selectedSkill ?: default?.name ?: chatSkills.firstOrNull()?.name,
+                )
+            }
+        }
+    }
+
+    fun selectSkill(name: String) {
+        _state.update { it.copy(selectedSkill = name) }
+    }
+
+    fun selectPerson(personId: String?) {
+        _state.update { state ->
+            val current = state.skills.firstOrNull { it.name == state.selectedSkill }
+            val compatible = when {
+                personId == null && current?.requiresPerson == true ->
+                    state.skills.firstOrNull { !it.requiresPerson }
+
+                personId != null && current?.requiresPerson != true ->
+                    state.skills.firstOrNull { it.requiresPerson }
+
+                else -> current
+            }
+            state.copy(
+                selectedPersonId = personId,
+                selectedSkill = compatible?.name ?: state.selectedSkill,
+                personaDistilled = false,
+                errorCode = 0,
+                errorDetail = null,
+            )
+        }
+        if (personId == null) return
+        viewModelScope.launch {
+            runCatching { aiModule.persona(personId) }.onSuccess { persona ->
+                _state.update { it.copy(personaDistilled = persona.distilled) }
+            }
+        }
+    }
+
+    fun send(text: String) {
+        val query = text.trim()
+        val current = _state.value
+        if (query.isEmpty() || current.busy || current.blocked != null) return
+        val skillName = current.selectedSkill ?: return
+        val personId = current.selectedPersonId
+        val history = current.messages.map { ChatTurn(fromUser = it.fromUser, text = it.text) }
+
+        _state.update {
+            it.copy(
+                messages = it.messages + AiChatBubble(fromUser = true, text = query),
+                busy = true,
+                errorCode = 0,
+                errorDetail = null,
+            )
+        }
+
+        viewModelScope.launch {
+            val readiness = withContext(Dispatchers.IO) { runCatching { reader.read() }.getOrNull() }
+            if (readiness == null || !readiness.config.isConfigured()) {
+                _state.update { it.copy(busy = false, errorCode = 0, errorDetail = "not-configured") }
+                return@launch
+            }
+            runCatching {
+                aiModule.chat(
+                    ChatRequest(
+                        skillName = skillName,
+                        question = query,
+                        personId = personId,
+                        history = history,
+                        config = readiness.config,
+                    ),
+                )
+            }.onSuccess { reply ->
+                _state.update {
+                    it.copy(
+                        busy = false,
+                        messages = it.messages + AiChatBubble(fromUser = false, text = reply.text),
+                    )
+                }
+            }.onFailure { error ->
+                appLog.warn(TAG, "chat failed", error)
+                _state.update {
+                    it.copy(
+                        busy = false,
+                        errorCode = (error as? AiProviderException)?.code ?: 0,
+                        errorDetail = (error as? AiProviderException)?.message,
+                    )
+                }
+            }
+        }
+    }
+
+    fun clear() {
+        _state.update { it.copy(messages = emptyList(), errorCode = 0, errorDetail = null) }
+    }
+
+    /** Re-check the selected persona after returning from its screen. */
+    fun refresh() {
+        val personId = _state.value.selectedPersonId ?: return
+        viewModelScope.launch {
+            runCatching { aiModule.persona(personId) }.onSuccess { persona ->
+                _state.update { it.copy(personaDistilled = persona.distilled) }
+            }
+        }
+    }
+
+    private suspend fun blockedOf(settings: AppSettings): AiBlocked? {
+        if (!settings.aiEnabled) return AiBlocked.DISABLED
+        if (!settings.aiConsentAccepted) return AiBlocked.NEEDS_CONSENT
+        val readiness = withContext(Dispatchers.IO) { runCatching { reader.read() }.getOrNull() }
+            ?: return AiBlocked.NEEDS_CONFIG
+        return when {
+            !readiness.hasApiKey -> AiBlocked.NEEDS_KEY
+            !readiness.config.isConfigured() -> AiBlocked.NEEDS_CONFIG
+            else -> null
+        }
+    }
+
+    companion object {
+        const val ARG_PERSON_ID = "personId"
+        private const val TAG = "Ai"
+    }
+}
