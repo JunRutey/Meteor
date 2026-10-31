@@ -101,7 +101,7 @@ object TimePhrase {
     }
 
     private fun yearOf(today: LocalDate, offset: Long): DateWindow {
-        val year = today.year + offset
+        val year = today.year + offset.toInt()
         val label = if (offset == 0L) "this year" else "last year"
         return DateWindow(LocalDate.of(year, 1, 1), LocalDate.of(year, 12, 31), label)
     }
