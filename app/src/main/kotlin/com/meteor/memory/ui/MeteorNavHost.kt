@@ -109,6 +109,7 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
                 settings = settings,
                 versionName = versionName,
                 onDarkModeChanged = viewModel::setDarkMode,
+                onDynamicColorChanged = viewModel::setDynamicColor,
                 onFontScaleChanged = viewModel::setFontScale,
                 onAnimationsChanged = viewModel::setAnimationsEnabled,
                 onAppLockChanged = viewModel::setAppLockEnabled,

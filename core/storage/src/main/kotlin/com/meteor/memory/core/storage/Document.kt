@@ -39,4 +39,9 @@ data class Document(
     val timestamp: Instant,
     val source: RecordSource,
     val body: String,
+    /**
+     * The `meteor-sig` watermark recovered from the ciphertext, if the record
+     * carries one. Shown in the editor's meta area; never part of [body].
+     */
+    val signedAt: Instant? = null,
 )

@@ -1,5 +1,6 @@
 package com.meteor.memory.feature.settings
 
+import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -32,6 +33,7 @@ fun SettingsScreen(
     settings: AppSettings,
     versionName: String,
     onDarkModeChanged: (DarkMode) -> Unit,
+    onDynamicColorChanged: (Boolean) -> Unit,
     onFontScaleChanged: (FontScale) -> Unit,
     onAnimationsChanged: (Boolean) -> Unit,
     onAppLockChanged: (Boolean) -> Unit,
@@ -60,9 +62,19 @@ fun SettingsScreen(
             onSelect = onDarkModeChanged,
         )
 
+        // Dynamic colour is an Android 12+ capability; older releases fall back
+        // to the built-in palette, so the switch would be a lie there.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            ToggleRow(
+                title = stringResource(R.string.settings_dynamic_color),
+                subtitle = stringResource(R.string.settings_dynamic_color_desc),
+                checked = settings.dynamicColor,
+                onCheckedChange = onDynamicColorChanged,
+            )
+        }
+
         ChoiceRow(
-            title = stringResource(R.string.settings_font_scale),
-            options = listOf(
+            title = stringResource(R.string.settings_font_scale),            options = listOf(
                 FontScale.SMALL to stringResource(R.string.settings_font_small),
                 FontScale.NORMAL to stringResource(R.string.settings_font_normal),
                 FontScale.LARGE to stringResource(R.string.settings_font_large),

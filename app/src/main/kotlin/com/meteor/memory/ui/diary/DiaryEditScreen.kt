@@ -41,6 +41,13 @@ fun DiaryEditScreen(
         ) {
             Column {
                 Text(text = state.dateLabel, style = MaterialTheme.typography.titleLarge)
+                state.signedAtLabel?.let { stamped ->
+                    Text(
+                        text = stringResource(R.string.diary_signed_at, stamped),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 if (state.saved) {
                     Text(
                         text = stringResource(R.string.diary_saved),

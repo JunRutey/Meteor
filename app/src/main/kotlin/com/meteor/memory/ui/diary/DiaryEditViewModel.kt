@@ -13,13 +13,19 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import java.util.Locale
 import javax.inject.Inject
 
 data class DiaryEditorState(
     val dateLabel: String,
     val text: String,
+    /** Localized `meteor-sig` watermark, shown as metadata — never in the body. */
+    val signedAtLabel: String? = null,
     val isSaving: Boolean = false,
     val saved: Boolean = false,
     val error: String? = null,
@@ -45,8 +51,11 @@ class DiaryEditViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            val body = withContext(Dispatchers.IO) { diaryQueries.read(date)?.body.orEmpty() }
-            _state.value = _state.value.copy(text = body)
+            val document = withContext(Dispatchers.IO) { diaryQueries.read(date) }
+            _state.value = _state.value.copy(
+                text = document?.body.orEmpty(),
+                signedAtLabel = document?.signedAt?.let(::formatStamp),
+            )
         }
     }
 
@@ -67,13 +76,28 @@ class DiaryEditViewModel @Inject constructor(
                 onSuccess = { appLog.info(TAG, "diary saved: $date") },
                 onFailure = { appLog.error(TAG, "diary save failed: $date", it) },
             )
+
+            // Re-read so the watermark reflects the stamp actually written.
+            val stored = if (result.isSuccess) {
+                withContext(Dispatchers.IO) { runCatching { diaryQueries.read(date) }.getOrNull() }
+            } else {
+                null
+            }
+
             _state.value = _state.value.copy(
                 isSaving = false,
                 saved = result.isSuccess,
                 error = result.exceptionOrNull()?.message,
+                signedAtLabel = stored?.signedAt?.let(::formatStamp) ?: _state.value.signedAtLabel,
             )
         }
     }
+
+    private fun formatStamp(instant: Instant): String =
+        DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM)
+            .withLocale(Locale.getDefault())
+            .withZone(ZoneId.systemDefault())
+            .format(instant)
 
     companion object {
         const val ARG_DATE = "date"

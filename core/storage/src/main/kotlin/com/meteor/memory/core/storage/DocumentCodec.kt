@@ -50,6 +50,10 @@ object DocumentCodec {
             throw StorageException("cannot decrypt: ${file.name}", e)
         }
 
+        // Read the watermark before stripping it: the UI shows it in the meta
+        // area while the body must not contain it.
+        val signedAt = time.readStamp(plaintext)
+
         return Document(
             file = file,
             personId = parsed.header.personId,
@@ -57,6 +61,7 @@ object DocumentCodec {
             timestamp = parsed.header.timestamp,
             source = parsed.header.source,
             body = time.strip(plaintext),
+            signedAt = signedAt,
         )
     }
 

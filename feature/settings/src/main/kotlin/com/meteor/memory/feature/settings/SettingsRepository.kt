@@ -21,6 +21,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         AppSettings(
             darkMode = prefs[KEY_DARK_MODE]?.let { runCatching { DarkMode.valueOf(it) }.getOrNull() }
                 ?: DarkMode.FOLLOW_SYSTEM,
+            dynamicColor = prefs[KEY_DYNAMIC_COLOR] ?: true,
             animationsEnabled = prefs[KEY_ANIMATIONS] ?: true,
             fontScale = prefs[KEY_FONT_SCALE]?.let { runCatching { FontScale.valueOf(it) }.getOrNull() }
                 ?: FontScale.SYSTEM,
@@ -32,6 +33,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     }
 
     suspend fun setDarkMode(mode: DarkMode) = store.edit { it[KEY_DARK_MODE] = mode.name }
+
+    suspend fun setDynamicColor(enabled: Boolean) = store.edit { it[KEY_DYNAMIC_COLOR] = enabled }
 
     suspend fun setAnimationsEnabled(enabled: Boolean) = store.edit { it[KEY_ANIMATIONS] = enabled }
 
@@ -48,6 +51,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
 
     private companion object {
         val KEY_DARK_MODE = stringPreferencesKey("dark_mode")
+        val KEY_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         val KEY_ANIMATIONS = booleanPreferencesKey("animations_enabled")
         val KEY_FONT_SCALE = stringPreferencesKey("font_scale")
         val KEY_APP_LOCK = booleanPreferencesKey("app_lock_enabled")

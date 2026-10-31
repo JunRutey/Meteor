@@ -62,6 +62,7 @@ fun MeteorRoot(versionName: String) {
     MeteorTheme(
         darkTheme = darkTheme,
         animationsEnabled = settings.animationsEnabled,
+        dynamicColor = settings.dynamicColor,
         fontScale = fontScale,
     ) {
         Surface(

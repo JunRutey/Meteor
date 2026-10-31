@@ -28,6 +28,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repository.setDarkMode(mode) }
     }
 
+    fun setDynamicColor(enabled: Boolean) {
+        viewModelScope.launch { repository.setDynamicColor(enabled) }
+    }
+
     fun setFontScale(scale: FontScale) {
         viewModelScope.launch { repository.setFontScale(scale) }
     }

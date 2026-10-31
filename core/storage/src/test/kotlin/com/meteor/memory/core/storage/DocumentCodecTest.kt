@@ -52,6 +52,8 @@ class DocumentCodecTest {
         assertEquals(RecordType.DIARY, doc.type)
         assertEquals(timestamp, doc.timestamp)
         assertEquals("V1StGXR8_Z5jdHi6B-myT", doc.personId)
+        // The watermark is recovered for the UI even though the body is stripped.
+        assertEquals(timestamp, doc.signedAt)
     }
 
     @Test
