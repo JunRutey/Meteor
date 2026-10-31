@@ -18,6 +18,13 @@ data class SearchIndexSummary(
     val persons: Int,
 )
 
+/** One record belonging to a person, used by the people overview. */
+data class PersonRecord(
+    val recordId: String,
+    val type: RecordType,
+    val timestamp: Instant,
+)
+
 /**
  * Seam that makes `:core-index` removable (archive R3).
  *
@@ -38,4 +45,7 @@ interface SearchService {
 
     /** Launch-time full rebuild used as the safety net for incremental updates. */
     suspend fun rebuildOnLaunch()
+
+    /** Records aggregated under one `person_id`, newest first. */
+    suspend fun recordsForPerson(personId: String): List<PersonRecord>
 }

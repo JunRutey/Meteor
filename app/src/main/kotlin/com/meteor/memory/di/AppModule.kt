@@ -21,8 +21,10 @@ import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.storage.EncryptedImageStore
 import com.meteor.memory.core.storage.ImageStore
 import com.meteor.memory.core.storage.MoodQueries
+import com.meteor.memory.core.storage.PersonQueries
 import com.meteor.memory.core.storage.PrivateDiaryQueries
 import com.meteor.memory.core.storage.PrivateMoodQueries
+import com.meteor.memory.core.storage.PrivatePersonQueries
 import com.meteor.memory.core.storage.PrivateRecordScanner
 import com.meteor.memory.core.storage.PrivateStorageRouter
 import com.meteor.memory.core.storage.RecordScanner
@@ -95,6 +97,16 @@ object AppModule {
     fun provideMoodQueries(        @ApplicationContext context: Context,
         storageRouter: StorageRouter,
     ): MoodQueries = PrivateMoodQueries(
+        rootDir = File(context.filesDir, StorageLayout.ROOT_NAME),
+        router = storageRouter,
+    )
+
+    @Provides
+    @Singleton
+    fun providePersonQueries(
+        @ApplicationContext context: Context,
+        storageRouter: StorageRouter,
+    ): PersonQueries = PrivatePersonQueries(
         rootDir = File(context.filesDir, StorageLayout.ROOT_NAME),
         router = storageRouter,
     )

@@ -23,6 +23,8 @@ class NoOpSearchService @Inject constructor() : SearchService {
     override suspend fun indexDocument(document: Document) = Unit
 
     override suspend fun rebuildOnLaunch() = Unit
+
+    override suspend fun recordsForPerson(personId: String): List<PersonRecord> = emptyList()
 }
 
 @dagger.Module

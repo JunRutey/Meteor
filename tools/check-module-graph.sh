@@ -11,6 +11,7 @@ ALLOWED_EDGES="$(cat <<'EOF'
 app feature-settings
 app feature-calendar
 app feature-editor
+app feature-people
 app core-backup
 app core-storage
 app core-crypto
@@ -21,6 +22,7 @@ feature-settings core-crypto
 feature-settings core-backup
 feature-calendar core-storage
 feature-editor core-storage
+feature-people core-storage
 core-backup core-storage
 core-backup core-crypto
 core-index core-storage

@@ -44,7 +44,12 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.meteor.memory.BuildConfig
 import com.meteor.memory.R
+import com.meteor.memory.core.storage.RecordType
 import com.meteor.memory.feature.calendar.CalendarScreen
+import com.meteor.memory.feature.people.PeopleListScreen
+import com.meteor.memory.feature.people.PeopleRow
+import com.meteor.memory.feature.people.PersonDetailScreen
+import com.meteor.memory.feature.people.PersonRecordRow
 import com.meteor.memory.feature.settings.SettingsScreen
 import com.meteor.memory.ui.backup.BackupActions
 import com.meteor.memory.ui.calendar.CalendarViewModel
@@ -54,6 +59,8 @@ import com.meteor.memory.ui.diary.DiaryEditViewModel
 import com.meteor.memory.ui.diary.DiaryListScreen
 import com.meteor.memory.ui.diary.DiaryListViewModel
 import com.meteor.memory.ui.log.LogActions
+import com.meteor.memory.ui.people.PeopleViewModel
+import com.meteor.memory.ui.people.PersonDetailViewModel
 import com.meteor.memory.ui.search.SearchScreen
 import com.meteor.memory.ui.search.SearchViewModel
 import com.meteor.memory.ui.settings.SettingsViewModel
@@ -69,6 +76,8 @@ private const val ROUTE_DIARY_EDIT = "diary/edit"
 private const val ROUTE_DIAGNOSTICS = "diagnostics"
 private const val ROUTE_SEARCH = "search"
 private const val ROUTE_CALENDAR = "calendar"
+private const val ROUTE_PEOPLE = "people"
+private const val ROUTE_PERSON = "people/{personId}"
 
 /** Shown in the About section; must match README.md. */
 private const val REPOSITORY_URL = "https://github.com/JunRutey/Meteor"
@@ -105,6 +114,7 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
                 onOpenDiary = { navController.navigate(ROUTE_DIARY) },
                 onOpenSearch = { navController.navigate(ROUTE_SEARCH) },
                 onOpenCalendar = { navController.navigate(ROUTE_CALENDAR) },
+                onOpenPeople = { navController.navigate(ROUTE_PEOPLE) },
                 onOpenDiagnostics = if (BuildConfig.DEBUG) {
                     { navController.navigate(ROUTE_DIAGNOSTICS) }
                 } else {
@@ -129,6 +139,56 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
                 onSelectDate = viewModel::selectDate,
                 onPickMood = viewModel::setMood,
                 onOpenDiary = { date -> navController.navigate("$ROUTE_DIARY_EDIT/$date") },
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(ROUTE_PEOPLE) {
+            val viewModel: PeopleViewModel = hiltViewModel()
+            val people by viewModel.people.collectAsStateWithLifecycle()
+            val context = LocalContext.current
+
+            RefreshOnResume { viewModel.refresh() }
+
+            PeopleListScreen(
+                people = people.map { entry ->
+                    PeopleRow(
+                        personId = entry.personId,
+                        displayName = entry.displayName ?: entry.personId.take(8),
+                        relation = entry.relation,
+                        secondary = context.getString(
+                            if (entry.hasProfile) {
+                                R.string.people_secondary_profile
+                            } else {
+                                R.string.people_secondary_missing
+                            },
+                        ),
+                    )
+                },
+                onCreate = viewModel::create,
+                onOpen = { personId -> navController.navigate("people/$personId") },
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(
+            route = ROUTE_PERSON,
+            arguments = listOf(navArgument(PersonDetailViewModel.ARG_PERSON_ID) { type = NavType.StringType }),
+        ) {
+            val viewModel: PersonDetailViewModel = hiltViewModel()
+            val state by viewModel.state.collectAsStateWithLifecycle()
+
+            PersonDetailScreen(
+                displayName = state.displayName,
+                relation = state.relation,
+                notes = state.notes,
+                records = state.records.map {
+                    PersonRecordRow(
+                        recordId = it.recordId,
+                        dateLabel = it.dateLabel,
+                        typeLabel = recordTypeLabel(it.type),
+                    )
+                },
                 onBack = { navController.popBackStack() },
             )
         }
@@ -231,6 +291,17 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
 }
 
 @Composable
+private fun recordTypeLabel(type: RecordType): String = stringResource(
+    when (type) {
+        RecordType.DIARY -> R.string.type_diary
+        RecordType.MOOD -> R.string.type_mood
+        RecordType.PROFILE -> R.string.type_profile
+        RecordType.CHAT_LOG -> R.string.type_chat_log
+        RecordType.PERSONA -> R.string.type_persona
+    },
+)
+
+@Composable
 private fun RefreshOnResume(block: () -> Unit) {
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -248,6 +319,7 @@ private fun HomeScreen(
     onOpenDiary: () -> Unit,
     onOpenSearch: () -> Unit,
     onOpenCalendar: () -> Unit,
+    onOpenPeople: () -> Unit,
     onOpenDiagnostics: (() -> Unit)?,
 ) {
     Column(
@@ -268,6 +340,9 @@ private fun HomeScreen(
         }
         OutlinedButton(onClick = onOpenCalendar, modifier = Modifier.padding(top = 8.dp)) {
             Text(text = stringResource(R.string.home_open_calendar))
+        }
+        OutlinedButton(onClick = onOpenPeople, modifier = Modifier.padding(top = 8.dp)) {
+            Text(text = stringResource(R.string.home_open_people))
         }
         OutlinedButton(onClick = onOpenSettings, modifier = Modifier.padding(top = 8.dp)) {
             Text(text = stringResource(R.string.home_open_settings))

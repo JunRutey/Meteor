@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="people_title">人际关系</string>
+    <string name="people_back">返回</string>
+    <string name="people_create">新建</string>
+    <string name="people_create_title">新建人物</string>
+    <string name="people_name">称呼</string>
+    <string name="people_confirm">创建</string>
+    <string name="people_cancel">取消</string>
+    <string name="people_empty">还没有人物档案，点「新建」开始。</string>
+    <string name="people_notes_empty">（暂无备注）</string>
+    <string name="people_records">相关记录</string>
+    <string name="people_records_empty">这个人物下还没有记录</string>
+
+    <string name="people_relation_family">家人</string>
+    <string name="people_relation_friend">朋友</string>
+    <string name="people_relation_former">绝交的朋友</string>
+    <string name="people_relation_none">未分类</string>
+</resources>

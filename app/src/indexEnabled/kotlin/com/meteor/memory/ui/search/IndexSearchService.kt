@@ -63,6 +63,15 @@ class IndexSearchService @Inject constructor(
         index.upsert(document)
     }
 
+    override suspend fun recordsForPerson(personId: String): List<PersonRecord> =
+        index.queryByPerson(personId).map { record ->
+            PersonRecord(
+                recordId = record.recordId,
+                type = record.type,
+                timestamp = record.timestamp,
+            )
+        }
+
     override suspend fun rebuildOnLaunch() {
         if (System.currentTimeMillis() < blockedUntilMillis) {
             appLog.info(TAG, "index rebuild skipped (backoff active)")

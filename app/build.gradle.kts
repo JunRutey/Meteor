@@ -82,6 +82,7 @@ dependencies {
     implementation(project(":feature-settings"))
     implementation(project(":feature-calendar"))
     implementation(project(":feature-editor"))
+    implementation(project(":feature-people"))
     implementation(project(":core-backup"))
     implementation(project(":core-storage"))
     implementation(project(":core-crypto"))
