@@ -121,11 +121,11 @@ class OpenAiCompatibleProvider(
                 ?.optJSONObject("delta")
                 ?: return@postStream
 
-            delta.optString("reasoning_content").takeIf { it.isNotEmpty() }?.let {
+            delta.optTextOrNull("reasoning_content")?.let {
                 reasoning.append(it)
                 callback.onReasoning(it)
             }
-            delta.optString("content").takeIf { it.isNotEmpty() }?.let {
+            delta.optTextOrNull("content")?.let {
                 content.append(it)
                 callback.onContent(it)
             }

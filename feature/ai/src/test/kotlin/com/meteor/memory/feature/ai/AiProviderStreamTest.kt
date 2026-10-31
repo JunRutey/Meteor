@@ -2,6 +2,7 @@ package com.meteor.memory.feature.ai
 
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -74,5 +75,43 @@ class AiProviderStreamTest {
         assertEquals(4, completion.usage?.cacheHitTokens)
         assertTrue(transport.lastBody.contains("\"stream\":true"))
         assertTrue(transport.lastBody.contains("include_usage"))
+    }
+
+    @Test
+    fun `null content deltas are not rendered as the text null`() = runBlocking {
+        val transport = FakeTransport(
+            listOf(
+                """data: {"choices":[{"delta":{"content":null,"reasoning_content":null}}]}""",
+                """data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","function":{"name":"read_diary","arguments":"{}"}}]}}]}""",
+                """data: {"choices":[{"delta":{"content":null}}]}""",
+                """data: {"choices":[{"delta":{"content":"答"}}]}""",
+                "data: [DONE]",
+            ),
+        )
+        val provider = OpenAiCompatibleProvider(
+            config = AiConfig(provider = AiPresets.DEEPSEEK, apiKey = "k"),
+            transport = transport,
+        )
+        val streamed = StringBuilder()
+        val thought = StringBuilder()
+
+        val completion = provider.completeStream(
+            messages = listOf(AiMessage.user("q")),
+            callback = object : AiStreamCallback {
+                override fun onContent(delta: String) {
+                    streamed.append(delta)
+                }
+
+                override fun onReasoning(delta: String) {
+                    thought.append(delta)
+                }
+            },
+        )
+
+        assertEquals("答", completion.content)
+        assertEquals("答", streamed.toString())
+        assertNull(completion.reasoningContent)
+        assertEquals("", thought.toString())
+        assertEquals(1, completion.toolCalls.size)
     }
 }

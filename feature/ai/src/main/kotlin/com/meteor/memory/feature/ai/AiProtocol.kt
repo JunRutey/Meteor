@@ -3,6 +3,21 @@ package com.meteor.memory.feature.ai
 import org.json.JSONArray
 import org.json.JSONObject
 
+/**
+ * `JSONObject.optString` renders a JSON `null` as the literal text `"null"`.
+ *
+ * Streaming deltas carry `"content": null` / `"reasoning_content": null` while
+ * the model is only emitting tool calls, so reading them with `optString`
+ * appended a literal "null" to the answer for every such delta. Treat JSON
+ * null (and a literal "null" string) as absent instead.
+ */
+internal fun JSONObject.optTextOrNull(name: String): String? {
+    val raw = opt(name) ?: return null
+    if (raw === JSONObject.NULL) return null
+    val text = raw.toString()
+    return text.takeIf { it.isNotEmpty() && it != "null" }
+}
+
 /** Wire roles of an OpenAI-compatible chat completion. */
 enum class AiRole(val wire: String) {
     SYSTEM("system"),
@@ -159,7 +174,7 @@ object AiProtocol {
             }
         }.orEmpty()
 
-        val reasoning = message.optString("reasoning_content").takeIf { it.isNotBlank() }
+        val reasoning = message.optTextOrNull("reasoning_content")
 
         return AiCompletion(content, calls, parseUsage(root), reasoning)
     }
