@@ -8,6 +8,14 @@
     -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!--
+        The app lock asks for a biometric or device-credential check. This is a
+        normal, install-time permission: it never raises a runtime dialog.
+        androidx.biometric pulls it in transitively, but declaring it here keeps
+        the app's only sensitive capability visible during review.
+    -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
     <application
         android:name=".MeteorApp"
         android:allowBackup="false"
