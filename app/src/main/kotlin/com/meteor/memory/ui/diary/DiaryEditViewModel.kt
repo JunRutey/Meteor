@@ -111,12 +111,6 @@ class DiaryEditViewModel @Inject constructor(
         _state.value = _state.value.copy(text = document.body, saved = false)
     }
 
-    fun insertLink(target: String, label: String?) {
-        if (target.isBlank()) return
-        document = editorModule.insertLink(document, target, label)
-        _state.value = _state.value.copy(text = document.body, saved = false)
-    }
-
     fun save() {
         val snapshot = _state.value
         if (snapshot.isSaving) return
