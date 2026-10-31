@@ -1,5 +1,6 @@
 package com.meteor.memory.core.index
 
+import com.meteor.memory.core.storage.Document
 import com.meteor.memory.core.storage.RecordType
 import java.time.Instant
 import java.time.LocalDate
@@ -65,3 +66,17 @@ data class Record(
     val timestamp: Instant,
     val sourcePath: String,
 )
+
+/**
+ * Incremental maintenance, separate from the frozen [IndexModule] contract.
+ *
+ * Kept apart so a caller that only reads never has to depend on write access,
+ * and so the frozen interface stays untouched (archive R2).
+ */
+interface IndexUpdater {
+    /** Adds or replaces the index entry for one saved record. */
+    suspend fun upsert(document: Document)
+
+    /** Drops the entry for a deleted record. */
+    suspend fun remove(sourcePath: String)
+}

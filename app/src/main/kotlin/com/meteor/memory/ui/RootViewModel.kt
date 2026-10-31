@@ -7,6 +7,7 @@ import com.meteor.memory.core.crypto.AppLock
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.SettingsRepository
+import com.meteor.memory.index.IndexBootstrap
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,6 +39,7 @@ class RootViewModel @Inject constructor(
     private val appLock: AppLock,
     private val settingsRepository: SettingsRepository,
     private val appLog: AppLog,
+    private val indexBootstrap: IndexBootstrap,
 ) : ViewModel() {
 
     private val _locked = MutableStateFlow<Boolean?>(null)
@@ -69,6 +71,7 @@ class RootViewModel @Inject constructor(
                     appLog.info(TAG, "app lock enabled=$enabled")
                     // Enabling locks straight away; disabling drops the gate.
                     _locked.value = enabled
+                    if (!enabled) scheduleIndexRebuild()
                 }
         }
     }
@@ -83,6 +86,7 @@ class RootViewModel @Inject constructor(
                     appLog.info(TAG, "unlock granted")
                     _unlockFailed.value = false
                     _locked.value = false
+                    scheduleIndexRebuild()
                 } else {
                     appLog.warn(TAG, "unlock denied or cancelled")
                     _unlockFailed.value = true
@@ -123,4 +127,17 @@ class RootViewModel @Inject constructor(
     private companion object {
         const val TAG = "AppLock"
     }
+
+    /**
+     * Rebuild once per process, and only after the content is actually
+     * reachable (unlocked). [IndexBootstrap] damps repeated failures.
+     */
+    private fun scheduleIndexRebuild() {
+        if (indexRebuildStarted) return
+        indexRebuildStarted = true
+        viewModelScope.launch { indexBootstrap.rebuildIfDue() }
+    }
+
+    @Volatile
+    private var indexRebuildStarted: Boolean = false
 }

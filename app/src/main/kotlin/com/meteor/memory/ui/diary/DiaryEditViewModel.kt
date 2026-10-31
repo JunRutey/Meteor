@@ -3,6 +3,7 @@ package com.meteor.memory.ui.diary
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.meteor.memory.core.index.IndexUpdater
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.time.TimeModule
@@ -37,6 +38,7 @@ class DiaryEditViewModel @Inject constructor(
     private val diaryQueries: DiaryQueries,
     private val timeModule: TimeModule,
     private val appLog: AppLog,
+    private val indexUpdater: IndexUpdater,
 ) : ViewModel() {
 
     private val date: LocalDate = LocalDate.parse(checkNotNull(savedStateHandle.get<String>(ARG_DATE)))
@@ -77,11 +79,18 @@ class DiaryEditViewModel @Inject constructor(
                 onFailure = { appLog.error(TAG, "diary save failed: $date", it) },
             )
 
-            // Re-read so the watermark reflects the stamp actually written.
+            // Re-read so the watermark reflects the stamp actually written, and
+            // push the fresh plaintext into the index (archive §9: incremental
+            // update on save, full rebuild on launch as the safety net).
             val stored = if (result.isSuccess) {
                 withContext(Dispatchers.IO) { runCatching { diaryQueries.read(date) }.getOrNull() }
             } else {
                 null
+            }
+
+            stored?.let { document ->
+                runCatching { indexUpdater.upsert(document) }
+                    .onFailure { appLog.warn(TAG, "index update failed", it) }
             }
 
             _state.value = _state.value.copy(

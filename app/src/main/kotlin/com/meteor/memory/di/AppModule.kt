@@ -13,6 +13,7 @@ import com.meteor.memory.core.crypto.EncryptedPrefsAppLock
 import com.meteor.memory.core.crypto.FileCrypto
 import com.meteor.memory.core.crypto.androidKeystoreFileCrypto
 import com.meteor.memory.core.index.IndexModule
+import com.meteor.memory.core.index.IndexUpdater
 import com.meteor.memory.core.index.MeteorIndex
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.log.FileAppLogger
@@ -132,14 +133,22 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideIndexModule(
+    fun provideMeteorIndex(
         @ApplicationContext context: Context,
         recordScanner: RecordScanner,
-    ): IndexModule = MeteorIndex(
+    ): MeteorIndex = MeteorIndex(
         context = context,
         rootDir = File(context.filesDir, StorageLayout.ROOT_NAME),
         scanner = recordScanner,
     )
+
+    @Provides
+    @Singleton
+    fun provideIndexModule(index: MeteorIndex): IndexModule = index
+
+    @Provides
+    @Singleton
+    fun provideIndexUpdater(index: MeteorIndex): IndexUpdater = index
 
     @Provides
     @Singleton
