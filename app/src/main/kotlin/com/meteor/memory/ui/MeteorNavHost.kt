@@ -46,6 +46,8 @@ import com.meteor.memory.ui.diary.DiaryEditViewModel
 import com.meteor.memory.ui.diary.DiaryListScreen
 import com.meteor.memory.ui.diary.DiaryListViewModel
 import com.meteor.memory.ui.log.LogActions
+import com.meteor.memory.ui.search.SearchScreen
+import com.meteor.memory.ui.search.SearchViewModel
 import com.meteor.memory.ui.settings.SettingsViewModel
 import java.time.LocalDate
 
@@ -54,6 +56,7 @@ private const val ROUTE_SETTINGS = "settings"
 private const val ROUTE_DIARY = "diary"
 private const val ROUTE_DIARY_EDIT = "diary/edit"
 private const val ROUTE_DIAGNOSTICS = "diagnostics"
+private const val ROUTE_SEARCH = "search"
 
 /** Shown in the About section; must match README.md. */
 private const val REPOSITORY_URL = "https://github.com/JunRutey/Meteor"
@@ -88,11 +91,26 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
             HomeScreen(
                 onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
                 onOpenDiary = { navController.navigate(ROUTE_DIARY) },
+                onOpenSearch = { navController.navigate(ROUTE_SEARCH) },
                 onOpenDiagnostics = if (BuildConfig.DEBUG) {
                     { navController.navigate(ROUTE_DIAGNOSTICS) }
                 } else {
                     null
                 },
+            )
+        }
+
+        composable(ROUTE_SEARCH) {
+            val viewModel: SearchViewModel = hiltViewModel()
+            val state by viewModel.state.collectAsStateWithLifecycle()
+            val query by viewModel.query.collectAsStateWithLifecycle()
+
+            SearchScreen(
+                state = state,
+                query = query,
+                onQueryChange = viewModel::onQueryChange,
+                onOpenDiary = { date -> navController.navigate("$ROUTE_DIARY_EDIT/$date") },
+                onBack = { navController.popBackStack() },
             )
         }
 
@@ -174,6 +192,7 @@ private fun RefreshOnResume(block: () -> Unit) {
 private fun HomeScreen(
     onOpenSettings: () -> Unit,
     onOpenDiary: () -> Unit,
+    onOpenSearch: () -> Unit,
     onOpenDiagnostics: (() -> Unit)?,
 ) {
     Column(
@@ -188,6 +207,9 @@ private fun HomeScreen(
 
         Button(onClick = onOpenDiary, modifier = Modifier.padding(top = 24.dp)) {
             Text(text = stringResource(R.string.home_open_diary))
+        }
+        OutlinedButton(onClick = onOpenSearch, modifier = Modifier.padding(top = 8.dp)) {
+            Text(text = stringResource(R.string.home_open_search))
         }
         OutlinedButton(onClick = onOpenSettings, modifier = Modifier.padding(top = 8.dp)) {
             Text(text = stringResource(R.string.home_open_settings))
