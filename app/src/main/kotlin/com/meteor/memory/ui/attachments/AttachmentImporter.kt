@@ -17,6 +17,9 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
+import java.nio.ByteBuffer
+import java.nio.charset.Charset
+import java.nio.charset.CodingErrorAction
 import java.util.UUID
 import java.util.zip.ZipInputStream
 import javax.inject.Inject
@@ -123,11 +126,15 @@ class AttachmentImportCoordinator @Inject constructor(
     private val appLog: AppLog,
 ) {
 
-    suspend fun importAll(uris: List<Uri>, personId: String?): AttachmentImportSummary {
+    suspend fun importAll(
+        uris: List<Uri>,
+        personId: String?,
+        onProgress: (done: Int, total: Int) -> Unit = { _, _ -> },
+    ): AttachmentImportSummary {
         var imported = 0
         var failed = 0
         var skipped = 0
-        for (uri in uris) {
+        for ((index, uri) in uris.withIndex()) {
             try {
                 importer.import(uri, personId)
                 imported++
@@ -139,6 +146,7 @@ class AttachmentImportCoordinator @Inject constructor(
                 failed++
                 appLog.warn(TAG, "attachment import failed", failure)
             }
+            onProgress(index + 1, uris.size)
         }
 
         val indexFailed = if (imported == 0) {
@@ -193,7 +201,7 @@ internal object AttachmentTextExtractor {
             extractZip(input)
         } else {
             val bytes = input.readBounded(MAX_TEXT_BYTES)
-            val text = bytes.toString(Charsets.UTF_8).removePrefix("\uFEFF")
+            val text = decode(bytes)
             if (bytes.size == MAX_TEXT_BYTES) "$text\n$TRUNCATED_MARKER" else text
         }
     }
@@ -212,7 +220,7 @@ internal object AttachmentTextExtractor {
                     if (bytes.isNotEmpty()) {
                         if (result.isNotEmpty()) result.append('\n')
                         result.append("Entry: ").append(entry.name.take(MAX_ENTRY_NAME_CHARS)).append('\n')
-                            .append(bytes.toString(Charsets.UTF_8).removePrefix("\uFEFF"))
+                            .append(decode(bytes))
                         totalBytes += bytes.size
                     }
                     if (bytes.size == remaining) {
@@ -231,6 +239,16 @@ internal object AttachmentTextExtractor {
             }
         }
         return result.toString().takeIf(String::isNotBlank)
+    }
+
+    private fun decode(bytes: ByteArray): String {
+        val decoder = Charsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+        val text = runCatching { decoder.decode(ByteBuffer.wrap(bytes)).toString() }
+            .recoverCatching { String(bytes, Charset.forName("GB18030")) }
+            .getOrDefault(String(bytes, Charsets.UTF_8))
+        return text.removePrefix("\uFEFF")
     }
 
     private fun isTextEntry(name: String): Boolean =

@@ -84,6 +84,7 @@
     <string name="records_empty_for_person">这个人还没有记录</string>
     <string name="records_import">导入文件</string>
     <string name="records_importing">导入中…</string>
+    <string name="records_import_progress">正在导入 %1$d/%2$d</string>
     <string name="records_export">导出</string>
     <string name="records_delete">删除</string>
     <string name="records_delete_confirm_title">删除这条记录？</string>

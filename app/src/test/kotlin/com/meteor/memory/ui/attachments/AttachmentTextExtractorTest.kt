@@ -1,14 +1,41 @@
 package com.meteor.memory.ui.attachments
 
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.nio.charset.Charset
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
 class AttachmentTextExtractorTest {
+
+    @Test
+    fun `utf8 text is decoded`() {
+        val expected = "\u4e2d\u6587\u6d4b\u8bd5"
+        val extracted = AttachmentTextExtractor.extract(
+            fileName = "text.txt",
+            mimeType = "text/plain",
+            input = ByteArrayInputStream(expected.toByteArray(Charsets.UTF_8)),
+        )
+
+        assertEquals(expected, extracted)
+    }
+
+    @Test
+    fun `gbk text is decoded through gb18030 fallback`() {
+        val expected = "\u4e2d\u6587\u6d4b\u8bd5"
+        val gbk = Charset.forName("GBK")
+        val extracted = AttachmentTextExtractor.extract(
+            fileName = "text.txt",
+            mimeType = "text/plain",
+            input = ByteArrayInputStream(expected.toByteArray(gbk)),
+        )
+
+        assertEquals(expected, extracted)
+    }
 
     @Test
     fun `zip text entries are extracted in memory`() {

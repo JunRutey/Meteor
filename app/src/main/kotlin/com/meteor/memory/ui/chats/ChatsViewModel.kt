@@ -40,6 +40,7 @@ data class ChatsViewState(
     val loading: Boolean = true,
     val loadFailed: Boolean = false,
     val isImporting: Boolean = false,
+    val importProgress: Pair<Int, Int>? = null,
     val importSummary: AttachmentImportSummary? = null,
 )
 
@@ -69,9 +70,22 @@ class ChatsViewModel @Inject constructor(
     fun importFiles(uris: List<Uri>) {
         if (uris.isEmpty() || _state.value.isImporting) return
         viewModelScope.launch {
-            _state.value = _state.value.copy(isImporting = true, importSummary = null)
-            val summary = importCoordinator.importAll(uris, _state.value.selectedPersonId)
-            _state.value = _state.value.copy(isImporting = false, importSummary = summary)
+            _state.value = _state.value.copy(
+                isImporting = true,
+                importProgress = 0 to uris.size,
+                importSummary = null,
+            )
+            val summary = importCoordinator.importAll(
+                uris = uris,
+                personId = _state.value.selectedPersonId,
+            ) { done, total ->
+                _state.value = _state.value.copy(importProgress = done to total)
+            }
+            _state.value = _state.value.copy(
+                isImporting = false,
+                importProgress = null,
+                importSummary = summary,
+            )
             refresh()
         }
     }

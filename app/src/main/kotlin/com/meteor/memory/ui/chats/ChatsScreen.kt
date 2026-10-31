@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -105,6 +106,18 @@ fun ChatsScreen(
                         if (state.isImporting) R.string.records_importing else R.string.records_import,
                     ),
                 )
+            }
+        }
+
+        if (state.isImporting) {
+            val (done, total) = state.importProgress ?: (0 to 0)
+            Row(
+                modifier = Modifier.padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                Text(stringResource(R.string.records_import_progress, done, total))
             }
         }
 
