@@ -18,7 +18,7 @@ data class AppSettings(
     val autoBackupEnabled: Boolean = true,
     val backupRetention: Int = DEFAULT_BACKUP_RETENTION,
     /**
-     * AI entry point (ADR-024). Visible by default, but nothing leaves the
+     * AI entry point (ADR-027). Visible by default, but nothing leaves the
      * device unless [aiConsentAccepted] is true and the user configured a
      * provider + API key. Turning it off hides the entry and stops all requests.
      */

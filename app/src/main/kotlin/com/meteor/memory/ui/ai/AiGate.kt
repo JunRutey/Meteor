@@ -6,7 +6,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * Decides whether AI may run *right now*: enabled by the user, consent given,
- * key stored, and endpoint/model valid (ADR-024). Every AI screen asks this.
+ * key stored, and endpoint/model valid (ADR-027). Every AI screen asks this.
  */
 class AiGate(private val reader: AiSettingsReader) {
 

@@ -137,7 +137,7 @@ object AppModule {
         imageStore: ImageStore,
     ): EditorModule = MarkdownEditorModule(storageRouter, imageStore)
 
-    /** AI credentials share the archive's Keystore AES-256-GCM key (ADR-024). */
+    /** AI credentials share the archive's Keystore AES-256-GCM key (ADR-027). */
     @Provides
     @Singleton
     fun provideSecretStore(
@@ -165,7 +165,7 @@ object AppModule {
     fun provideAiGate(reader: AiSettingsReader): AiGate = AiGate(reader)
 
     /**
-     * The AI domain (ADR-024): skills, a bounded read-only agent and the user's
+     * The AI domain (ADR-027): skills, a bounded read-only agent and the user's
      * own provider credentials. Records are read through [RecordScanner], the
      * persona snapshot is written through the frozen [StorageRouter], and the
      * skill assets are loaded from this APK.
