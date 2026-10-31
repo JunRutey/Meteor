@@ -15,14 +15,15 @@ import androidx.compose.ui.text.style.TextDecoration
 internal const val TAG_TARGET = "meteor-target"
 
 /**
- * One inline parser shared by the preview and the editing surface, so what the
- * user sees while typing matches what the preview renders.
+ * One inline parser shared by the preview and the editing surface.
  *
- * Supported syntax:
- * ```
- * **bold**  *italic*  [label](target)  ![alt](target)
- * <span style="color:#E53935">red text</span>
- * ```
+ * Supports `**bold**`, `*italic*`, `[label](target)`, `![alt](target)` and
+ * `<span style="color:#E53935">text</span>`.
+ *
+ * **Length invariant**: in editor mode every original character is emitted, in
+ * order, so a identity [OffsetMapping] stays valid and the caret does not drift.
+ * Dropping markers there would make the transformed text shorter than the input
+ * and Compose rejects that with an exception.
  */
 object MarkdownStyles {
 
@@ -36,12 +37,14 @@ object MarkdownStyles {
     )
 
     /**
-     * @param imageLabel when non-null the styled text is for display: images
-     *   collapse to this label and links keep only their label. When null the
-     *   text is for the editor and every raw character is preserved.
+     * @param imageLabel non-null renders for display (images collapse to the
+     *   label, links keep only their text). Null keeps every raw character for
+     *   the editor.
      */
     fun annotate(text: String, imageLabel: String?): AnnotatedString = buildAnnotatedString {
+        val editorMode = imageLabel == null
         var cursor = 0
+
         for (match in INLINE.findAll(text)) {
             if (match.range.first > cursor) append(text.substring(cursor, match.range.first))
 
@@ -56,21 +59,28 @@ object MarkdownStyles {
 
             when {
                 colorHex.isNotEmpty() -> {
+                    val openTag = """<span style="color:$colorHex">"""
+                    if (editorMode) append(openTag)
                     pushStyle(SpanStyle(color = parseColor(colorHex)))
                     append(colorText)
                     pop()
+                    if (editorMode) append("</span>")
                 }
 
                 bold.isNotEmpty() -> {
+                    if (editorMode) append("**")
                     pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
                     append(bold)
                     pop()
+                    if (editorMode) append("**")
                 }
 
                 italic.isNotEmpty() -> {
+                    if (editorMode) append("*")
                     pushStyle(SpanStyle(fontStyle = FontStyle.Italic))
                     append(italic)
                     pop()
+                    if (editorMode) append("*")
                 }
 
                 imageTarget.isNotEmpty() && imageLabel != null -> {
@@ -89,16 +99,7 @@ object MarkdownStyles {
                     addStringAnnotation(TAG_TARGET, linkTarget, start, length)
                 }
 
-                linkTarget.isNotEmpty() -> {
-                    // Editor keeps the raw syntax so offsets stay identical.
-                    val start = length
-                    append(match.value)
-                    addStyle(
-                        SpanStyle(textDecoration = TextDecoration.Underline),
-                        start + 1,
-                        length - (linkTarget.length + 2),
-                    )
-                }
+                linkTarget.isNotEmpty() -> append(match.value)
 
                 else -> append(match.value)
             }
@@ -112,11 +113,8 @@ object MarkdownStyles {
 }
 
 /**
- * Styled editing surface: bold/italic/colour render in place while the raw
- * Markdown characters stay in the model.
- *
- * Markers remain visible on purpose — hiding them needs offset remapping, which
- * is the remaining step toward true WYSIWYG (see ADR-019).
+ * Styles the editing surface in place while keeping every Markdown character, so
+ * typing, selection and the caret all behave like a plain text field.
  */
 class MarkdownStyledTransformation : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText =

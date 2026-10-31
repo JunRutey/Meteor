@@ -103,14 +103,21 @@ class StorageDiagnosticsViewModel @Inject constructor(
     }
 
     private fun File.describe(): StoredFileInfo {
-        val head = runCatching {
-            val raw = readBytes().take(HEAD_BYTES).toByteArray()
-            String(raw, Charsets.UTF_8).filter { it == '\n' || it.code in 32..126 }
-        }.getOrDefault("")
+        // Image payloads are raw ciphertext with no frontmatter, so the
+        // `aes-gcm-v1` marker never appears in them (archive §5.2).
+        val isImage = name.endsWith(".enc", ignoreCase = true)
+        val head = if (isImage) {
+            ""
+        } else {
+            runCatching {
+                val raw = readBytes().take(HEAD_BYTES).toByteArray()
+                String(raw, Charsets.UTF_8).filter { it == '\n' || it.code in 32..126 }
+            }.getOrDefault("")
+        }
         return StoredFileInfo(
             relativePath = relativeTo(root).invariantSeparatorsPath,
             sizeBytes = length(),
-            looksEncrypted = head.contains("aes-gcm-v1"),
+            looksEncrypted = isImage || head.contains("aes-gcm-v1"),
             head = head,
         )
     }
