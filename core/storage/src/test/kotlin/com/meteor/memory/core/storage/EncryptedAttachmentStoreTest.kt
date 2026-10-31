@@ -163,7 +163,13 @@ class EncryptedAttachmentStoreTest {
 
         destination.restorePayload(saved.id, personId, ByteArrayInputStream(plaintext.toByteArray()))
 
-        assertEquals(saved, destination.list(personId).single())
+        val restoredAttachment = destination.list(personId).single()
+        assertEquals(saved.id, restoredAttachment.id)
+        assertEquals(saved.fileName, restoredAttachment.fileName)
+        assertEquals(saved.mimeType, restoredAttachment.mimeType)
+        assertEquals(saved.personId, restoredAttachment.personId)
+        assertEquals(saved.sizeBytes, restoredAttachment.sizeBytes)
+        assertEquals(saved.modifiedAt.toEpochMilli(), restoredAttachment.modifiedAt.toEpochMilli())
         assertEquals("indexed video caption", destination.readIndexedText(saved.id))
         val restored = ByteArrayOutputStream()
         destination.copyDecrypted(saved.id, restored)
