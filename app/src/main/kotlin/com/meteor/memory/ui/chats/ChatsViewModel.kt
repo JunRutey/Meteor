@@ -42,6 +42,8 @@ data class ChatsViewState(
     val isImporting: Boolean = false,
     val importProgress: Pair<Int, Int>? = null,
     val importSummary: AttachmentImportSummary? = null,
+    /** null while no export has finished; true when the last one failed. */
+    val exportFailed: Boolean? = null,
 )
 
 @HiltViewModel
@@ -92,6 +94,7 @@ class ChatsViewModel @Inject constructor(
 
     fun export(id: String, uri: Uri) {
         viewModelScope.launch {
+            _state.value = _state.value.copy(exportFailed = null)
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     context.contentResolver.openOutputStream(uri)?.use { out ->
@@ -100,8 +103,14 @@ class ChatsViewModel @Inject constructor(
                 }
             }
             result.fold(
-                onSuccess = { bytes -> appLog.info(TAG, "attachment exported: $bytes bytes") },
-                onFailure = { appLog.warn(TAG, "attachment export failed", it) },
+                onSuccess = { bytes ->
+                    appLog.info(TAG, "attachment exported: $bytes bytes")
+                    _state.value = _state.value.copy(exportFailed = false)
+                },
+                onFailure = { failure ->
+                    appLog.warn(TAG, "attachment export failed", failure)
+                    _state.value = _state.value.copy(exportFailed = true)
+                },
             )
         }
     }

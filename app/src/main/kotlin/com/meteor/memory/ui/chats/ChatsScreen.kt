@@ -121,6 +121,21 @@ fun ChatsScreen(
             }
         }
 
+        state.exportFailed?.let { failed ->
+            Text(
+                text = stringResource(
+                    if (failed) R.string.records_export_failed else R.string.records_export_done,
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (failed) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
+                modifier = Modifier.padding(vertical = 4.dp),
+            )
+        }
+
         when {
             state.loading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
             state.loadFailed -> Text(

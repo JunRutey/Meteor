@@ -63,6 +63,7 @@ fun PersonDetailScreen(
     skippedAttachmentCount: Int = 0,
     attachmentIndexFailed: Boolean = false,
     onExportAttachment: (String) -> Unit = {},
+    exportFailed: Boolean? = null,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
         Row(
@@ -163,6 +164,24 @@ fun PersonDetailScreen(
         }
         if (attachmentIndexFailed) {
             Placeholder(stringResource(R.string.people_record_index_failed))
+        }
+        exportFailed?.let { failed ->
+            Text(
+                text = stringResource(
+                    if (failed) {
+                        R.string.people_record_export_failed
+                    } else {
+                        R.string.people_record_export_done
+                    },
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (failed) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+            )
         }
 
         LazyColumn(modifier = Modifier.weight(1f)) {

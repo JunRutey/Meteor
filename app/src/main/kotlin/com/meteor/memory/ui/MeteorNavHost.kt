@@ -263,6 +263,7 @@ fun MeteorNavHost(
                         exporter.launch(pendingExportName)
                     }
                 },
+                exportFailed = state.exportFailed,
             )
         }
 

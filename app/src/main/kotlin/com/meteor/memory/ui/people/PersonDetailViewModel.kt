@@ -62,6 +62,8 @@ data class PersonViewState(
     val attachmentsError: Boolean = false,
     val isImporting: Boolean = false,
     val importSummary: AttachmentImportSummary? = null,
+    /** null while no export has finished; true when the last one failed. */
+    val exportFailed: Boolean? = null,
     val loaded: Boolean = false,
 )
 
@@ -134,6 +136,7 @@ class PersonDetailViewModel @Inject constructor(
 
     fun export(id: String, uri: Uri) {
         viewModelScope.launch {
+            _state.update { it.copy(exportFailed = null) }
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     context.contentResolver.openOutputStream(uri)?.use { out ->
@@ -142,8 +145,14 @@ class PersonDetailViewModel @Inject constructor(
                 }
             }
             result.fold(
-                onSuccess = { bytes -> appLog.info(TAG, "attachment exported: $bytes bytes") },
-                onFailure = { appLog.warn(TAG, "attachment export failed", it) },
+                onSuccess = { bytes ->
+                    appLog.info(TAG, "attachment exported: $bytes bytes")
+                    _state.update { it.copy(exportFailed = false) }
+                },
+                onFailure = { failure ->
+                    appLog.warn(TAG, "attachment export failed", failure)
+                    _state.update { it.copy(exportFailed = true) }
+                },
             )
         }
     }
