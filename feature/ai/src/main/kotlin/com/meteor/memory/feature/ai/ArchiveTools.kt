@@ -397,9 +397,9 @@ class ArchiveTools(
         val displayName = name.trim()
         if (displayName.isBlank()) return errorJson("empty-name")
         val id = personQueries.create(
-            displayName = displayName,
-            relation = relation.trim().takeIf { it.isNotBlank() }?.let { Relation.fromCode(it) },
-            notes = notes.trim().take(MAX_WRITE_CHARS),
+            displayName,
+            relation.trim().takeIf { it.isNotBlank() }?.let { Relation.fromCode(it) },
+            notes.trim().take(MAX_WRITE_CHARS),
         )
         return JSONObject().put("created", true).put("person_id", id).toString()
     }
@@ -410,11 +410,13 @@ class ArchiveTools(
         val existing = personQueries.read(personId) ?: return errorJson("not-found")
         val chosenRelation = relation.trim().takeIf { it.isNotBlank() }?.let { Relation.fromCode(it) }
             ?: existing.relation
+        // Positional on purpose: parameter *names* of this interface differ
+        // across compiled variants, but the types are stable.
         personQueries.update(
-            personId = personId,
-            displayName = name.trim().ifBlank { existing.displayName },
-            relation = chosenRelation,
-            notes = notes.trim().ifBlank { existing.notes }.take(MAX_WRITE_CHARS),
+            personId,
+            name.trim().ifBlank { existing.displayName },
+            chosenRelation,
+            notes.trim().ifBlank { existing.notes }.take(MAX_WRITE_CHARS),
         )
         return JSONObject().put("updated", true).put("person_id", personId).toString()
     }
