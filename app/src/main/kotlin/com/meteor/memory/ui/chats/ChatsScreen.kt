@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -35,6 +36,8 @@ fun ChatsScreen(
     state: ChatsViewState,
     onPersonSelected: (String?) -> Unit,
     onImportFiles: () -> Unit,
+    onExport: (ChatAttachmentRow) -> Unit,
+    onDelete: (ChatAttachmentRow) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -44,6 +47,7 @@ fun ChatsScreen(
         ?.displayName
         ?: state.selectedPersonId?.take(8)
         ?: stringResource(R.string.records_unassigned)
+    var pendingDelete by remember { mutableStateOf<ChatAttachmentRow?>(null) }
 
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
         Row(
@@ -119,28 +123,42 @@ fun ChatsScreen(
             )
             else -> LazyColumn(modifier = Modifier.weight(1f)) {
                 items(state.attachments, key = { it.id }) { row ->
-                    Column(
+                    Row(
                         modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(3.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(text = row.fileName, style = MaterialTheme.typography.titleSmall)
-                        Text(
-                            text = stringResource(
-                                R.string.records_attachment_details,
-                                row.mimeType,
-                                Formatter.formatShortFileSize(context, row.sizeBytes),
-                                row.dateLabel,
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text(
-                            text = stringResource(
-                                R.string.records_attachment_owner,
-                                row.personName ?: stringResource(R.string.records_unassigned),
-                            ),
-                            style = MaterialTheme.typography.labelSmall,
-                        )
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                        ) {
+                            Text(text = row.fileName, style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                text = stringResource(
+                                    R.string.records_attachment_details,
+                                    row.mimeType,
+                                    Formatter.formatShortFileSize(context, row.sizeBytes),
+                                    row.dateLabel,
+                                ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                text = stringResource(
+                                    R.string.records_attachment_owner,
+                                    row.personName ?: stringResource(R.string.records_unassigned),
+                                ),
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
+                        Column {
+                            TextButton(onClick = { onExport(row) }) {
+                                Text(stringResource(R.string.records_export))
+                            }
+                            TextButton(onClick = { pendingDelete = row }) {
+                                Text(stringResource(R.string.records_delete))
+                            }
+                        }
                     }
                     HorizontalDivider()
                 }
@@ -150,6 +168,29 @@ fun ChatsScreen(
         state.importSummary?.let { summary ->
             ImportSummary(summary)
         }
+    }
+
+    pendingDelete?.let { row ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text(stringResource(R.string.records_delete_confirm_title)) },
+            text = { Text(stringResource(R.string.records_delete_confirm_body)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDelete = null
+                        onDelete(row)
+                    },
+                ) {
+                    Text(stringResource(R.string.records_delete_confirm_ok))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) {
+                    Text(stringResource(R.string.records_delete_confirm_cancel))
+                }
+            },
+        )
     }
 }
 

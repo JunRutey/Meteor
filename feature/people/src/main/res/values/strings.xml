@@ -13,6 +13,7 @@
     <string name="people_records_empty">这个人物下还没有记录</string>
     <string name="people_record_add">导入文件</string>
     <string name="people_record_importing">导入中…</string>
+    <string name="people_record_export">导出</string>
     <string name="people_records_load_failed">相关文件记录加载失败</string>
     <string name="people_record_import_summary">导入成功 %1$d 个，失败 %2$d 个</string>
     <string name="people_record_index_failed">文件已保存，但文本索引更新失败</string>

@@ -212,6 +212,15 @@ fun MeteorNavHost(
             val state by viewModel.state.collectAsStateWithLifecycle()
             val personId = entry.arguments?.getString(PersonDetailViewModel.ARG_PERSON_ID).orEmpty()
             val pickAttachments = rememberAttachmentPicker(viewModel::importAttachments)
+            var pendingExportId by remember { mutableStateOf<String?>(null) }
+            var pendingExportName by remember { mutableStateOf("attachment") }
+            val exporter = rememberLauncherForActivityResult(
+                ActivityResultContracts.CreateDocument("application/octet-stream"),
+            ) { uri ->
+                val id = pendingExportId
+                pendingExportId = null
+                if (uri != null && id != null) viewModel.export(id, uri)
+            }
 
             RefreshOnResume { viewModel.load() }
 
@@ -245,6 +254,14 @@ fun MeteorNavHost(
                 importedAttachmentCount = state.importSummary?.imported,
                 failedAttachmentCount = state.importSummary?.failed ?: 0,
                 attachmentIndexFailed = state.importSummary?.indexFailed == true,
+                onExportAttachment = { id ->
+                    val attachment = state.attachments.firstOrNull { it.id == id }
+                    if (attachment != null) {
+                        pendingExportId = attachment.id
+                        pendingExportName = attachment.fileName
+                        exporter.launch(pendingExportName)
+                    }
+                },
             )
         }
 
@@ -479,12 +496,27 @@ fun MeteorNavHost(
             val viewModel: ChatsViewModel = hiltViewModel()
             val state by viewModel.state.collectAsStateWithLifecycle()
             val pickAttachments = rememberAttachmentPicker(viewModel::importFiles)
+            var pendingExportId by remember { mutableStateOf<String?>(null) }
+            var pendingExportName by remember { mutableStateOf("attachment") }
+            val exporter = rememberLauncherForActivityResult(
+                ActivityResultContracts.CreateDocument("application/octet-stream"),
+            ) { uri ->
+                val id = pendingExportId
+                pendingExportId = null
+                if (uri != null && id != null) viewModel.export(id, uri)
+            }
             RefreshOnResume { viewModel.refresh() }
 
             ChatsScreen(
                 state = state,
                 onPersonSelected = viewModel::selectPerson,
                 onImportFiles = pickAttachments,
+                onExport = { row ->
+                    pendingExportId = row.id
+                    pendingExportName = row.fileName
+                    exporter.launch(pendingExportName)
+                },
+                onDelete = { row -> viewModel.delete(row.id) },
                 onBack = { navController.popBackStack() },
             )
         }

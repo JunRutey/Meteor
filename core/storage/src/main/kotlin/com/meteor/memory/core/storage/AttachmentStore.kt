@@ -43,6 +43,15 @@ interface AttachmentStore {
 
     /** Copies authenticated plaintext to [output] and returns its byte count. */
     fun copyDecrypted(id: String, output: OutputStream): Long
+
+    /**
+     * Deletes the attachment data and sidecars.
+     *
+     * This is irreversible; callers should confirm the user's intent first.
+     *
+     * @return true when at least one file was deleted.
+     */
+    fun delete(id: String): Boolean
 }
 
 class EncryptedAttachmentStore(
@@ -187,6 +196,17 @@ class EncryptedAttachmentStore(
             }
             return bytesCopied
         }
+    }
+
+    override fun delete(id: String): Boolean {
+        require(ATTACHMENT_ID_PATTERN.matches(id)) { "illegal attachment id" }
+        var removed = false
+        ownerDirectories().forEach { dir ->
+            listOf(DATA_SUFFIX, METADATA_SUFFIX, TEXT_SUFFIX).forEach { suffix ->
+                if (File(dir, "$id$suffix").delete()) removed = true
+            }
+        }
+        return removed
     }
 
     internal fun restorePayload(id: String, personId: String?, input: InputStream) {

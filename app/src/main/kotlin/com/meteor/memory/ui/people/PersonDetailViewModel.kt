@@ -1,5 +1,6 @@
 package com.meteor.memory.ui.people
 
+import android.content.Context
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -20,6 +21,7 @@ import com.meteor.memory.ui.attachments.AttachmentImportSummary
 import com.meteor.memory.ui.search.PersonRecord
 import com.meteor.memory.ui.search.SearchService
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -66,6 +68,7 @@ data class PersonViewState(
 @HiltViewModel
 class PersonDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
+    @ApplicationContext private val context: Context,
     private val personQueries: PersonQueries,
     private val searchService: SearchService,
     private val timeModule: TimeModule,
@@ -128,6 +131,22 @@ class PersonDetailViewModel @Inject constructor(
     }
 
     fun imageFor(token: String): ImageBitmap? = _state.value.images[token]
+
+    fun export(id: String, uri: Uri) {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                        attachmentStore.copyDecrypted(id, out)
+                    } ?: error("cannot open export destination")
+                }
+            }
+            result.fold(
+                onSuccess = { bytes -> appLog.info(TAG, "attachment exported: $bytes bytes") },
+                onFailure = { appLog.warn(TAG, "attachment export failed", it) },
+            )
+        }
+    }
 
     fun importAttachments(uris: List<Uri>) {
         if (uris.isEmpty() || _state.value.isImporting) return

@@ -117,6 +117,24 @@ class EncryptedAttachmentStoreTest {
     }
 
     @Test
+    fun `delete removes attachment payload metadata and indexed text`() {
+        val store = store()
+        val saved = store.save(
+            ByteArrayInputStream(byteArrayOf(1)),
+            "indexed.txt",
+            "text/plain",
+            "person_123",
+            indexedText = "indexed text",
+        )
+
+        assertTrue(store.delete(saved.id))
+        assertTrue(store.list().isEmpty())
+        assertNull(store.readIndexedText(saved.id))
+        assertFalse(allFiles(tmp.root).any { it.name.startsWith(saved.id) })
+        assertFalse(store.delete(saved.id))
+    }
+
+    @Test
     fun `invalid person id and attachment id are rejected`() {
         val store = store()
 
@@ -125,6 +143,9 @@ class EncryptedAttachmentStoreTest {
         }
         assertThrows(IllegalArgumentException::class.java) {
             store.copyDecrypted("../outside", ByteArrayOutputStream())
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            store.delete("../outside")
         }
     }
 

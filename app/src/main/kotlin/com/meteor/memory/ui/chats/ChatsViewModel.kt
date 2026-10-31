@@ -1,5 +1,6 @@
 package com.meteor.memory.ui.chats
 
+import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -10,6 +11,7 @@ import com.meteor.memory.core.storage.PersonQueries
 import com.meteor.memory.core.time.TimeModule
 import com.meteor.memory.ui.attachments.AttachmentImportCoordinator
 import com.meteor.memory.ui.attachments.AttachmentImportSummary
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -43,6 +45,7 @@ data class ChatsViewState(
 
 @HiltViewModel
 class ChatsViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val attachmentStore: AttachmentStore,
     private val personQueries: PersonQueries,
     private val timeModule: TimeModule,
@@ -67,6 +70,33 @@ class ChatsViewModel @Inject constructor(
             _state.value = _state.value.copy(isImporting = true, importSummary = null)
             val summary = importCoordinator.importAll(uris, _state.value.selectedPersonId)
             _state.value = _state.value.copy(isImporting = false, importSummary = summary)
+            refresh()
+        }
+    }
+
+    fun export(id: String, uri: Uri) {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openOutputStream(uri)?.use { out ->
+                        attachmentStore.copyDecrypted(id, out)
+                    } ?: error("cannot open export destination")
+                }
+            }
+            result.fold(
+                onSuccess = { bytes -> appLog.info(TAG, "attachment exported: $bytes bytes") },
+                onFailure = { appLog.warn(TAG, "attachment export failed", it) },
+            )
+        }
+    }
+
+    fun delete(id: String) {
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { attachmentStore.delete(id) }
+            }
+            result.onFailure { appLog.warn(TAG, "attachment delete failed", it) }
+            appLog.info(TAG, "attachment deleted=${result.getOrDefault(false)}")
             refresh()
         }
     }

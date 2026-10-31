@@ -61,6 +61,7 @@ fun PersonDetailScreen(
     importedAttachmentCount: Int? = null,
     failedAttachmentCount: Int = 0,
     attachmentIndexFailed: Boolean = false,
+    onExportAttachment: (String) -> Unit = {},
 ) {
     Column(modifier = modifier.fillMaxSize()) {
         Row(
@@ -184,6 +185,11 @@ fun PersonDetailScreen(
                                 }
                             }
                             Text(text = row.dateLabel, style = MaterialTheme.typography.bodySmall)
+                        }
+                        if (row.title != null) {
+                            TextButton(onClick = { onExportAttachment(row.recordId) }) {
+                                Text(stringResource(R.string.people_record_export))
+                            }
                         }
                     }
                 }

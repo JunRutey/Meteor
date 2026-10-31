@@ -83,6 +83,14 @@
     <string name="chats_empty">还没有导入文件记录</string>
     <string name="records_import">导入文件</string>
     <string name="records_importing">导入中…</string>
+    <string name="records_export">导出</string>
+    <string name="records_delete">删除</string>
+    <string name="records_delete_confirm_title">删除这条记录？</string>
+    <string name="records_delete_confirm_body">文件已加密存储，删除后无法恢复。</string>
+    <string name="records_delete_confirm_ok">删除</string>
+    <string name="records_delete_confirm_cancel">取消</string>
+    <string name="records_export_done">已导出</string>
+    <string name="records_export_failed">导出失败</string>
     <string name="records_owner_label">新文件归属：%1$s</string>
     <string name="records_choose_person">选择人物</string>
     <string name="records_unassigned">未关联人物</string>
