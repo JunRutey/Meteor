@@ -21,18 +21,9 @@
     <string name="settings_dynamic_color">动态取色</string>
     <string name="settings_dynamic_color_desc">跟随壁纸生成配色（Android 12 及以上）</string>
 
-    <string name="settings_font_scale">字体大小</string>
-    <string name="settings_font_small">小</string>
-    <string name="settings_font_normal">标准</string>
-    <string name="settings_font_large">大</string>
-
-    <string name="settings_animations">动画</string>
-    <string name="settings_animations_desc">关闭后禁用页面转场、列表动画与心情动画</string>
-
     <string name="settings_app_lock">应用锁</string>
     <string name="settings_app_lock_desc">使用生物识别解锁 Meteor；离开前台后重新上锁</string>
 
     <string name="settings_about_version">Meteor %1$s</string>
-    <string name="settings_about_repository">GitHub 仓库 · JunRutey/Meteor</string>
     <string name="settings_open_diagnostics">存储诊断（调试）</string>
 </resources>
