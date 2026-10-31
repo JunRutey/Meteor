@@ -90,6 +90,33 @@ class EncryptedAttachmentStoreTest {
     }
 
     @Test
+    fun `corrupt metadata is skipped instead of failing the whole list`() {
+        val store = store()
+        val first = store.save(ByteArrayInputStream(byteArrayOf(1)), "one.txt", "text/plain", null)
+        store.save(ByteArrayInputStream(byteArrayOf(2)), "two.txt", "text/plain", null)
+        val metadataFile = allFiles(tmp.root).single { it.name == "${first.id}.meta.enc" }
+        metadataFile.writeBytes(byteArrayOf(0x01, 0x02, 0x03))
+
+        assertEquals(1, store.list().size)
+    }
+
+    @Test
+    fun `unavailable indexed text returns null`() {
+        val store = store()
+        val saved = store.save(
+            ByteArrayInputStream(byteArrayOf(1)),
+            "indexed.txt",
+            "text/plain",
+            null,
+            indexedText = "indexed text",
+        )
+        val textFile = allFiles(tmp.root).single { it.name == "${saved.id}.text.enc" }
+        textFile.writeBytes(byteArrayOf(0x01, 0x02, 0x03))
+
+        assertNull(store.readIndexedText(saved.id))
+    }
+
+    @Test
     fun `invalid person id and attachment id are rejected`() {
         val store = store()
 

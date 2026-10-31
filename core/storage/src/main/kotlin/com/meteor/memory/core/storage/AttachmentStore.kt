@@ -131,7 +131,7 @@ class EncryptedAttachmentStore(
                 ownerDir.listFiles()
                     ?.asSequence()
                     ?.filter { it.isFile && it.name.matches(METADATA_FILE_PATTERN) }
-                    ?.map { metadataFile -> readMetadata(metadataFile) }
+                    ?.mapNotNull { metadataFile -> runCatching { readMetadata(metadataFile) }.getOrNull() }
                     .orEmpty()
             }
             .sortedByDescending { it.modifiedAt }
@@ -140,11 +140,13 @@ class EncryptedAttachmentStore(
 
     override fun readIndexedText(id: String): String? {
         val metadata = findMetadata(id) ?: return null
-        val details = decodeMetadata(metadata)
+        val details = runCatching { decodeMetadata(metadata) }.getOrNull() ?: return null
         if (!details.hasIndexedText) return null
         val textFile = File(metadata.parentFile, "$id$TEXT_SUFFIX")
-        check(textFile.isFile) { "indexed text is missing" }
-        return crypto.decrypt(textFile.readBytes()).toString(Charsets.UTF_8)
+        if (!textFile.isFile) return null
+        return runCatching {
+            crypto.decrypt(textFile.readBytes()).toString(Charsets.UTF_8)
+        }.getOrNull()
     }
 
     override fun copyDecrypted(id: String, output: OutputStream): Long {
