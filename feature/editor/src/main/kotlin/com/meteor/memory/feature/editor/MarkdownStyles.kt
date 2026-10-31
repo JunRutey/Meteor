@@ -6,9 +6,6 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.OffsetMapping
-import androidx.compose.ui.text.input.TransformedText
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextDecoration
 
 /** Annotation tag carrying the target of a link or image reference. */
@@ -114,9 +111,9 @@ object MarkdownStyles {
         }
     }
 
-    private enum class Kind { COLOR, BOLD, ITALIC, IMAGE, LINK }
+    internal enum class Kind { COLOR, BOLD, ITALIC, IMAGE, LINK }
 
-    private class InlineMatch(
+    internal class InlineMatch(
         val kind: Kind,
         val range: IntRange,
         val groupStart: Int = 0,
@@ -127,7 +124,7 @@ object MarkdownStyles {
     )
 
     /** Earliest match starting at or after [from] and ending before [to]. */
-    private fun earliest(text: String, from: Int, to: Int): InlineMatch? {
+    internal fun earliest(text: String, from: Int, to: Int): InlineMatch? {
         val candidates = listOfNotNull(
             COLOR.find(text, from)?.takeIf { it.range.last < to }?.let {
                 val inner = it.groups[2]!!
@@ -179,15 +176,4 @@ object MarkdownStyles {
 
     fun parseColor(hex: String): Color =
         runCatching { Color(android.graphics.Color.parseColor(hex)) }.getOrDefault(Color.Unspecified)
-}
-
-/**
- * Styles the editing surface in place while keeping every Markdown character.
- */
-class MarkdownStyledTransformation : VisualTransformation {
-    override fun filter(text: AnnotatedString): TransformedText =
-        TransformedText(
-            MarkdownStyles.annotate(text.text, imageLabel = null),
-            OffsetMapping.Identity,
-        )
 }
