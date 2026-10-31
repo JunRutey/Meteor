@@ -5,6 +5,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.AttachmentStore
+import com.meteor.memory.core.storage.EncryptedAttachmentStore
 import com.meteor.memory.core.storage.StoredAttachment
 import com.meteor.memory.ui.search.SearchService
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -62,7 +63,7 @@ class AttachmentImporter @Inject constructor(
             "txt" -> "text/plain"
             "json" -> "application/json"
             "zip" -> "application/zip"
-            else -> AttachmentStore.MIME_OCTET_STREAM
+            else -> EncryptedAttachmentStore.MIME_OCTET_STREAM
         }
 }
 
