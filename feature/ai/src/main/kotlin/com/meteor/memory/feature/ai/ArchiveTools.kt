@@ -22,7 +22,7 @@ interface Toolbox {
 }
 
 /**
- * The agent's capability set (ADR-024 / ADR-025).
+ * The agent's capability set (ADR-027 / ADR-028).
  *
  * Read tools are always available. Write tools (diary, mood, people) exist only
  * when the user turned on "let AI modify the archive" for this request; there is

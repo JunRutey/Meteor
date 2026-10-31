@@ -11,7 +11,7 @@ data class AgentResult(
 /**
  * Bounded tool loop. The model may ask for **read-only** archive tools for at
  * most [maxSteps] rounds; every request and result is charged against a budget
- * so a looping model cannot burn a user's quota without limit (ADR-024).
+ * so a looping model cannot burn a user's quota without limit (ADR-027).
  */
 class AiAgent(
     private val provider: AiProvider,

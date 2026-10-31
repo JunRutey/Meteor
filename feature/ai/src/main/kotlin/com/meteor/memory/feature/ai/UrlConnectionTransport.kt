@@ -20,7 +20,7 @@ interface HttpTransport {
 
 /**
  * `HttpURLConnection` only — no OkHttp, no Ktor. The app ships one dependency
- * fewer, and the request shape stays auditable (ADR-024).
+ * fewer, and the request shape stays auditable (ADR-027).
  */
 class UrlConnectionTransport : HttpTransport {
 

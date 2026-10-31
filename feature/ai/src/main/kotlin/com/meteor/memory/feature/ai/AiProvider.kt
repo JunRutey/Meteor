@@ -2,7 +2,7 @@ package com.meteor.memory.feature.ai
 
 /**
  * One chat-completion backend. Only OpenAI-compatible HTTP endpoints exist
- * (ADR-024); a different protocol would be a new implementation of this seam.
+ * (ADR-027); a different protocol would be a new implementation of this seam.
  */
 interface AiProvider {
     suspend fun complete(

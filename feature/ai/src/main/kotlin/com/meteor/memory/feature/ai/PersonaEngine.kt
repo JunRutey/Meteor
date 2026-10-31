@@ -8,7 +8,7 @@ import java.time.Instant
 /**
  * Deterministic derivation of a person's "digital persona" from the archive.
  *
- * Deliberately model-free (ADR-023): every output is a count, a timestamp, a
+ * Deliberately model-free (ADR-026): every output is a count, a timestamp, a
  * term that literally occurs in a record, or a stored line copied verbatim.
  * Nothing is paraphrased, so nothing can be invented.
  *

@@ -100,7 +100,7 @@ object AiProtocol {
         root.put("max_tokens", maxTokens)
         root.put("temperature", 0.7)
         // Thinking parameters are DeepSeek-specific; other providers may reject
-        // unknown body fields, so they are only sent for DeepSeek (ADR-024).
+        // unknown body fields, so they are only sent for DeepSeek (ADR-027).
         if (provider == AiPresets.DEEPSEEK && reasoning != ReasoningMode.AUTO) {
             root.put(
                 "thinking",

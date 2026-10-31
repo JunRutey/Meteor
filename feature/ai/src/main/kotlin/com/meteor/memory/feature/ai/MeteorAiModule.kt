@@ -53,7 +53,7 @@ class FilePersonaStore(private val router: StorageRouter) : PersonaStore {
 }
 
 /**
- * The v0.6 implementation of the frozen [AiModule] (ADR-024).
+ * The v0.6 implementation of the frozen [AiModule] (ADR-027).
  *
  * It owns three things: local retrieval (works with AI off), the skill library,
  * and the bounded read-only agent used for distillation and chat. The provider

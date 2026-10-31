@@ -9,7 +9,7 @@ import java.time.Instant
  * Same shape as a person's `profile.md` — ASCII header, a `---` separator, then
  * a free body — so the file stays readable inside the plaintext backup export.
  * The body is the model-written layered persona; unknown header keys are
- * ignored by older readers (ADR-024).
+ * ignored by older readers (ADR-027).
  *
  * ```
  * name: 小明

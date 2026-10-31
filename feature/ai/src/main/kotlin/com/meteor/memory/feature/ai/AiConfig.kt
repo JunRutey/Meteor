@@ -8,7 +8,7 @@ object AiCredentialKeys {
 /**
  * Thinking effort for providers that expose it. AUTO sends nothing at all, so a
  * chat works against any OpenAI-compatible endpoint; only DeepSeek receives the
- * `thinking` / `reasoning_effort` fields (ADR-024).
+ * `thinking` / `reasoning_effort` fields (ADR-027).
  */
 enum class ReasoningMode(val wire: String, val effort: String?) {
     AUTO("auto", null),
@@ -85,7 +85,7 @@ data class AiConfig(
 }
 
 /**
- * TLS in transit is part of the privacy story (ADR-024), and Android blocks
+ * TLS in transit is part of the privacy story (ADR-027), and Android blocks
  * cleartext for this target SDK anyway — so a plain-http endpoint is treated as
  * "not configured" instead of failing later with a network error.
  */

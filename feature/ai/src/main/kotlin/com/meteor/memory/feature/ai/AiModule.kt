@@ -7,7 +7,7 @@ import java.time.Instant
 /**
  * FROZEN INTERFACE (Meteor archive §8). Do not modify without an ADR.
  *
- * The AI domain runs on the user's own provider credentials (ADR-024): skills
+ * The AI domain runs on the user's own provider credentials (ADR-027): skills
  * shape the prompt, a bounded read-only agent reads the archive, and the only
  * persisted artifact is the persona record. Nothing here logs content or keeps
  * chat history — the caller holds history in memory.

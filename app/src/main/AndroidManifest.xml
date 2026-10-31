@@ -4,7 +4,7 @@
     <!--
         Only the AI feature goes online, and only to the endpoint the user
         configured; nothing is sent unless they enable AI and accept the
-        warning. See ADR-024.
+        warning. See ADR-027.
     -->
     <uses-permission android:name="android.permission.INTERNET" />
 

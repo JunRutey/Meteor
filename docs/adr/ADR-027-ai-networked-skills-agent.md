@@ -1,12 +1,12 @@
-# ADR-024 · AI 改为「可关闭的联网提供商 + 技能驱动」，取代 ADR-023 的纯离线引擎
+# ADR-027 · AI 改为「可关闭的联网提供商 + 技能驱动」，取代 ADR-026 的纯离线引擎
 
 - 状态：已接受（v0.6 修订）
-- 取代：[ADR-023](ADR-023-ai-local-deterministic-persona.md)（本地确定性引擎）
+- 取代：[ADR-026](ADR-026-ai-local-deterministic-persona.md)（本地确定性引擎）
 - 影响：`:feature-ai`、`:feature-settings`、`:core-crypto`、`:app`；新增 `INTERNET` 权限
 
 ## 背景
 
-ADR-023 把 v0.6 的 AI 限定为「本机确定性检索」，理由是仓库不允许入库 API key、
+ADR-026 把 v0.6 的 AI 限定为「本机确定性检索」，理由是仓库不允许入库 API key、
 本机禁止构建无法验证模型 SDK、CI 无法验证联网行为。这个方案能跑、能测，但它不是
 产品要的 AI：不能做真正的人格蒸馏，也不能自然对话。
 

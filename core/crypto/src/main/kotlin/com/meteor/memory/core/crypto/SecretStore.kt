@@ -55,7 +55,7 @@ class PrefsStringStore(
 /**
  * Credentials encrypted with the **same Keystore AES-256-GCM key as the archive
  * itself** ([FileCrypto], default Keystore alias), so there is exactly one
- * device-bound key protecting both diary files and the API key (ADR-024).
+ * device-bound key protecting both diary files and the API key (ADR-027).
  *
  * The preferences file only ever contains Base64 ciphertext; a failed decrypt
  * (wrong key, tampering, restored backup) yields `null`, never partial data.

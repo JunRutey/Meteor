@@ -27,7 +27,7 @@
 
 ```
 :app                    组装、DI、导航、主题
- ├── :feature-ai         AI 与数字人格（技能 + 只读 Agent，可关闭的联网提供商，ADR-024）
+ ├── :feature-ai         AI 与数字人格（技能 + 只读 Agent，可关闭的联网提供商，ADR-027）
  ├── :feature-editor     Markdown 编辑与预览（图片、链接）
  ├── :feature-people     人际关系档案、档案编辑
  ├── :feature-gallery    加密图片浏览（按天分组、可删除）
@@ -47,7 +47,7 @@
 
 关键取舍记录在 [`docs/adr`](docs/adr)：人物目录用 `person_id`、CJK 分词、
 FTS 运行时降级、心情独立成记录、编辑器只保留加粗、人物档案可编辑与图片可删除、
-AI 改为可关闭的联网提供商 + 技能驱动（ADR-024，取代 ADR-023）。
+AI 改为可关闭的联网提供商 + 技能驱动（ADR-027，取代 ADR-026）。
 
 ## 版本路线
 
@@ -109,7 +109,7 @@ AI 是这个应用里**唯一会联网**的功能，默认关闭，随时可在�
   [distilly](https://github.com/titanwings/distilly)、
   [ex-skill](https://github.com/therealXiaomanChu/ex-skill)。
 
-细节见 [ADR-024](docs/adr/ADR-024-ai-networked-skills-agent.md)。
+细节见 [ADR-027](docs/adr/ADR-027-ai-networked-skills-agent.md)。
 
 ## 许可
 

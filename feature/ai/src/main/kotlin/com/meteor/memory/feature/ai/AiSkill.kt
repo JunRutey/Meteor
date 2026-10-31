@@ -16,7 +16,7 @@ enum class SkillStage(val wire: String) {
  *
  * Format follows the MIT-licensed skill packages this module adapts ideas from
  * (nuwa-skill / distilly / ex-skill): a directory of Markdown, frontmatter for
- * discovery, and a body the agent reads as instructions (ADR-024).
+ * discovery, and a body the agent reads as instructions (ADR-027).
  */
 data class AiSkill(
     val name: String,

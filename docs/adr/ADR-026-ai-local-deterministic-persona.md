@@ -1,10 +1,10 @@
-# ADR-023 · AI 与数字人格：本地确定性引擎，不联网、不引入模型 SDK
+# ADR-026 · AI 与数字人格：本地确定性引擎，不联网、不引入模型 SDK
 
-- 状态：已被 [ADR-024](ADR-024-ai-networked-skills-agent.md) 取代（v0.6 修订）
+- 状态：已被 [ADR-027](ADR-027-ai-networked-skills-agent.md) 取代（v0.6 修订）
 - 影响：新增 `:feature-ai`；`:app`、`:feature-settings`
 
 > 本记录保留当时的推理与取舍。v0.6 最终改为「可关闭的联网提供商 + 技能驱动」，
-> 见 ADR-024。本 ADR 的本机检索引擎仍然保留：AI 关闭时作为降级检索，
+> 见 ADR-027。本 ADR 的本机检索引擎仍然保留：AI 关闭时作为降级检索，
 > AI 开启时作为 Agent 的只读检索工具。
 
 ## 背景

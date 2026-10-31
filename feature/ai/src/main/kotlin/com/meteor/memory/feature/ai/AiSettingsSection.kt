@@ -28,7 +28,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 
 /**
- * The AI block inside the settings screen (ADR-024).
+ * The AI block inside the settings screen (ADR-027).
  *
  * Enabling always goes through the consent dialog first: the whole point is
  * that the user knows content leaves the device, and that the author collects
