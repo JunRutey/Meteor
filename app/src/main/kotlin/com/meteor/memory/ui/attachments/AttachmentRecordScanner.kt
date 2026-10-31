@@ -9,7 +9,10 @@ import com.meteor.memory.core.storage.RecordType
 import com.meteor.memory.core.storage.StorageLayout
 import java.io.File
 
-/** Adds decrypted attachment text only to the per-request AI corpus. */
+/**
+ * Adds decrypted attachment text only to the per-request AI corpus.
+ * The document points to encrypted attachment data and is not an editable record.
+ */
 class AttachmentRecordScanner(
     private val records: RecordScanner,
     private val attachments: AttachmentStore,
@@ -23,7 +26,8 @@ class AttachmentRecordScanner(
                 Document(
                     file = File(
                         rootDir,
-                        "${StorageLayout.LEGACY}/${StorageLayout.ATTACHMENTS}/$owner/${attachment.id}.md",
+                        "${StorageLayout.LEGACY}/${StorageLayout.ATTACHMENTS}/$owner/" +
+                            "${attachment.id}${EncryptedAttachmentStore.ATTACHMENT_DATA_SUFFIX}",
                     ),
                     personId = attachment.personId,
                     type = RecordType.CHAT_LOG,

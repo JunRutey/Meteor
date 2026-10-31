@@ -82,7 +82,7 @@ class EncryptedAttachmentStore(
         val ownerDir = ownerDirectory(personId)
         check(ownerDir.isDirectory || ownerDir.mkdirs()) { "cannot create attachment directory" }
 
-        val dataFile = File(ownerDir, "$id$DATA_SUFFIX")
+        val dataFile = File(ownerDir, "$id$ATTACHMENT_DATA_SUFFIX")
         val metadataFile = File(ownerDir, "$id$METADATA_SUFFIX")
         val textFile = File(ownerDir, "$id$TEXT_SUFFIX")
         val dataTemp = File(ownerDir, "$id$DATA_TEMP_SUFFIX")
@@ -162,7 +162,7 @@ class EncryptedAttachmentStore(
         require(ATTACHMENT_ID_PATTERN.matches(id)) { "illegal attachment id" }
         val metadataFile = findMetadata(id) ?: error("attachment not found")
         val metadata = decodeMetadata(metadataFile)
-        val dataFile = File(metadataFile.parentFile, "$id$DATA_SUFFIX")
+        val dataFile = File(metadataFile.parentFile, "$id$ATTACHMENT_DATA_SUFFIX")
         check(dataFile.isFile) { "encrypted attachment is missing" }
 
         DataInputStream(dataFile.inputStream().buffered()).use { input ->
@@ -202,7 +202,7 @@ class EncryptedAttachmentStore(
         require(ATTACHMENT_ID_PATTERN.matches(id)) { "illegal attachment id" }
         var removed = false
         ownerDirectories().forEach { dir ->
-            listOf(DATA_SUFFIX, METADATA_SUFFIX, TEXT_SUFFIX).forEach { suffix ->
+            listOf(ATTACHMENT_DATA_SUFFIX, METADATA_SUFFIX, TEXT_SUFFIX).forEach { suffix ->
                 if (File(dir, "$id$suffix").delete()) removed = true
             }
         }
@@ -217,7 +217,7 @@ class EncryptedAttachmentStore(
 
         val ownerDir = ownerDirectory(personId)
         check(ownerDir.isDirectory || ownerDir.mkdirs()) { "cannot create attachment directory" }
-        val target = File(ownerDir, "$id$DATA_SUFFIX")
+        val target = File(ownerDir, "$id$ATTACHMENT_DATA_SUFFIX")
         val temporary = File(ownerDir, "$id$DATA_TEMP_SUFFIX")
         val previous = File(ownerDir, "$id$DATA_BACKUP_SUFFIX")
         var previousMoved = false
@@ -377,6 +377,7 @@ class EncryptedAttachmentStore(
         const val MIME_OCTET_STREAM = "application/octet-stream"
 
         const val SELF_DIR_NAME = "_self"
+        const val ATTACHMENT_DATA_SUFFIX = ".data.enc"
         private const val DATA_MAGIC = 0x4D415454
         private const val METADATA_MAGIC = 0x4D414D44
         private const val FORMAT_VERSION = 1
@@ -385,7 +386,6 @@ class EncryptedAttachmentStore(
         private const val MIN_ENCRYPTED_CHUNK_SIZE = 29
         private const val MAX_ENCRYPTED_CHUNK_SIZE = CHUNK_SIZE + Int.SIZE_BYTES + 29
         private const val END_OF_DATA = 0
-        private const val DATA_SUFFIX = ".data.enc"
         private const val METADATA_SUFFIX = ".meta.enc"
         private const val TEXT_SUFFIX = ".text.enc"
         private const val DATA_TEMP_SUFFIX = ".data.part"
