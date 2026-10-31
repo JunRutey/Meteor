@@ -116,7 +116,13 @@ fun ChatsScreen(
                 modifier = Modifier.padding(vertical = 12.dp),
             )
             state.attachments.isEmpty() -> Text(
-                text = stringResource(R.string.chats_empty),
+                text = stringResource(
+                    if (state.selectedPersonId == null) {
+                        R.string.chats_empty
+                    } else {
+                        R.string.records_empty_for_person
+                    },
+                ),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = 12.dp),

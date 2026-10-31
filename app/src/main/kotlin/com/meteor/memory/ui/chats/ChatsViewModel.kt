@@ -61,7 +61,9 @@ class ChatsViewModel @Inject constructor(
     }
 
     fun selectPerson(personId: String?) {
+        if (personId == _state.value.selectedPersonId) return
         _state.value = _state.value.copy(selectedPersonId = personId)
+        refresh()
     }
 
     fun importFiles(uris: List<Uri>) {
@@ -111,7 +113,7 @@ class ChatsViewModel @Inject constructor(
                     val names = people.associate { entry ->
                         entry.personId to (entry.displayName ?: entry.personId.take(SHORT_ID))
                     }
-                    val attachments = attachmentStore.list().map { attachment ->
+                    val attachments = attachmentStore.list(_state.value.selectedPersonId).map { attachment ->
                         val date = attachment.modifiedAt.atZone(ZoneId.systemDefault()).toLocalDate()
                         ChatAttachmentRow(
                             id = attachment.id,

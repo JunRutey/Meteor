@@ -81,6 +81,7 @@
     <string name="chats_title">记录</string>
     <string name="chats_back">返回</string>
     <string name="chats_empty">还没有导入文件记录</string>
+    <string name="records_empty_for_person">这个人还没有记录</string>
     <string name="records_import">导入文件</string>
     <string name="records_importing">导入中…</string>
     <string name="records_export">导出</string>
