@@ -76,3 +76,17 @@ v0.6 的目标是：**人格蒸馏（把一个人蒸馏成可对话的 Persona�
 - 需要用户自备 API Key 并承担调用费用；没有 Key 时 AI 功能不可用，其余功能不受影响。
 - CI 只能验证编译、JSON 协议、工具循环、技能解析与同意门控；真实联网行为无法在 CI 验证，
   这一点在发布说明里明确标注。
+
+## 增补（v0.6.1）
+
+- **时间查询**：问题里的时间表达由本机 `TimePhrase` 解析成日期窗口，直接取该窗口的
+  日记/聊天记录；同时新增 `read_diary`、`list_diary_dates`、`list_records(from,to)`、
+  `read_moods(days)`，并把「当前日期 + 档案概况」写进系统提示。只读工具从 6 个增至 8 个，
+  仍然没有任何写/删/导出能力。
+- **用量透明**：协议层解析 `usage`（含 DeepSeek 与 OpenAI 两种缓存字段），Agent 跨工具轮
+  累加；UI 展示耗时、tokens、tok/s 与缓存命中率。只展示计数，不记录内容。
+- **思考档位**：`ThinkingMode` 仅在 DeepSeek 上发送 `thinking` / `reasoning_effort`；
+  `auto` 不发送任何额外字段以保持兼容。带工具的思考请求会回传 `reasoning_content`
+  （DeepSeek 的硬性要求）。
+- **凭据加密**：API Key 改用档案同一把 Keystore AES-256-GCM 密钥加密后存成 Base64 密文，
+  不再使用独立的 EncryptedSharedPreferences；旧值首次读取时迁移并删除。

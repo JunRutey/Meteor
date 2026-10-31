@@ -106,6 +106,22 @@ class MeteorAiModuleChatTest {
         assertTrue(system, system.contains("No archive record matched"))
     }
 
+    @Test
+    fun `a dated question prefetches that day instead of searching keywords`() = runBlocking {
+        val provider = CapturingProvider()
+        val ai = module(
+            provider,
+            listOf(diary("d2.md", "2026-10-31T10:00:00Z", "今天和小明去爬山，很累")),
+        )
+
+        ai.chat(ChatRequest(skillName = "test-chat", question = "2026-10-31 那天写了什么", config = config))
+
+        val system = provider.requests.single().first().content.orEmpty()
+        assertTrue(system, system.contains("Records in 2026-10-31..2026-10-31"))
+        assertTrue(system, system.contains("爬山"))
+        assertTrue(system, system.contains("Current date:"))
+    }
+
     private companion object {
         val CHAT_SKILL = """
             ---

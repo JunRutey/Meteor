@@ -33,6 +33,7 @@ class AiSettingsReader(
                 baseUrl = settings.aiBaseUrl,
                 model = settings.aiModel,
                 apiKey = key,
+                reasoning = settings.aiReasoning,
             ),
             hasApiKey = key != null,
         )

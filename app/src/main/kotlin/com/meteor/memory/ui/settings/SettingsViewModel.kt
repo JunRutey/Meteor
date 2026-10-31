@@ -104,6 +104,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repository.setAiModel(model) }
     }
 
+    fun setAiReasoning(reasoning: String) {
+        viewModelScope.launch { repository.setAiReasoning(reasoning) }
+    }
+
     fun saveApiKey(key: String) {
         viewModelScope.launch(Dispatchers.IO) {
             reader.saveApiKey(key)

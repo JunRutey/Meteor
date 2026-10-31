@@ -6,6 +6,25 @@ object AiCredentialKeys {
 }
 
 /**
+ * Thinking effort for providers that expose it. AUTO sends nothing at all, so a
+ * chat works against any OpenAI-compatible endpoint; only DeepSeek receives the
+ * `thinking` / `reasoning_effort` fields (ADR-024).
+ */
+enum class ReasoningMode(val wire: String, val effort: String?) {
+    AUTO("auto", null),
+    OFF("off", null),
+    LOW("low", "low"),
+    HIGH("high", "high"),
+    MAX("max", "max"),
+    ;
+
+    companion object {
+        fun fromWire(value: String): ReasoningMode =
+            entries.firstOrNull { it.wire == value.trim().lowercase() } ?: AUTO
+    }
+}
+
+/**
  * Provider presets. A base URL always includes the API version segment, so the
  * final endpoints are `{base}/chat/completions` and `{base}/models`.
  */
@@ -41,6 +60,7 @@ data class AiConfig(
     val baseUrl: String = "",
     val model: String = "",
     val apiKey: String? = null,
+    val reasoning: String = "auto",
 ) {
 
     private val resolved: Pair<String, String> = AiPresets.resolveProvider(provider, baseUrl, model)
@@ -52,6 +72,11 @@ data class AiConfig(
     val endpoint: String get() = "${resolvedBaseUrl.trimEnd('/')}/chat/completions"
 
     val modelsEndpoint: String get() = "${resolvedBaseUrl.trimEnd('/')}/models"
+
+    val reasoningMode: ReasoningMode get() = ReasoningMode.fromWire(reasoning)
+
+    /** Only DeepSeek documents the thinking fields; others keep AUTO. */
+    val reasoningSupported: Boolean get() = provider == AiPresets.DEEPSEEK
 
     fun isConfigured(): Boolean =
         !apiKey.isNullOrBlank() && resolvedModel.isNotBlank() && endpoint.isHttps()

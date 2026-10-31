@@ -31,10 +31,13 @@ data class AppSettings(
     val aiBaseUrl: String = "",
     /** Empty means "use the preset's default model". */
     val aiModel: String = "",
+    /** Thinking effort: `auto` / `off` / `low` / `high` / `max` (DeepSeek only). */
+    val aiReasoning: String = DEFAULT_AI_REASONING,
 ) {
     companion object {
         const val DEFAULT_BACKUP_RETENTION = 7
         const val DEFAULT_AI_PROVIDER = "deepseek"
+        const val DEFAULT_AI_REASONING = "auto"
     }
 }
 

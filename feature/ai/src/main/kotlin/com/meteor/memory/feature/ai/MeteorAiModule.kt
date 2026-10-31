@@ -135,22 +135,30 @@ class MeteorAiModule(
             withContext(Dispatchers.IO) { personaStore.read(id) }
         }
 
-        // Keyword retrieval happens locally *before* the model call: the
-        // question is tokenised, only a few short windows are attached, and the
-        // model can still ask for a fuller record when it needs one.
+        // Time questions are answered from a calendar window chosen locally,
+        // not by hoping the model guesses a date. Other questions fall back to
+        // keyword retrieval. Either way only a few short excerpts are sent.
+        val today = LocalDate.now()
+        val window = TimePhrase.parse(request.question, today)
         val tools = archiveTools()
         val prefetched = withContext(Dispatchers.IO) {
-            tools.searchContext(
-                query = request.question,
-                personId = request.personId,
-                maxHits = PREFETCH_HITS,
-                maxChars = PREFETCH_CHARS,
-            )
+            if (window != null) {
+                tools.dateContext(window, request.personId, PREFETCH_HITS, PREFETCH_CHARS)
+            } else {
+                tools.searchContext(request.question, request.personId, PREFETCH_HITS, PREFETCH_CHARS)
+            }
         }
+        val overview = withContext(Dispatchers.IO) { tools.archiveOverview() }
 
         val system = buildString {
             append(skill.body)
-            append("\n\nCurrent date: ").append(LocalDate.now()).append('.')
+            append("\n\nCurrent date: ").append(today)
+            append(" (").append(today.dayOfWeek).append("), time zone ")
+                .append(java.util.TimeZone.getDefault().id).append('.')
+            append("\nArchive facts: ").append(overview).append('.')
+            append("\nFor time questions use read_diary(date) for a single day, list_diary_dates to list ")
+            append("which days exist, list_records(from,to) for a span, and read_moods(days=N) for moods. ")
+            append("Never claim a day is empty before checking these tools.")
             if (persona != null && persona.body.isNotBlank()) {
                 append("\n\n# Persona file\n\n").append(persona.body.take(MAX_PERSONA_CHARS))
             } else if (!request.personId.isNullOrBlank()) {
@@ -161,8 +169,13 @@ class MeteorAiModule(
             if (prefetched.isNotBlank()) {
                 append("\n\n# Pre-retrieved archive context\n\n")
                 append(prefetched)
-                append("\n\nThis block was retrieved locally by keywords from the question. ")
-                append("Prefer it and cite dates. Call read_record (with its record_id) only when you need a fuller passage.")
+                if (window != null) {
+                    append("\n\nThis block is the requested time window, retrieved locally. ")
+                    append("Answer from it and cite dates; use read_record only for a fuller passage.")
+                } else {
+                    append("\n\nThis block was retrieved locally by keywords from the question. ")
+                    append("Prefer it and cite dates. Call read_record (with its record_id) only when you need a fuller passage.")
+                }
             }
         }
 
@@ -176,10 +189,12 @@ class MeteorAiModule(
         }
         messages += AiMessage.user(request.question)
 
+        val startedAt = System.nanoTime()
         val result = withContext(Dispatchers.IO) {
             agent(request.config, tools).run(conversation = messages, allowedPersonId = request.personId)
         }
-        return ChatReply(result.content, result.steps)
+        val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
+        return ChatReply(result.content, result.steps, result.usage, elapsedMs)
     }
 
     override suspend fun ask(request: AskRequest): AskAnswer = withContext(Dispatchers.IO) {

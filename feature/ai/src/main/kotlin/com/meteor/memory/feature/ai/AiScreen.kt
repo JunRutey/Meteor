@@ -34,7 +34,12 @@ data class AiSkillChip(val id: String, val label: String, val requiresPerson: Bo
 data class AiPersonChip(val personId: String, val label: String)
 
 /** One in-memory chat bubble; history is never persisted. */
-data class AiChatBubble(val fromUser: Boolean, val text: String)
+data class AiChatBubble(
+    val fromUser: Boolean,
+    val text: String,
+    val usage: AiUsage? = null,
+    val elapsedMs: Long = 0,
+)
 
 /**
  * The AI domain screen: pick a skill, optionally pick a person, chat.
@@ -54,6 +59,8 @@ fun AiScreen(
     error: String?,
     blockedMessage: String?,
     personaStatus: String?,
+    sessionUsage: AiUsage = AiUsage(),
+    sessionElapsedMs: Long = 0,
     onSkillSelect: (String) -> Unit,
     onPersonSelect: (String?) -> Unit,
     onSend: (String) -> Unit,
@@ -203,6 +210,9 @@ fun AiScreen(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
+                if (sessionUsage.totalTokens > 0) {
+                    UsageSummary(sessionUsage, sessionElapsedMs)
+                }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -259,5 +269,40 @@ private fun ChatBubble(bubble: AiChatBubble) {
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             )
         }
+        val usage = bubble.usage
+        if (!bubble.fromUser && usage != null && usage.totalTokens > 0 && bubble.elapsedMs > 0) {
+            UsageSummary(usage, bubble.elapsedMs, compact = true)
+        }
     }
+}
+
+/** "1.4s · 812 tokens · 580 tok/s · cache 63%" — numbers only in code. */
+@Composable
+private fun UsageSummary(usage: AiUsage, elapsedMs: Long, compact: Boolean = false) {
+    if (usage.totalTokens <= 0 || elapsedMs <= 0) return
+    val seconds = elapsedMs / 1000.0
+    val rate = (usage.totalTokens / seconds).toInt()
+    val cache = if (usage.cacheTokens > 0) {
+        usage.cacheHitTokens * 100 / usage.cacheTokens
+    } else {
+        null
+    }
+    val text = when {
+        compact && cache != null ->
+            stringResource(R.string.ai_usage_line_cache, seconds, usage.totalTokens, rate, cache)
+
+        compact ->
+            stringResource(R.string.ai_usage_line, seconds, usage.totalTokens, rate)
+
+        cache != null ->
+            stringResource(R.string.ai_usage_session_cache, usage.totalTokens, rate, cache)
+
+        else ->
+            stringResource(R.string.ai_usage_session, usage.totalTokens, rate)
+    }
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }

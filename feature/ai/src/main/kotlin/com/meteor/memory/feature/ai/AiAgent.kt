@@ -1,7 +1,12 @@
 package com.meteor.memory.feature.ai
 
 /** One completed agent run: final text plus how much work it took. */
-data class AgentResult(val content: String, val steps: Int, val toolCalls: Int)
+data class AgentResult(
+    val content: String,
+    val steps: Int,
+    val toolCalls: Int,
+    val usage: AiUsage = AiUsage(),
+)
 
 /**
  * Bounded tool loop. The model may ask for **read-only** archive tools for at
@@ -25,19 +30,26 @@ class AiAgent(
         var steps = 0
         var toolCalls = 0
         var toolChars = 0
+        var usage = AiUsage()
 
         while (steps < maxSteps) {
             steps++
             val completion = provider.complete(messages = messages, tools = specs)
+            completion.usage?.let { usage = usage.merge(it) }
             if (completion.toolCalls.isEmpty()) {
                 val text = completion.content?.trim().orEmpty()
                 if (text.isEmpty()) throw AiProviderException(0, "empty-response")
-                return AgentResult(text, steps, toolCalls)
+                return AgentResult(text, steps, toolCalls, usage)
             }
 
             val calls = completion.toolCalls.take(maxToolCallsPerStep)
             toolCalls += calls.size
-            messages += AiMessage.assistant(completion.content, calls)
+            messages += AiMessage(
+                role = AiRole.ASSISTANT,
+                content = completion.content,
+                toolCalls = calls,
+                reasoningContent = completion.reasoningContent,
+            )
 
             var budgetReached = false
             for (call in calls) {

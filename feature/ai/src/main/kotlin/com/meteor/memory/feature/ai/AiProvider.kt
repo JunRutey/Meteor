@@ -38,6 +38,8 @@ class OpenAiCompatibleProvider(
             messages = messages,
             tools = tools,
             maxTokens = maxTokens,
+            reasoning = config.reasoningMode,
+            provider = config.provider,
         )
         val response = transport.post(
             url = config.endpoint,

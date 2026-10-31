@@ -38,6 +38,7 @@ fun AiSettingsSection(
     provider: String,
     baseUrl: String,
     model: String,
+    reasoning: String,
     apiKeyPresent: Boolean,
     testing: Boolean,
     testMessage: String?,
@@ -46,6 +47,7 @@ fun AiSettingsSection(
     onProviderChange: (String) -> Unit,
     onBaseUrlChange: (String) -> Unit,
     onModelChange: (String) -> Unit,
+    onReasoningChange: (String) -> Unit,
     onSaveApiKey: (String) -> Unit,
     onClearApiKey: () -> Unit,
     onTestConnection: () -> Unit,
@@ -140,6 +142,25 @@ fun AiSettingsSection(
                 placeholder = { Text(text = stringResource(R.string.ai_settings_model_hint)) },
             )
 
+            Text(
+                text = stringResource(R.string.ai_settings_reasoning),
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ReasoningMode.entries.forEach { mode ->
+                    val label = reasoningLabel(mode)
+                    if (mode.wire == reasoning) {
+                        Button(onClick = { onReasoningChange(mode.wire) }) { Text(label) }
+                    } else {
+                        OutlinedButton(onClick = { onReasoningChange(mode.wire) }) { Text(label) }
+                    }
+                }
+            }
+            Text(
+                text = stringResource(R.string.ai_settings_reasoning_hint),
+                style = MaterialTheme.typography.bodySmall,
+            )
+
             OutlinedTextField(
                 value = keyDraft,
                 onValueChange = { keyDraft = it },
@@ -197,5 +218,16 @@ fun aiProviderLabel(provider: String): String = stringResource(
         AiPresets.OPENAI -> R.string.ai_provider_openai
         AiPresets.CUSTOM -> R.string.ai_provider_custom
         else -> R.string.ai_provider_deepseek
+    },
+)
+
+@Composable
+private fun reasoningLabel(mode: ReasoningMode): String = stringResource(
+    when (mode) {
+        ReasoningMode.AUTO -> R.string.ai_reasoning_auto
+        ReasoningMode.OFF -> R.string.ai_reasoning_off
+        ReasoningMode.LOW -> R.string.ai_reasoning_low
+        ReasoningMode.HIGH -> R.string.ai_reasoning_high
+        ReasoningMode.MAX -> R.string.ai_reasoning_max
     },
 )

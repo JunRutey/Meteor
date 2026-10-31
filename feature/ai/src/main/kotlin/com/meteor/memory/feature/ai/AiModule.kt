@@ -116,4 +116,9 @@ data class ChatRequest(
     val config: AiConfig,
 )
 
-data class ChatReply(val text: String, val steps: Int)
+data class ChatReply(
+    val text: String,
+    val steps: Int,
+    val usage: AiUsage = AiUsage(),
+    val elapsedMs: Long = 0,
+)

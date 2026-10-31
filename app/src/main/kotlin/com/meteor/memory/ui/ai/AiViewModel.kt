@@ -11,6 +11,7 @@ import com.meteor.memory.feature.ai.AiModule
 import com.meteor.memory.feature.ai.AiPresets
 import com.meteor.memory.feature.ai.AiProviderException
 import com.meteor.memory.feature.ai.AiSkill
+import com.meteor.memory.feature.ai.AiUsage
 import com.meteor.memory.feature.ai.ChatRequest
 import com.meteor.memory.feature.ai.ChatTurn
 import com.meteor.memory.feature.ai.SkillStage
@@ -41,6 +42,8 @@ data class AiUiState(
     val errorDetail: String? = null,
     val blocked: AiBlocked? = null,
     val provider: String = AiPresets.DEEPSEEK,
+    val sessionUsage: AiUsage = AiUsage(),
+    val sessionElapsedMs: Long = 0,
 )
 
 @HiltViewModel
@@ -160,10 +163,18 @@ class AiViewModel @Inject constructor(
                     ),
                 )
             }.onSuccess { reply ->
+                val usage = reply.usage
                 _state.update {
                     it.copy(
                         busy = false,
-                        messages = it.messages + AiChatBubble(fromUser = false, text = reply.text),
+                        messages = it.messages + AiChatBubble(
+                            fromUser = false,
+                            text = reply.text,
+                            usage = usage.takeIf { it.totalTokens > 0 },
+                            elapsedMs = reply.elapsedMs,
+                        ),
+                        sessionUsage = it.sessionUsage.merge(usage),
+                        sessionElapsedMs = it.sessionElapsedMs + reply.elapsedMs,
                     )
                 }
             }.onFailure { error ->
@@ -180,7 +191,15 @@ class AiViewModel @Inject constructor(
     }
 
     fun clear() {
-        _state.update { it.copy(messages = emptyList(), errorCode = 0, errorDetail = null) }
+        _state.update {
+            it.copy(
+                messages = emptyList(),
+                sessionUsage = AiUsage(),
+                sessionElapsedMs = 0,
+                errorCode = 0,
+                errorDetail = null,
+            )
+        }
     }
 
     /** Re-check the selected persona after returning from its screen. */

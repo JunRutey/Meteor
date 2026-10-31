@@ -2,6 +2,7 @@ package com.meteor.memory.feature.ai
 
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -105,5 +106,76 @@ class AiProtocolTest {
             AiProtocol.errorMessage("my secret diary text"),
         )
         assertEquals("provider-error", AiProtocol.errorMessage("oops"))
+    }
+
+    @Test
+    fun `deepseek cache fields are parsed into usage`() {
+        val body = """
+            {"choices":[{"message":{"role":"assistant","content":"hi"}}],
+             "usage":{"prompt_tokens":100,"completion_tokens":20,
+                      "prompt_cache_hit_tokens":60,"prompt_cache_miss_tokens":40}}
+        """.trimIndent()
+
+        val usage = AiProtocol.parseCompletion(body).usage!!
+
+        assertEquals(120, usage.totalTokens)
+        assertEquals(60, usage.cacheHitTokens)
+        assertEquals(100, usage.cacheTokens)
+    }
+
+    @Test
+    fun `openai cached tokens become a cache hit`() {
+        val body = """
+            {"choices":[{"message":{"role":"assistant","content":"hi"}}],
+             "usage":{"prompt_tokens":100,"completion_tokens":5,
+                      "prompt_tokens_details":{"cached_tokens":80}}}
+        """.trimIndent()
+
+        val usage = AiProtocol.parseCompletion(body).usage!!
+
+        assertEquals(80, usage.cacheHitTokens)
+        assertEquals(20, usage.cacheMissTokens)
+    }
+
+    @Test
+    fun `thinking parameters are only sent for deepseek and by request`() {
+        fun body(reasoning: ReasoningMode, provider: String) = JSONObject(
+            AiProtocol.requestBody(
+                model = "m",
+                messages = listOf(AiMessage.user("q")),
+                tools = emptyList(),
+                maxTokens = 10,
+                reasoning = reasoning,
+                provider = provider,
+            ),
+        )
+
+        assertFalse(body(ReasoningMode.AUTO, AiPresets.DEEPSEEK).has("thinking"))
+        assertFalse(body(ReasoningMode.AUTO, AiPresets.DEEPSEEK).has("reasoning_effort"))
+
+        val off = body(ReasoningMode.OFF, AiPresets.DEEPSEEK)
+        assertEquals("disabled", off.getJSONObject("thinking").getString("type"))
+
+        val high = body(ReasoningMode.HIGH, AiPresets.DEEPSEEK)
+        assertEquals("enabled", high.getJSONObject("thinking").getString("type"))
+        assertEquals("high", high.getString("reasoning_effort"))
+
+        val openai = body(ReasoningMode.HIGH, AiPresets.OPENAI)
+        assertFalse(openai.has("thinking"))
+        assertFalse(openai.has("reasoning_effort"))
+    }
+
+    @Test
+    fun `assistant reasoning content is echoed for tool rounds`() {
+        val body = AiProtocol.requestBody(
+            model = "m",
+            messages = listOf(AiMessage(AiRole.ASSISTANT, "x", reasoningContent = "trace")),
+            tools = emptyList(),
+            maxTokens = 10,
+        )
+
+        val message = JSONObject(body).getJSONArray("messages").getJSONObject(0)
+
+        assertEquals("trace", message.getString("reasoning_content"))
     }
 }

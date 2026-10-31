@@ -12,10 +12,10 @@ import com.meteor.memory.core.backup.NoExternalBackupMirror
 import com.meteor.memory.core.backup.PlaintextBackupModule
 import com.meteor.memory.core.crypto.AppLock
 import com.meteor.memory.core.crypto.EncryptedPrefsAppLock
-import com.meteor.memory.core.crypto.EncryptedPrefsSecretStore
 import com.meteor.memory.core.crypto.FileCrypto
 import com.meteor.memory.core.crypto.SecretStore
 import com.meteor.memory.core.crypto.androidKeystoreFileCrypto
+import com.meteor.memory.core.crypto.androidKeystoreSecretStore
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.log.FileAppLogger
 import com.meteor.memory.core.log.LogExporter
@@ -135,11 +135,13 @@ object AppModule {
         imageStore: ImageStore,
     ): EditorModule = MarkdownEditorModule(storageRouter, imageStore)
 
-    /** Encrypted credential namespace used for the user's own AI API key. */
+    /** AI credentials share the archive's Keystore AES-256-GCM key (ADR-024). */
     @Provides
     @Singleton
-    fun provideSecretStore(@ApplicationContext context: Context): SecretStore =
-        EncryptedPrefsSecretStore(context)
+    fun provideSecretStore(
+        @ApplicationContext context: Context,
+        fileCrypto: FileCrypto,
+    ): SecretStore = androidKeystoreSecretStore(context, fileCrypto)
 
     @Provides
     @Singleton

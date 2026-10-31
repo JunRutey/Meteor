@@ -97,6 +97,28 @@ class AiAgentTest {
     }
 
     @Test
+    fun `usage is summed across tool rounds`() = runBlocking {
+        val provider = FakeProvider(
+            AiCompletion(
+                content = null,
+                toolCalls = listOf(AiToolCall("c1", "search_archive", "{}")),
+                usage = AiUsage(promptTokens = 100, completionTokens = 10),
+            ),
+            AiCompletion(
+                content = "done",
+                toolCalls = emptyList(),
+                usage = AiUsage(promptTokens = 200, completionTokens = 20),
+            ),
+        )
+
+        val result = AiAgent(provider, FakeToolbox()).run(conversation(), allowedPersonId = null)
+
+        assertEquals(330, result.usage.totalTokens)
+        assertEquals(300, result.usage.promptTokens)
+        assertEquals(30, result.usage.completionTokens)
+    }
+
+    @Test
     fun `the conversation must start with a system prompt`() {
         val error = assertThrows(
             IllegalArgumentException::class.java,

@@ -15,14 +15,17 @@ enum class AiRole(val wire: String) {
 data class AiToolCall(val id: String, val name: String, val arguments: String)
 
 /**
- * One chat message. [toolCalls] is only used by assistant messages and
- * [toolCallId] only by tool messages.
+ * One chat message. [toolCalls] is only used by assistant messages,
+ * [toolCallId] only by tool messages, and [reasoningContent] only by assistant
+ * messages when the provider returns a thinking trace (DeepSeek requires it to
+ * be echoed back while tools are in play).
  */
 data class AiMessage(
     val role: AiRole,
     val content: String?,
     val toolCalls: List<AiToolCall> = emptyList(),
     val toolCallId: String? = null,
+    val reasoningContent: String? = null,
 ) {
     companion object {
         fun system(text: String) = AiMessage(AiRole.SYSTEM, text)
@@ -39,8 +42,37 @@ data class AiMessage(
 /** Tool declaration sent to the model. [parametersJson] is a JSON-schema object. */
 data class AiToolSpec(val name: String, val description: String, val parametersJson: String)
 
-/** One completion: text, tool calls, or both. */
-data class AiCompletion(val content: String?, val toolCalls: List<AiToolCall>)
+/**
+ * Token accounting returned by the provider. DeepSeek reports cache hits
+ * separately (`prompt_cache_hit_tokens`); OpenAI nests it under
+ * `prompt_tokens_details.cached_tokens`. Both are normalised here.
+ */
+data class AiUsage(
+    val promptTokens: Int = 0,
+    val completionTokens: Int = 0,
+    val cacheHitTokens: Int = 0,
+    val cacheMissTokens: Int = 0,
+) {
+    val totalTokens: Int get() = promptTokens + completionTokens
+
+    /** Cache-hit denominator, zero when the provider reported no cache data. */
+    val cacheTokens: Int get() = cacheHitTokens + cacheMissTokens
+
+    fun merge(other: AiUsage) = AiUsage(
+        promptTokens = promptTokens + other.promptTokens,
+        completionTokens = completionTokens + other.completionTokens,
+        cacheHitTokens = cacheHitTokens + other.cacheHitTokens,
+        cacheMissTokens = cacheMissTokens + other.cacheMissTokens,
+    )
+}
+
+/** One completion: text, tool calls, and how many tokens it cost. */
+data class AiCompletion(
+    val content: String?,
+    val toolCalls: List<AiToolCall>,
+    val usage: AiUsage? = null,
+    val reasoningContent: String? = null,
+)
 
 /** Result of the cheap `/models` probe used by "test connection". */
 data class ProbeResult(val ok: Boolean, val code: Int)
@@ -59,12 +91,23 @@ object AiProtocol {
         messages: List<AiMessage>,
         tools: List<AiToolSpec>,
         maxTokens: Int,
+        reasoning: ReasoningMode = ReasoningMode.AUTO,
+        provider: String = AiPresets.DEEPSEEK,
     ): String {
         val root = JSONObject()
         root.put("model", model)
         root.put("messages", JSONArray(messages.map { messageJson(it) }))
         root.put("max_tokens", maxTokens)
         root.put("temperature", 0.7)
+        // Thinking parameters are DeepSeek-specific; other providers may reject
+        // unknown body fields, so they are only sent for DeepSeek (ADR-024).
+        if (provider == AiPresets.DEEPSEEK && reasoning != ReasoningMode.AUTO) {
+            root.put(
+                "thinking",
+                JSONObject().put("type", if (reasoning == ReasoningMode.OFF) "disabled" else "enabled"),
+            )
+            reasoning.effort?.let { root.put("reasoning_effort", it) }
+        }
         if (tools.isNotEmpty()) {
             root.put("tools", JSONArray(tools.map { spec ->
                 JSONObject().apply {
@@ -110,7 +153,32 @@ object AiProtocol {
             }
         }.orEmpty()
 
-        return AiCompletion(content, calls)
+        val reasoning = message.optString("reasoning_content").takeIf { it.isNotBlank() }
+
+        return AiCompletion(content, calls, parseUsage(root), reasoning)
+    }
+
+    private fun parseUsage(root: JSONObject): AiUsage? {
+        val usage = root.optJSONObject("usage") ?: return null
+        val prompt = usage.optInt("prompt_tokens", -1)
+        val completion = usage.optInt("completion_tokens", -1)
+        if (prompt < 0 && completion < 0) return null
+
+        var hit = usage.optInt("prompt_cache_hit_tokens", 0)
+        var miss = usage.optInt("prompt_cache_miss_tokens", 0)
+        if (hit == 0 && miss == 0) {
+            val cached = usage.optJSONObject("prompt_tokens_details")?.optInt("cached_tokens", 0) ?: 0
+            if (cached > 0) {
+                hit = cached
+                miss = (prompt - cached).coerceAtLeast(0)
+            }
+        }
+        return AiUsage(
+            promptTokens = prompt.coerceAtLeast(0),
+            completionTokens = completion.coerceAtLeast(0),
+            cacheHitTokens = hit,
+            cacheMissTokens = miss,
+        )
     }
 
     /**
@@ -147,6 +215,10 @@ object AiProtocol {
                             })
                         }
                     }))
+                }
+                // DeepSeek requires the trace to be echoed while tools are used.
+                message.reasoningContent?.takeIf { it.isNotBlank() }?.let {
+                    put("reasoning_content", it)
                 }
             }
 
