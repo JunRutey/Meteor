@@ -78,9 +78,20 @@
     <string name="about_donate">打赏</string>
     <string name="about_changelog">更新日志</string>
 
-    <string name="chats_title">聊天记录</string>
+    <string name="chats_title">记录</string>
     <string name="chats_back">返回</string>
-    <string name="chats_empty">聊天记录总览尚未开放</string>
+    <string name="chats_empty">还没有导入文件记录</string>
+    <string name="records_import">导入文件</string>
+    <string name="records_importing">导入中…</string>
+    <string name="records_owner_label">新文件归属：%1$s</string>
+    <string name="records_choose_person">选择人物</string>
+    <string name="records_unassigned">未关联人物</string>
+    <string name="records_attachment_details">%1$s · %2$s · %3$s</string>
+    <string name="records_attachment_owner">人物：%1$s</string>
+    <string name="records_load_failed">文件记录加载失败，请稍后重试</string>
+    <string name="records_import_summary">成功导入 %1$d 个，失败 %2$d 个</string>
+    <string name="records_import_failed">文件导入失败，请检查文件后重试</string>
+    <string name="records_index_failed">文件已保存，但文本索引更新失败</string>
 
     <string name="diary_preview_edit">修改日记</string>
     <string name="diary_preview_back">返回</string>

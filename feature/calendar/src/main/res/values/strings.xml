@@ -11,7 +11,7 @@
     <string name="calendar_open_search">搜索</string>
     <string name="calendar_open_ai">AI 对话</string>
     <string name="calendar_open_gallery">图片总览</string>
-    <string name="calendar_open_chats">聊天记录</string>
+    <string name="calendar_open_chats">记录</string>
     <string name="calendar_open_people">人际关系</string>
 
     <string name="mood_happy">开心</string>

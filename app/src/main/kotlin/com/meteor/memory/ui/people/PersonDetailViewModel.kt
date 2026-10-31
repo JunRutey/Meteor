@@ -4,6 +4,9 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import android.net.Uri
+import com.meteor.memory.core.log.AppLog
+import com.meteor.memory.core.storage.AttachmentStore
 import com.meteor.memory.core.storage.ImageStore
 import com.meteor.memory.core.storage.PersonProfile
 import com.meteor.memory.core.storage.PersonQueries
@@ -12,10 +15,13 @@ import com.meteor.memory.core.storage.RecordType
 import com.meteor.memory.core.time.TimeModule
 import com.meteor.memory.feature.editor.MarkdownEditing
 import com.meteor.memory.ui.common.decodeImages
+import com.meteor.memory.ui.attachments.AttachmentImportCoordinator
+import com.meteor.memory.ui.attachments.AttachmentImportSummary
 import com.meteor.memory.ui.search.PersonRecord
 import com.meteor.memory.ui.search.SearchService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -32,6 +38,14 @@ data class PersonRecordView(
     val dateLabel: String,
 )
 
+data class PersonAttachmentView(
+    val id: String,
+    val fileName: String,
+    val mimeType: String,
+    val dateLabel: String,
+    val sizeBytes: Long,
+)
+
 data class PersonViewState(
     val displayName: String = "",
     val relation: Relation? = null,
@@ -42,6 +56,10 @@ data class PersonViewState(
     /** Decrypted images referenced by the notes, so the page can render them. */
     val images: Map<String, ImageBitmap> = emptyMap(),
     val records: List<PersonRecordView> = emptyList(),
+    val attachments: List<PersonAttachmentView> = emptyList(),
+    val attachmentsError: Boolean = false,
+    val isImporting: Boolean = false,
+    val importSummary: AttachmentImportSummary? = null,
     val loaded: Boolean = false,
 )
 
@@ -52,6 +70,9 @@ class PersonDetailViewModel @Inject constructor(
     private val searchService: SearchService,
     private val timeModule: TimeModule,
     private val imageStore: ImageStore,
+    private val attachmentStore: AttachmentStore,
+    private val attachmentImportCoordinator: AttachmentImportCoordinator,
+    private val appLog: AppLog,
 ) : ViewModel() {
 
     private val personId: String = checkNotNull(savedStateHandle.get<String>(ARG_PERSON_ID))
@@ -68,6 +89,16 @@ class PersonDetailViewModel @Inject constructor(
             val locale = Locale.getDefault()
             val profile = withContext(Dispatchers.IO) { personQueries.read(personId) }
             val records = withContext(Dispatchers.IO) { searchService.recordsForPerson(personId) }
+            var attachmentsError = false
+            val attachments = try {
+                withContext(Dispatchers.IO) { attachmentStore.list(personId) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                attachmentsError = true
+                appLog.warn(TAG, "person attachment list failed", failure)
+                emptyList()
+            }
 
             _state.update {
                 it.copy(
@@ -76,6 +107,19 @@ class PersonDetailViewModel @Inject constructor(
                     note = profile?.note.orEmpty(),
                     notes = profile?.notes.orEmpty(),
                     records = records.map { record -> record.toView(locale) },
+                    attachments = attachments.map { attachment ->
+                        PersonAttachmentView(
+                            id = attachment.id,
+                            fileName = attachment.fileName,
+                            mimeType = attachment.mimeType,
+                            dateLabel = timeModule.formatDate(
+                                attachment.modifiedAt.atZone(ZoneId.systemDefault()).toLocalDate(),
+                                locale,
+                            ),
+                            sizeBytes = attachment.sizeBytes,
+                        )
+                    },
+                    attachmentsError = attachmentsError,
                     loaded = true,
                 )
             }
@@ -84,6 +128,16 @@ class PersonDetailViewModel @Inject constructor(
     }
 
     fun imageFor(token: String): ImageBitmap? = _state.value.images[token]
+
+    fun importAttachments(uris: List<Uri>) {
+        if (uris.isEmpty() || _state.value.isImporting) return
+        viewModelScope.launch {
+            _state.update { it.copy(isImporting = true, importSummary = null) }
+            val summary = attachmentImportCoordinator.importAll(uris, personId)
+            _state.update { it.copy(isImporting = false, importSummary = summary) }
+            load()
+        }
+    }
 
     private fun loadNoteImages(notes: String) {
         val tokens = MarkdownEditing.imagesOf(notes)
@@ -109,6 +163,7 @@ class PersonDetailViewModel @Inject constructor(
     companion object {
         const val ARG_PERSON_ID = "personId"
         private const val SHORT_ID = 8
+        private const val TAG = "PersonDetail"
     }
 }
 

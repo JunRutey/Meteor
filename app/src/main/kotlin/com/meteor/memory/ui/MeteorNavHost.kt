@@ -56,6 +56,7 @@ import com.meteor.memory.ui.ai.AiViewModel
 import com.meteor.memory.ui.ai.PersonaViewModel
 import com.meteor.memory.ui.backup.BackupActions
 import com.meteor.memory.ui.chats.ChatsScreen
+import com.meteor.memory.ui.chats.ChatsViewModel
 import com.meteor.memory.ui.calendar.CalendarViewModel
 import com.meteor.memory.ui.diagnostics.StorageDiagnosticsScreen
 import com.meteor.memory.ui.diary.DiaryEditScreen
@@ -68,6 +69,7 @@ import com.meteor.memory.ui.log.LogActions
 import com.meteor.memory.ui.people.PeopleViewModel
 import com.meteor.memory.ui.people.PersonDetailViewModel
 import com.meteor.memory.ui.people.PersonEditViewModel
+import com.meteor.memory.ui.people.PersonAttachmentView
 import com.meteor.memory.ui.search.SearchScreen
 import com.meteor.memory.ui.search.SearchViewModel
 import com.meteor.memory.ui.settings.AiTestState
@@ -209,6 +211,7 @@ fun MeteorNavHost(
             val viewModel: PersonDetailViewModel = hiltViewModel()
             val state by viewModel.state.collectAsStateWithLifecycle()
             val personId = entry.arguments?.getString(PersonDetailViewModel.ARG_PERSON_ID).orEmpty()
+            val pickAttachments = rememberAttachmentPicker(viewModel::importAttachments)
 
             RefreshOnResume { viewModel.load() }
 
@@ -223,7 +226,7 @@ fun MeteorNavHost(
                         dateLabel = it.dateLabel,
                         typeLabel = recordTypeLabel(it.type),
                     )
-                },
+                } + state.attachments.map { attachment -> attachment.toRecordRow() },
                 onBack = { navController.popBackStack() },
                 onEdit = { navController.navigate("people/$personId/edit") },
                 onEditNote = { navController.navigate("people/$personId/edit") },
@@ -236,6 +239,12 @@ fun MeteorNavHost(
                         )
                     }
                 },
+                onAddRecord = pickAttachments,
+                attachmentsError = state.attachmentsError,
+                importingAttachments = state.isImporting,
+                importedAttachmentCount = state.importSummary?.imported,
+                failedAttachmentCount = state.importSummary?.failed ?: 0,
+                attachmentIndexFailed = state.importSummary?.indexFailed == true,
             )
         }
 
@@ -467,7 +476,17 @@ fun MeteorNavHost(
         }
 
         composable(ROUTE_CHATS) {
-            ChatsScreen(onBack = { navController.popBackStack() })
+            val viewModel: ChatsViewModel = hiltViewModel()
+            val state by viewModel.state.collectAsStateWithLifecycle()
+            val pickAttachments = rememberAttachmentPicker(viewModel::importFiles)
+            RefreshOnResume { viewModel.refresh() }
+
+            ChatsScreen(
+                state = state,
+                onPersonSelected = viewModel::selectPerson,
+                onImportFiles = pickAttachments,
+                onBack = { navController.popBackStack() },
+            )
         }
 
         composable(
@@ -629,6 +648,23 @@ private fun rememberImagePicker(onBytes: (ByteArray) -> Unit): () -> Unit {
     }
     return { launcher.launch("image/*") }
 }
+
+@Composable
+private fun rememberAttachmentPicker(onUris: (List<Uri>) -> Unit): () -> Unit {
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) onUris(uris)
+    }
+    return { launcher.launch(arrayOf("*/*")) }
+}
+
+private fun PersonAttachmentView.toRecordRow(): PersonRecordRow =
+    PersonRecordRow(
+        recordId = id,
+        dateLabel = dateLabel,
+        typeLabel = mimeType,
+        title = fileName,
+        sizeBytes = sizeBytes,
+    )
 
 @Composable
 private fun RefreshOnResume(block: () -> Unit) {

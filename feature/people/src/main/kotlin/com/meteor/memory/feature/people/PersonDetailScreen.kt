@@ -16,9 +16,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import android.text.format.Formatter
 import com.meteor.memory.core.storage.Relation
 import com.meteor.memory.feature.editor.MarkdownPreview
 
@@ -27,6 +29,8 @@ data class PersonRecordRow(
     val recordId: String,
     val dateLabel: String,
     val typeLabel: String,
+    val title: String? = null,
+    val sizeBytes: Long? = null,
 )
 
 /**
@@ -51,6 +55,12 @@ fun PersonDetailScreen(
     onEditBody: () -> Unit = onEdit,
     resolveImage: (String) -> ImageBitmap? = { null },
     onActivate: (String) -> Unit = {},
+    onAddRecord: () -> Unit = {},
+    attachmentsError: Boolean = false,
+    importingAttachments: Boolean = false,
+    importedAttachmentCount: Int? = null,
+    failedAttachmentCount: Int = 0,
+    attachmentIndexFailed: Boolean = false,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
         Row(
@@ -116,14 +126,34 @@ fun PersonDetailScreen(
 
         HorizontalDivider(Modifier.padding(top = 8.dp))
 
-        Text(
-            text = stringResource(R.string.people_records),
-            style = MaterialTheme.typography.titleSmall,
-            modifier = Modifier.padding(16.dp),
+        SectionHeader(
+            title = stringResource(R.string.people_records),
+            action = stringResource(
+                if (importingAttachments) R.string.people_record_importing else R.string.people_record_add,
+            ),
+            onAction = onAddRecord,
+            enabled = !importingAttachments,
         )
 
-        if (records.isEmpty()) {
+        if (attachmentsError) {
+            Placeholder(stringResource(R.string.people_records_load_failed))
+        } else if (records.isEmpty()) {
             Placeholder(stringResource(R.string.people_records_empty))
+        }
+
+        importedAttachmentCount?.let { imported ->
+            Text(
+                text = stringResource(
+                    R.string.people_record_import_summary,
+                    imported,
+                    failedAttachmentCount,
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+            )
+        }
+        if (attachmentIndexFailed) {
+            Placeholder(stringResource(R.string.people_record_index_failed))
         }
 
         LazyColumn(modifier = Modifier.weight(1f)) {
@@ -134,9 +164,28 @@ fun PersonDetailScreen(
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Text(text = row.typeLabel, style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary)
-                    Text(text = row.dateLabel, style = MaterialTheme.typography.bodyMedium)
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = row.title ?: row.typeLabel,
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (row.title != null) {
+                                Text(
+                                    text = row.typeLabel,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                row.sizeBytes?.let { size ->
+                                    Text(
+                                        text = Formatter.formatShortFileSize(LocalContext.current, size),
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                }
+                            }
+                            Text(text = row.dateLabel, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
                 }
                 HorizontalDivider()
             }
@@ -145,14 +194,19 @@ fun PersonDetailScreen(
 }
 
 @Composable
-private fun SectionHeader(title: String, action: String, onAction: () -> Unit) {
+private fun SectionHeader(
+    title: String,
+    action: String,
+    onAction: () -> Unit,
+    enabled: Boolean = true,
+) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp, top = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(text = title, style = MaterialTheme.typography.titleSmall)
-        TextButton(onClick = onAction) {
+        TextButton(onClick = onAction, enabled = enabled) {
             Text(text = action, style = MaterialTheme.typography.labelLarge)
         }
     }

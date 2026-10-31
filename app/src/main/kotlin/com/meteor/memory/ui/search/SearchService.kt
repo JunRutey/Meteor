@@ -10,6 +10,7 @@ data class SearchMatch(
     val type: RecordType,
     val timestamp: Instant,
     val snippet: String,
+    val score: Double = 0.0,
 )
 
 data class SearchIndexSummary(
@@ -48,4 +49,10 @@ interface SearchService {
 
     /** Records aggregated under one `person_id`, newest first. */
     suspend fun recordsForPerson(personId: String): List<PersonRecord>
+
+    /** Rebuilds the in-memory text index for encrypted file attachments. */
+    suspend fun refreshAttachmentIndex() = Unit
+
+    /** Drops decrypted attachment text from memory when the app is backgrounded. */
+    suspend fun clearAttachmentIndex() = Unit
 }

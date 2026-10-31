@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedOutputStream
 import java.io.File
+import java.io.InputStream
 import java.time.LocalDate
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -29,6 +30,7 @@ class PrivateStorageRouter(
 ) : StorageRouter {
 
     private val layout = StorageLayout(File(context.filesDir, StorageLayout.ROOT_NAME))
+    private val attachmentStore = EncryptedAttachmentStore(layout.rootDir(), crypto)
 
     override fun route(personId: String?, type: RecordType, date: LocalDate): File =
         layout.fileFor(personId, type, date)
@@ -74,7 +76,7 @@ class PrivateStorageRouter(
             ZipInputStream(raw).use { zip ->
                 var entry: ZipEntry? = zip.nextEntry
                 while (entry != null) {
-                    if (!entry.isDirectory) importEntry(root, entry, zip.readBytes())
+                    if (!entry.isDirectory) importEntry(root, entry, zip)
                     zip.closeEntry()
                     entry = zip.nextEntry
                 }
@@ -94,9 +96,13 @@ class PrivateStorageRouter(
             }
             val relative = child.relativeTo(root).invariantSeparatorsPath
             val entryName = "${root.name}/$relative"
-            val plaintext = plaintextOf(child)
             zip.putNextEntry(ZipEntry(entryName))
-            zip.write(plaintext)
+            val attachmentPayload = attachmentPayload(relative)
+            if (attachmentPayload != null) {
+                attachmentStore.copyDecrypted(attachmentPayload.id, zip)
+            } else {
+                zip.write(plaintextOf(child))
+            }
             zip.closeEntry()
         }
     }
@@ -117,7 +123,7 @@ class PrivateStorageRouter(
 
     // --- import ------------------------------------------------------------
 
-    private fun importEntry(root: File, entry: ZipEntry, bytes: ByteArray) {
+    private fun importEntry(root: File, entry: ZipEntry, input: InputStream) {
         val relative = safeRelativePath(entry.name) ?: throw StorageException("illegal entry: ${entry.name}")
         val target = File(root, relative)
 
@@ -127,7 +133,17 @@ class PrivateStorageRouter(
         }
 
         target.parentFile?.mkdirs()
+        val attachmentPayload = attachmentPayload(relative)
+        if (attachmentPayload != null) {
+            attachmentStore.restorePayload(
+                id = attachmentPayload.id,
+                personId = attachmentPayload.personId,
+                input = input,
+            )
+            return
+        }
 
+        val bytes = input.readBytes()
         if (target.extension.equals("md", ignoreCase = true)) {
             val plain = DocumentCodec.decodePlaintext(bytes)
             if (plain != null) {
@@ -139,6 +155,31 @@ class PrivateStorageRouter(
         // Media and anything unrecognised: re-encrypt whole bytes with this device's key.
         target.writeBytes(crypto.encrypt(bytes))
     }
+
+    private fun attachmentPayload(relative: String): AttachmentPayload? {
+        val parts = relative.split('/')
+        if (parts.size != ATTACHMENT_PATH_SEGMENTS ||
+            parts[0] != StorageLayout.LEGACY ||
+            parts[1] != StorageLayout.ATTACHMENTS
+        ) {
+            return null
+        }
+        val personId = when (val owner = parts[2]) {
+            EncryptedAttachmentStore.SELF_DIR_NAME -> null
+            else -> owner.takeIf(StorageLayout.PERSON_ID_PATTERN::matches) ?: return null
+        }
+        val fileName = parts[3]
+        if (!fileName.matches(ATTACHMENT_DATA_FILE_PATTERN)) return null
+        return AttachmentPayload(
+            id = fileName.removeSuffix(ATTACHMENT_DATA_SUFFIX),
+            personId = personId,
+        )
+    }
+
+    private data class AttachmentPayload(
+        val id: String,
+        val personId: String?,
+    )
 
     /**
      * Strips the leading `我的人生/` prefix and rejects traversal, absolute
@@ -152,5 +193,11 @@ class PrivateStorageRouter(
         val prefix = "${StorageLayout.ROOT_NAME}/"
         val relative = if (normalized.startsWith(prefix)) normalized.removePrefix(prefix) else normalized
         return relative.takeIf { it.isNotBlank() }
+    }
+
+    private companion object {
+        const val ATTACHMENT_PATH_SEGMENTS = 4
+        const val ATTACHMENT_DATA_SUFFIX = ".data.enc"
+        val ATTACHMENT_DATA_FILE_PATTERN = Regex("^[a-f0-9]{32}\\.data\\.enc$")
     }
 }

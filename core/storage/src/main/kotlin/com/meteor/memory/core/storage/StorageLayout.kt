@@ -9,7 +9,7 @@ import java.time.format.DateTimeFormatter
  *
  * ```
  * 我的人生/
- * ├── 数字遗产/{聊天记录,图片,数字人格}/
+ * ├── 数字遗产/{聊天记录,图片,附件,数字人格}/
  * ├── 记忆档案/{自己,人际关系}/
  * └── 时光轴/心情/{日记/}
  * ```
@@ -57,6 +57,7 @@ class StorageLayout(private val root: File) {
         const val LEGACY = "数字遗产"
         const val CHAT = "聊天记录"
         const val IMAGES = "图片"
+        const val ATTACHMENTS = "附件"
         const val PERSONA = "数字人格"
         /** AI conversation history; encrypted, never scanned as archive records. */
         const val AI_CHAT = "AI对话"

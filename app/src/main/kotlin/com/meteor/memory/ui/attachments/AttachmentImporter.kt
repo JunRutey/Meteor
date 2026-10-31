@@ -1,0 +1,224 @@
+package com.meteor.memory.ui.attachments
+
+import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
+import com.meteor.memory.core.log.AppLog
+import com.meteor.memory.core.storage.AttachmentStore
+import com.meteor.memory.core.storage.StoredAttachment
+import com.meteor.memory.ui.search.SearchService
+import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
+import java.util.zip.ZipInputStream
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Singleton
+class AttachmentImporter @Inject constructor(
+    @ApplicationContext private val context: Context,
+    private val attachmentStore: AttachmentStore,
+) {
+
+    suspend fun import(uri: Uri, personId: String?): StoredAttachment = withContext(Dispatchers.IO) {
+        val resolver = context.contentResolver
+        val fileName = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { cursor ->
+                val column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (column >= 0 && cursor.moveToFirst()) cursor.getString(column) else null
+            }
+            ?.takeIf(String::isNotBlank)
+            ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf(String::isNotBlank)
+            ?: error("selected file name is unavailable")
+        val mimeType = resolver.getType(uri) ?: mimeTypeFor(fileName)
+
+        val indexedText = if (AttachmentTextExtractor.supports(fileName, mimeType)) {
+            resolver.openInputStream(uri)?.use { input ->
+                AttachmentTextExtractor.extract(fileName, mimeType, input)
+                    ?.takeIf(String::isNotBlank)
+                    ?.let { text -> "File: ${fileName.replace('\n', ' ').replace('\r', ' ')}\n$text" }
+            } ?: error("selected file cannot be opened")
+        } else {
+            null
+        }
+
+        val input = resolver.openInputStream(uri) ?: error("selected file cannot be opened")
+        input.use {
+            attachmentStore.save(
+                input = it,
+                fileName = fileName,
+                mimeType = mimeType,
+                personId = personId,
+                indexedText = indexedText,
+            )
+        }
+    }
+
+    private fun mimeTypeFor(fileName: String): String =
+        when (fileName.substringAfterLast('.', "").lowercase()) {
+            "txt" -> "text/plain"
+            "json" -> "application/json"
+            "zip" -> "application/zip"
+            else -> AttachmentStore.MIME_OCTET_STREAM
+        }
+}
+
+@Singleton
+class AttachmentImportCoordinator @Inject constructor(
+    private val importer: AttachmentImporter,
+    private val searchService: SearchService,
+    private val appLog: AppLog,
+) {
+
+    suspend fun importAll(uris: List<Uri>, personId: String?): AttachmentImportSummary {
+        var imported = 0
+        var failed = 0
+        for (uri in uris) {
+            try {
+                importer.import(uri, personId)
+                imported++
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                failed++
+                appLog.warn(TAG, "attachment import failed", failure)
+            }
+        }
+
+        val indexFailed = if (imported == 0) {
+            false
+        } else {
+            try {
+                searchService.refreshAttachmentIndex()
+                false
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                appLog.warn(TAG, "attachment index refresh failed", failure)
+                true
+            }
+        }
+        return AttachmentImportSummary(imported = imported, failed = failed, indexFailed = indexFailed)
+    }
+
+    private companion object {
+        const val TAG = "Attachments"
+    }
+}
+
+data class AttachmentImportSummary(
+    val imported: Int,
+    val failed: Int,
+    val indexFailed: Boolean,
+)
+
+internal object AttachmentTextExtractor {
+
+    fun supports(fileName: String, mimeType: String): Boolean {
+        val extension = fileName.substringAfterLast('.', "").lowercase()
+        val normalizedMimeType = mimeType.substringBefore(';').trim().lowercase()
+        return normalizedMimeType.startsWith("text/") ||
+            normalizedMimeType == "application/json" ||
+            extension in TEXT_EXTENSIONS ||
+            extension == "zip" ||
+            normalizedMimeType in ZIP_MIME_TYPES
+    }
+
+    fun extract(fileName: String, mimeType: String, input: InputStream): String? {
+        val extension = fileName.substringAfterLast('.', "").lowercase()
+        val normalizedMimeType = mimeType.substringBefore(';').trim().lowercase()
+        return if (extension == "zip" || normalizedMimeType in ZIP_MIME_TYPES) {
+            extractZip(input)
+        } else {
+            val bytes = input.readBounded(MAX_TEXT_BYTES)
+            val text = bytes.toString(Charsets.UTF_8).removePrefix("\uFEFF")
+            if (bytes.size == MAX_TEXT_BYTES) "$text\n$TRUNCATED_MARKER" else text
+        }
+    }
+
+    private fun extractZip(input: InputStream): String? {
+        val result = StringBuilder()
+        var totalBytes = 0
+        var visited = 0
+        ZipInputStream(input.buffered()).use { zip ->
+            while (visited < MAX_ZIP_ENTRIES && totalBytes < MAX_TEXT_BYTES) {
+                val entry = zip.nextEntry ?: break
+                visited++
+                val remaining = MAX_TEXT_BYTES - totalBytes
+                if (!entry.isDirectory && isTextEntry(entry.name)) {
+                    val bytes = zip.readBounded(remaining)
+                    if (bytes.isNotEmpty()) {
+                        if (result.isNotEmpty()) result.append('\n')
+                        result.append("Entry: ").append(entry.name.take(MAX_ENTRY_NAME_CHARS)).append('\n')
+                            .append(bytes.toString(Charsets.UTF_8).removePrefix("\uFEFF"))
+                        totalBytes += bytes.size
+                    }
+                    if (bytes.size == remaining) {
+                        result.append('\n').append(TRUNCATED_MARKER)
+                        break
+                    }
+                } else if (!entry.isDirectory) {
+                    val skippedBytes = zip.discardBounded(remaining)
+                    totalBytes += skippedBytes
+                    if (skippedBytes == remaining) {
+                        if (result.isNotEmpty()) result.append('\n').append(TRUNCATED_MARKER)
+                        break
+                    }
+                }
+                zip.closeEntry()
+            }
+        }
+        return result.toString().takeIf(String::isNotBlank)
+    }
+
+    private fun isTextEntry(name: String): Boolean =
+        name.substringAfterLast('.', "").lowercase() in TEXT_EXTENSIONS
+
+    private fun InputStream.readBounded(limit: Int): ByteArray {
+        val result = ByteArrayOutputStream(minOf(limit, READ_BUFFER_SIZE))
+        val buffer = ByteArray(READ_BUFFER_SIZE)
+        var remaining = limit
+        while (remaining > 0) {
+            val read = read(buffer, 0, minOf(buffer.size, remaining))
+            if (read < 0) break
+            if (read == 0) {
+                val single = read()
+                if (single < 0) break
+                result.write(single)
+                remaining--
+            } else {
+                result.write(buffer, 0, read)
+                remaining -= read
+            }
+        }
+        return result.toByteArray()
+    }
+
+    private fun InputStream.discardBounded(limit: Int): Int {
+        val buffer = ByteArray(READ_BUFFER_SIZE)
+        var total = 0
+        while (total < limit) {
+            val read = read(buffer, 0, minOf(buffer.size, limit - total))
+            if (read < 0) break
+            if (read == 0) {
+                val single = read()
+                if (single < 0) break
+                total++
+            } else {
+                total += read
+            }
+        }
+        return total
+    }
+
+    private const val MAX_TEXT_BYTES = 1024 * 1024
+    private const val MAX_ZIP_ENTRIES = 256
+    private const val MAX_ENTRY_NAME_CHARS = 256
+    private const val READ_BUFFER_SIZE = 8 * 1024
+    private const val TRUNCATED_MARKER = "[truncated during local indexing]"
+    private val TEXT_EXTENSIONS = setOf("txt", "json", "csv", "xml", "md", "log")
+    private val ZIP_MIME_TYPES = setOf("application/zip", "application/x-zip-compressed")
+}
