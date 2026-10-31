@@ -96,11 +96,32 @@ jobs:
           find app/build/outputs/apk/release -name '*.apk' -exec cp {} dist/ \;
           ls -l dist
 
+      # Release notes are written by hand in Chinese under docs/releases/<tag>.md.
+      # A missing file fails the job on purpose: GitHub's auto-generated notes are
+      # English pull-request lists and are not acceptable here.
+      - name: Read release notes
+        id: notes
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.tag || github.ref_name }}"
+          FILE="docs/releases/${TAG}.md"
+          if [ ! -f "$FILE" ]; then
+            echo "::error::缺少发布说明：$FILE（必须用中文手写）"
+            exit 1
+          fi
+          {
+            echo "body<<__METEOR_NOTES__"
+            cat "$FILE"
+            echo "__METEOR_NOTES__"
+          } >> "$GITHUB_OUTPUT"
+          echo "用 $FILE 作为发布说明"
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           # On a tag push this is the pushed tag; on manual runs it is required input.
           tag_name: ${{ inputs.tag || github.ref_name }}
+          body: ${{ steps.notes.outputs.body }}
+          generate_release_notes: false
           files: dist/*.apk
-          generate_release_notes: true
           fail_on_unmatched_files: true

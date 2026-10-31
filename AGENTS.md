@@ -62,6 +62,13 @@
 - 代码里**零硬编码中文**，全部走 `strings.xml`。
 - 默认资源 `values/` 即中文，后续新增语言靠 `values-xx/`。
 
+## 8.1 发布说明必须中文手写
+
+- 每次发版前在 `docs/releases/<tag>.md` 写好中文发布说明，包含「新增 / 修复 / 变更 / 已知限制」。
+- CI 的 `Release` 工作流读取该文件作为 Release 正文；**文件缺失会让发布任务直接失败**。
+- 禁止使用 GitHub 自动生成的英文 PR 列表作为发布说明。
+- 面向用户的文案（Release、README、提交信息、Issue 回复）一律中文。
+
 ## 9. 依赖注入边界
 
 Hilt 只出现在 `:app`。`core-*`、`feature-*` 模块保持纯 Kotlin 类型，由 `:app` 的 `di/AppModule.kt` 负责组装。这样模块才能被移除而不带走 DI 图。
