@@ -3,9 +3,10 @@ package com.meteor.memory.ui.diagnostics
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.meteor.memory.core.index.IndexModule
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.StorageLayout
+import com.meteor.memory.ui.search.SearchIndexSummary
+import com.meteor.memory.ui.search.SearchService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -34,9 +35,7 @@ data class IndexSummary(
     val records: Int,
     val types: Int,
     val persons: Int,
-)
-
-/**
+)/**
  * DEBUG ONLY. Reads the private directory as raw bytes so the encrypted form can
  * be inspected on-device, and rebuilds the FTS index so v0.2 can be verified
  * without a cable or a debugger.
@@ -44,7 +43,7 @@ data class IndexSummary(
 @HiltViewModel
 class StorageDiagnosticsViewModel @Inject constructor(
     @ApplicationContext context: Context,
-    private val indexModule: IndexModule,
+    private val searchService: SearchService,
     private val appLog: AppLog,
 ) : ViewModel() {
 
@@ -53,8 +52,8 @@ class StorageDiagnosticsViewModel @Inject constructor(
     private val _snapshot = MutableStateFlow<StorageSnapshot?>(null)
     val snapshot: StateFlow<StorageSnapshot?> = _snapshot.asStateFlow()
 
-    private val _indexSummary = MutableStateFlow<IndexSummary?>(null)
-    val indexSummary: StateFlow<IndexSummary?> = _indexSummary.asStateFlow()
+    private val _indexSummary = MutableStateFlow<SearchIndexSummary?>(null)
+    val indexSummary: StateFlow<SearchIndexSummary?> = _indexSummary.asStateFlow()
 
     private val _indexBusy = MutableStateFlow(false)
     val indexBusy: StateFlow<Boolean> = _indexBusy.asStateFlow()
@@ -89,7 +88,7 @@ class StorageDiagnosticsViewModel @Inject constructor(
         _indexError.value = null
 
         viewModelScope.launch {
-            val result = runCatching { withContext(Dispatchers.IO) { indexModule.rebuild() } }
+            val result = runCatching { withContext(Dispatchers.IO) { searchService.rebuild() } }
             result.fold(
                 onSuccess = { appLog.info(TAG, "index rebuilt") },
                 onFailure = { appLog.error(TAG, "index rebuild failed", it) },
@@ -97,16 +96,7 @@ class StorageDiagnosticsViewModel @Inject constructor(
             _indexError.value = result.exceptionOrNull()?.message
 
             if (result.isSuccess) {
-                val overview = runCatching {
-                    withContext(Dispatchers.IO) { indexModule.overview() }
-                }.getOrNull()
-                _indexSummary.value = overview?.let {
-                    IndexSummary(
-                        records = it.typeCounts.values.sum(),
-                        types = it.typeCounts.size,
-                        persons = it.persons.size,
-                    )
-                }
+                _indexSummary.value = withContext(Dispatchers.IO) { searchService.summary() }
             }
             _indexBusy.value = false
         }

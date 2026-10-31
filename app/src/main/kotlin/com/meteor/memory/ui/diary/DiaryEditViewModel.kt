@@ -3,7 +3,7 @@ package com.meteor.memory.ui.diary
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.meteor.memory.core.index.IndexUpdater
+import com.meteor.memory.ui.search.SearchService
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.time.TimeModule
@@ -38,7 +38,7 @@ class DiaryEditViewModel @Inject constructor(
     private val diaryQueries: DiaryQueries,
     private val timeModule: TimeModule,
     private val appLog: AppLog,
-    private val indexUpdater: IndexUpdater,
+    private val searchService: SearchService,
 ) : ViewModel() {
 
     private val date: LocalDate = LocalDate.parse(checkNotNull(savedStateHandle.get<String>(ARG_DATE)))
@@ -90,7 +90,7 @@ class DiaryEditViewModel @Inject constructor(
             }
 
             stored?.let { document ->
-                runCatching { indexUpdater.upsert(document) }
+                runCatching { searchService.indexDocument(document) }
                     .onFailure { appLog.warn(TAG, "index update failed", it) }
             }
 

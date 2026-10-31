@@ -2,8 +2,6 @@ package com.meteor.memory.ui.search
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.meteor.memory.core.index.IndexModule
-import com.meteor.memory.core.index.QueryPlan
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.RecordType
 import com.meteor.memory.core.time.TimeModule
@@ -41,7 +39,7 @@ sealed interface SearchUiState {
 
 @HiltViewModel
 class SearchViewModel @Inject constructor(
-    private val indexModule: IndexModule,
+    private val searchService: SearchService,
     private val timeModule: TimeModule,
     private val appLog: AppLog,
 ) : ViewModel() {
@@ -69,12 +67,10 @@ class SearchViewModel @Inject constructor(
         if (raw.isBlank()) return SearchUiState.Idle
 
         return runCatching {
-            val hits = indexModule.search(
-                QueryPlan(
-                    ftsExpression = raw,
-                    maxHits = MAX_HITS,
-                    snippetChars = SNIPPET_CHARS,
-                ),
+            val hits = searchService.search(
+                query = raw,
+                maxHits = MAX_HITS,
+                snippetChars = SNIPPET_CHARS,
             )
             appLog.debug(TAG, "query=\"$raw\" hits=${hits.size}")
 

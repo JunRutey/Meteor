@@ -7,7 +7,7 @@ import com.meteor.memory.core.crypto.AppLock
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.SettingsRepository
-import com.meteor.memory.index.IndexBootstrap
+import com.meteor.memory.ui.search.SearchService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,7 +39,7 @@ class RootViewModel @Inject constructor(
     private val appLock: AppLock,
     private val settingsRepository: SettingsRepository,
     private val appLog: AppLog,
-    private val indexBootstrap: IndexBootstrap,
+    private val searchService: SearchService,
 ) : ViewModel() {
 
     private val _locked = MutableStateFlow<Boolean?>(null)
@@ -144,7 +144,7 @@ class RootViewModel @Inject constructor(
     private fun scheduleIndexRebuild() {
         if (indexRebuildStarted) return
         indexRebuildStarted = true
-        viewModelScope.launch { indexBootstrap.rebuildIfDue() }
+        viewModelScope.launch { searchService.rebuildOnLaunch() }
     }
 
     @Volatile

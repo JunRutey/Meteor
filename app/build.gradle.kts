@@ -6,6 +6,17 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
+// R3 (archive): every module must be removable. Dropping :core-index swaps in a
+// no-op SearchService and removes the dependency, so the rest still compiles.
+val excludedModules: Set<String> =
+    (providers.gradleProperty("meteor.excludeModules").orNull ?: "")
+        .split(',')
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .toSet()
+
+val indexEnabled: Boolean = "core-index" !in excludedModules
+
 android {
     namespace = "com.meteor.memory"
     compileSdk = libs.versions.compileSdk.get().toInt()
@@ -22,6 +33,12 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+
+    sourceSets {
+        getByName("main") {
+            java.srcDir(if (indexEnabled) "src/indexEnabled/kotlin" else "src/indexDisabled/kotlin")
+        }
     }
 
     buildTypes {
@@ -68,7 +85,9 @@ dependencies {
     implementation(project(":core-crypto"))
     implementation(project(":core-time"))
     implementation(project(":core-log"))
-    implementation(project(":core-index"))
+    if (indexEnabled) {
+        implementation(project(":core-index"))
+    }
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.animation)
