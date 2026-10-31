@@ -18,7 +18,7 @@ import androidx.compose.ui.text.input.VisualTransformation
  * user types next to a hidden marker. Image and link syntax stays visible on
  * purpose — those are the parts a user needs to edit or delete.
  */
-class EditorRendering private constructor(
+class EditorRendering internal constructor(
     val text: AnnotatedString,
     val mapping: OffsetMapping,
 ) {
