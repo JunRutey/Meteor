@@ -119,6 +119,40 @@ class AiAgentTest {
     }
 
     @Test
+    fun `streaming reports content and the tool chain`() = runBlocking {
+        val provider = FakeProvider(
+            AiCompletion(null, listOf(AiToolCall("c1", "search_archive", "{}"))),
+            AiCompletion("done", emptyList()),
+        )
+        val events = mutableListOf<String>()
+        val listener = object : AiChatListener {
+            override fun onContent(delta: String) {
+                events += "content:$delta"
+            }
+
+            override fun onReasoning(delta: String) {
+                events += "reasoning:$delta"
+            }
+
+            override fun onToolCall(name: String, arguments: String) {
+                events += "call:$name"
+            }
+
+            override fun onToolResult(name: String) {
+                events += "result:$name"
+            }
+        }
+
+        val result = AiAgent(provider, FakeToolbox(), listener = listener)
+            .run(conversation(), allowedPersonId = null)
+
+        assertEquals("done", result.content)
+        assertTrue(events.contains("call:search_archive"))
+        assertTrue(events.contains("result:search_archive"))
+        assertTrue(events.contains("content:done"))
+    }
+
+    @Test
     fun `the conversation must start with a system prompt`() {
         val error = assertThrows(
             IllegalArgumentException::class.java,

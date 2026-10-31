@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -18,6 +19,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,7 +35,7 @@ data class AiSkillChip(val id: String, val label: String, val requiresPerson: Bo
 /** One selectable conversation subject. */
 data class AiPersonChip(val personId: String, val label: String)
 
-/** One persisted chat bubble. History is encrypted on disk, not in the record archive. */
+/** One persisted chat bubble. History is encrypted on disk, not in the archive. */
 data class AiChatBubble(
     val fromUser: Boolean,
     val text: String,
@@ -41,13 +43,15 @@ data class AiChatBubble(
     val elapsedMs: Long = 0,
 )
 
+/** One tool the model is calling (or has called) during the live turn. */
+data class AiToolTrace(val name: String, val detail: String, val done: Boolean)
+
 /**
  * The AI domain screen: pick a skill, optionally pick a person, chat.
  *
- * The skill/scope pickers stay fixed above the transcript so switching a
- * persona never requires scrolling back up. It renders state only and owns no
- * business logic; the provider name and every model-produced string come from
- * the caller.
+ * Pickers stay fixed above the transcript; the list follows the newest content
+ * while the turn streams. The screen renders state only and owns no business
+ * logic.
  */
 @Composable
 fun AiScreen(
@@ -63,6 +67,10 @@ fun AiScreen(
     personaStatus: String?,
     sessionUsage: AiUsage = AiUsage(),
     sessionElapsedMs: Long = 0,
+    streaming: Boolean = false,
+    liveContent: String = "",
+    liveReasoning: String = "",
+    liveTools: List<AiToolTrace> = emptyList(),
     onSkillSelect: (String) -> Unit,
     onPersonSelect: (String?) -> Unit,
     onSend: (String) -> Unit,
@@ -82,7 +90,7 @@ fun AiScreen(
         ) {
             Text(text = stringResource(R.string.ai_title), style = MaterialTheme.typography.headlineSmall)
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = onClear, enabled = messages.isNotEmpty()) {
+                TextButton(onClick = onClear, enabled = messages.isNotEmpty() || streaming) {
                     Text(stringResource(R.string.ai_clear))
                 }
                 TextButton(onClick = onBack) { Text(stringResource(R.string.ai_back)) }
@@ -102,7 +110,6 @@ fun AiScreen(
             return@Column
         }
 
-        // Fixed header: switching skill/person never scrolls the transcript.
         SkillAndScopePicker(
             skills = skills,
             selectedSkillId = selectedSkillId,
@@ -115,7 +122,18 @@ fun AiScreen(
         )
         HorizontalDivider()
 
-        LazyColumn(modifier = Modifier.weight(1f)) {
+        val showLive = streaming || liveContent.isNotBlank() ||
+            liveReasoning.isNotBlank() || liveTools.isNotEmpty()
+        val itemCount = (if (messages.isEmpty()) 1 else messages.size) +
+            (if (showLive) 1 else 0) +
+            (if (busy && !showLive) 1 else 0) +
+            (if (error != null) 1 else 0)
+        val listState = rememberLazyListState()
+        LaunchedEffect(itemCount, liveContent.length, liveReasoning.length, liveTools.size) {
+            if (itemCount > 0) listState.scrollToItem(itemCount - 1)
+        }
+
+        LazyColumn(modifier = Modifier.weight(1f), state = listState) {
             if (messages.isEmpty()) {
                 item {
                     Text(
@@ -128,7 +146,16 @@ fun AiScreen(
                 items(messages) { bubble -> ChatBubble(bubble) }
             }
 
-            if (busy) {
+            if (showLive) {
+                item {
+                    LiveTurn(
+                        content = liveContent,
+                        reasoning = liveReasoning,
+                        tools = liveTools,
+                        streaming = streaming,
+                    )
+                }
+            } else if (busy) {
                 item {
                     Text(
                         text = stringResource(R.string.ai_busy),
@@ -289,6 +316,97 @@ private fun ChatBubble(bubble: AiChatBubble) {
         }
     }
 }
+
+/** The in-flight turn: tool chain, thinking trace and streamed answer text. */
+@Composable
+private fun LiveTurn(
+    content: String,
+    reasoning: String,
+    tools: List<AiToolTrace>,
+    streaming: Boolean,
+) {
+    var reasoningOpen by remember { mutableStateOf(true) }
+
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        if (tools.isNotEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                tools.forEach { trace ->
+                    Text(
+                        text = stringResource(
+                            R.string.ai_tool_line,
+                            if (trace.done) "✓" else "…",
+                            toolLabel(trace.name),
+                            trace.detail,
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+
+        if (reasoning.isNotBlank()) {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = MaterialTheme.shapes.small,
+            ) {
+                Column(modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp)) {
+                    TextButton(onClick = { reasoningOpen = !reasoningOpen }) {
+                        Text(
+                            stringResource(
+                                if (reasoningOpen) R.string.ai_hide_thinking else R.string.ai_thinking_process,
+                            ),
+                        )
+                    }
+                    if (reasoningOpen) {
+                        Text(text = reasoning, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+
+        if (content.isNotBlank()) {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                shape = MaterialTheme.shapes.small,
+            ) {
+                Text(
+                    text = content + if (streaming) "▍" else "",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                )
+            }
+        } else if (streaming) {
+            Text(
+                text = stringResource(R.string.ai_busy),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+    }
+}
+
+@Composable
+private fun toolLabel(name: String): String = stringResource(
+    when (name) {
+        "list_people" -> R.string.ai_tool_list_people
+        "read_person" -> R.string.ai_tool_read_person
+        "list_records" -> R.string.ai_tool_list_records
+        "read_record" -> R.string.ai_tool_read_record
+        "read_diary" -> R.string.ai_tool_read_diary
+        "list_diary_dates" -> R.string.ai_tool_list_diary_dates
+        "read_moods" -> R.string.ai_tool_read_moods
+        "search_archive" -> R.string.ai_tool_search
+        "save_diary" -> R.string.ai_tool_save_diary
+        "append_diary" -> R.string.ai_tool_append_diary
+        "set_mood" -> R.string.ai_tool_set_mood
+        "create_person" -> R.string.ai_tool_create_person
+        "update_person" -> R.string.ai_tool_update_person
+        else -> R.string.ai_tool_unknown
+    },
+)
 
 /** "1.4s · 812 tokens · 580 tok/s · cache 63%" — numbers only in code. */
 @Composable

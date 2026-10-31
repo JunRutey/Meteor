@@ -20,6 +20,7 @@ class AiAgent(
     private val maxToolCallsPerStep: Int = 4,
     private val maxToolResultChars: Int = 2500,
     private val maxTotalToolChars: Int = 24000,
+    private val listener: AiChatListener? = null,
 ) {
 
     suspend fun run(conversation: List<AiMessage>, allowedPersonId: String?): AgentResult {
@@ -34,7 +35,20 @@ class AiAgent(
 
         while (steps < maxSteps) {
             steps++
-            val completion = provider.complete(messages = messages, tools = specs)
+            val completion = if (listener == null) {
+                provider.complete(messages = messages, tools = specs)
+            } else {
+                val active = listener
+                provider.completeStream(
+                    messages = messages,
+                    tools = specs,
+                    callback = object : AiStreamCallback {
+                        override fun onContent(delta: String) = active.onContent(delta)
+
+                        override fun onReasoning(delta: String) = active.onReasoning(delta)
+                    },
+                )
+            }
             completion.usage?.let { usage = usage.merge(it) }
             if (completion.toolCalls.isEmpty()) {
                 val text = completion.content?.trim().orEmpty()
@@ -53,8 +67,10 @@ class AiAgent(
 
             var budgetReached = false
             for (call in calls) {
+                listener?.onToolCall(call.name, call.arguments)
                 val result = tools.execute(call.name, call.arguments, allowedPersonId)
                     .take(maxToolResultChars)
+                listener?.onToolResult(call.name)
                 toolChars += result.length
                 messages += AiMessage.tool(call.id, result)
                 if (toolChars >= maxTotalToolChars) {

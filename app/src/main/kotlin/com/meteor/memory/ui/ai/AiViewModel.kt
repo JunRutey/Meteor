@@ -9,10 +9,12 @@ import com.meteor.memory.core.storage.PersonEntry
 import com.meteor.memory.core.storage.PersonQueries
 import com.meteor.memory.core.storage.StoredChatTurn
 import com.meteor.memory.feature.ai.AiChatBubble
+import com.meteor.memory.feature.ai.AiChatListener
 import com.meteor.memory.feature.ai.AiModule
 import com.meteor.memory.feature.ai.AiPresets
 import com.meteor.memory.feature.ai.AiProviderException
 import com.meteor.memory.feature.ai.AiSkill
+import com.meteor.memory.feature.ai.AiToolTrace
 import com.meteor.memory.feature.ai.AiUsage
 import com.meteor.memory.feature.ai.ChatRequest
 import com.meteor.memory.feature.ai.ChatTurn
@@ -47,6 +49,10 @@ data class AiUiState(
     val provider: String = AiPresets.DEEPSEEK,
     val sessionUsage: AiUsage = AiUsage(),
     val sessionElapsedMs: Long = 0,
+    val streaming: Boolean = false,
+    val liveContent: String = "",
+    val liveReasoning: String = "",
+    val liveTools: List<AiToolTrace> = emptyList(),
 )
 
 @HiltViewModel
@@ -151,20 +157,71 @@ class AiViewModel @Inject constructor(
             it.copy(
                 messages = it.messages + AiChatBubble(fromUser = true, text = query),
                 busy = true,
+                streaming = true,
+                liveContent = "",
+                liveReasoning = "",
+                liveTools = emptyList(),
                 errorCode = 0,
                 errorDetail = null,
             )
         }
         persistHistory()
 
+        val listener = object : AiChatListener {
+            override fun onContent(delta: String) {
+                _state.update { it.copy(liveContent = it.liveContent + delta) }
+            }
+
+            override fun onReasoning(delta: String) {
+                _state.update { it.copy(liveReasoning = it.liveReasoning + delta) }
+            }
+
+            override fun onToolCall(name: String, arguments: String) {
+                _state.update {
+                    it.copy(
+                        liveTools = it.liveTools + AiToolTrace(
+                            name = name,
+                            detail = arguments.take(80),
+                            done = false,
+                        ),
+                    )
+                }
+            }
+
+            override fun onToolResult(name: String) {
+                _state.update { state ->
+                    val index = state.liveTools.indexOfLast { it.name == name && !it.done }
+                    if (index < 0) {
+                        state
+                    } else {
+                        state.copy(
+                            liveTools = state.liveTools.toMutableList().also {
+                                it[index] = it[index].copy(done = true)
+                            },
+                        )
+                    }
+                }
+            }
+        }
+
         viewModelScope.launch {
             val readiness = withContext(Dispatchers.IO) { runCatching { reader.read() }.getOrNull() }
             if (readiness == null || !readiness.config.isConfigured()) {
-                _state.update { it.copy(busy = false, errorCode = 0, errorDetail = "not-configured") }
+                _state.update {
+                    it.copy(
+                        busy = false,
+                        streaming = false,
+                        liveContent = "",
+                        liveReasoning = "",
+                        liveTools = emptyList(),
+                        errorCode = 0,
+                        errorDetail = "not-configured",
+                    )
+                }
                 return@launch
             }
             runCatching {
-                aiModule.chat(
+                aiModule.chatStreaming(
                     ChatRequest(
                         skillName = skillName,
                         question = query,
@@ -172,12 +229,17 @@ class AiViewModel @Inject constructor(
                         history = history,
                         config = readiness.config,
                     ),
+                    listener,
                 )
             }.onSuccess { reply ->
                 val usage = reply.usage
                 _state.update {
                     it.copy(
                         busy = false,
+                        streaming = false,
+                        liveContent = "",
+                        liveReasoning = "",
+                        liveTools = emptyList(),
                         messages = it.messages + AiChatBubble(
                             fromUser = false,
                             text = reply.text,
@@ -194,6 +256,10 @@ class AiViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         busy = false,
+                        streaming = false,
+                        liveContent = "",
+                        liveReasoning = "",
+                        liveTools = emptyList(),
                         errorCode = (error as? AiProviderException)?.code ?: 0,
                         errorDetail = (error as? AiProviderException)?.message,
                     )
@@ -211,6 +277,10 @@ class AiViewModel @Inject constructor(
                 messages = emptyList(),
                 sessionUsage = AiUsage(),
                 sessionElapsedMs = 0,
+                streaming = false,
+                liveContent = "",
+                liveReasoning = "",
+                liveTools = emptyList(),
                 errorCode = 0,
                 errorDetail = null,
             )
@@ -221,6 +291,7 @@ class AiViewModel @Inject constructor(
         "${skill ?: "none"}__${personId ?: "all"}"
 
     private fun restoreHistory() {
+        if (_state.value.busy) return
         viewModelScope.launch {
             val key = scopeKey(_state.value.selectedSkill, _state.value.selectedPersonId)
             val turns = withContext(Dispatchers.IO) {
@@ -231,6 +302,10 @@ class AiViewModel @Inject constructor(
                     messages = turns.map { turn -> AiChatBubble(turn.fromUser, turn.text) },
                     sessionUsage = AiUsage(),
                     sessionElapsedMs = 0,
+                    streaming = false,
+                    liveContent = "",
+                    liveReasoning = "",
+                    liveTools = emptyList(),
                 )
             }
         }

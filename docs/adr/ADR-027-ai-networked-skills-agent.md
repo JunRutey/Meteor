@@ -90,3 +90,10 @@ v0.6 的目标是：**人格蒸馏（把一个人蒸馏成可对话的 Persona�
   （DeepSeek 的硬性要求）。
 - **凭据加密**：API Key 改用档案同一把 Keystore AES-256-GCM 密钥加密后存成 Base64 密文，
   不再使用独立的 EncryptedSharedPreferences；旧值首次读取时迁移并删除。
+
+## 增补（v0.6.3）：流式与过程可见
+
+- `chatStreaming(request, listener)` 走 SSE：`stream=true` + `stream_options.include_usage=true`；
+  `content` / `reasoning_content` 逐段回调，工具调用沿 `tool_calls[index]` 增量拼接。
+- 界面展示思考过程与工具链；回调可能来自后台线程，状态只做不可变更新。
+- 不支持 SSE 的兼容实现由 `AiProvider.completeStream` 默认实现回退为整段返回。

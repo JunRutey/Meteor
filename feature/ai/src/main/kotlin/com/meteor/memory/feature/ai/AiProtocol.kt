@@ -93,12 +93,18 @@ object AiProtocol {
         maxTokens: Int,
         reasoning: ReasoningMode = ReasoningMode.AUTO,
         provider: String = AiPresets.DEEPSEEK,
+        stream: Boolean = false,
     ): String {
         val root = JSONObject()
         root.put("model", model)
         root.put("messages", JSONArray(messages.map { messageJson(it) }))
         root.put("max_tokens", maxTokens)
         root.put("temperature", 0.7)
+        if (stream) {
+            root.put("stream", true)
+            // DeepSeek/OpenAI only report usage in the final chunk when asked.
+            root.put("stream_options", JSONObject().put("include_usage", true))
+        }
         // Thinking parameters are DeepSeek-specific; other providers may reject
         // unknown body fields, so they are only sent for DeepSeek (ADR-027).
         if (provider == AiPresets.DEEPSEEK && reasoning != ReasoningMode.AUTO) {
@@ -158,7 +164,7 @@ object AiProtocol {
         return AiCompletion(content, calls, parseUsage(root), reasoning)
     }
 
-    private fun parseUsage(root: JSONObject): AiUsage? {
+    internal fun parseUsage(root: JSONObject): AiUsage? {
         val usage = root.optJSONObject("usage") ?: return null
         val prompt = usage.optInt("prompt_tokens", -1)
         val completion = usage.optInt("completion_tokens", -1)

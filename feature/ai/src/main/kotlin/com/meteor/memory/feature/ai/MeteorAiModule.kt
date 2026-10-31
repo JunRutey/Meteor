@@ -125,7 +125,12 @@ class MeteorAiModule(
         return DistillResult(distilled, result.steps)
     }
 
-    override suspend fun chat(request: ChatRequest): ChatReply {
+    override suspend fun chat(request: ChatRequest): ChatReply = chatInternal(request, listener = null)
+
+    override suspend fun chatStreaming(request: ChatRequest, listener: AiChatListener): ChatReply =
+        chatInternal(request, listener)
+
+    private suspend fun chatInternal(request: ChatRequest, listener: AiChatListener?): ChatReply {
         val skill = library.find(request.skillName)?.takeIf { it.stage == SkillStage.CHAT }
             ?: throw AiProviderException(0, "unknown-skill")
         requireConfigured(request.config)
@@ -200,7 +205,8 @@ class MeteorAiModule(
 
         val startedAt = System.nanoTime()
         val result = withContext(Dispatchers.IO) {
-            agent(request.config, tools).run(conversation = messages, allowedPersonId = request.personId)
+            agent(request.config, tools, listener)
+                .run(conversation = messages, allowedPersonId = request.personId)
         }
         val elapsedMs = (System.nanoTime() - startedAt) / 1_000_000
         return ChatReply(result.content, result.steps, result.usage, elapsedMs)
@@ -223,9 +229,14 @@ class MeteorAiModule(
         writeEnabled = writeEnabled,
     )
 
-    private fun agent(config: AiConfig, tools: ArchiveTools): AiAgent = AiAgent(
+    private fun agent(
+        config: AiConfig,
+        tools: ArchiveTools,
+        listener: AiChatListener? = null,
+    ): AiAgent = AiAgent(
         provider = providerFactory(config),
         tools = tools,
+        listener = listener,
     )
 
     private fun requireConfigured(config: AiConfig) {

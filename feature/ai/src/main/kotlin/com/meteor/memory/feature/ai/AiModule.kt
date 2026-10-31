@@ -8,9 +8,10 @@ import java.time.Instant
  * FROZEN INTERFACE (Meteor archive §8). Do not modify without an ADR.
  *
  * The AI domain runs on the user's own provider credentials (ADR-027): skills
- * shape the prompt, a bounded read-only agent reads the archive, and the only
- * persisted artifact is the persona record. Nothing here logs content or keeps
- * chat history — the caller holds history in memory.
+ * shape the prompt, a bounded agent reads (and optionally writes) the archive,
+ * and the only archive artifact is the persona record. Nothing here logs
+ * content; the app persists the chat transcript itself, encrypted, via
+ * `core-storage`.
  */
 interface AiModule {
 
@@ -26,11 +27,32 @@ interface AiModule {
     /** Talks with the archive or with one distilled persona. */
     suspend fun chat(request: ChatRequest): ChatReply
 
+    /**
+     * Streaming variant used by the chat screen. Default keeps non-streaming
+     * implementations valid; callbacks can arrive on a background thread.
+     */
+    suspend fun chatStreaming(request: ChatRequest, listener: AiChatListener): ChatReply =
+        chat(request)
+
     /** Local retrieval answer; works with AI disabled and is also a chat tool. */
     suspend fun ask(request: AskRequest): AskAnswer
 
     /** Cheap `/models` probe for the settings "test connection" button. */
     suspend fun probe(config: AiConfig): ProbeResult
+}
+
+/**
+ * Live progress of a streaming chat. Callbacks may arrive on a background
+ * thread, so receivers should only post immutable state updates.
+ */
+interface AiChatListener {
+    fun onContent(delta: String)
+
+    fun onReasoning(delta: String)
+
+    fun onToolCall(name: String, arguments: String)
+
+    fun onToolResult(name: String)
 }
 
 /** One recurring term of a person's records. */
