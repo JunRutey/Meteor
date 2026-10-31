@@ -10,6 +10,7 @@ cd "$(dirname "$0")/.."
 ALLOWED_EDGES="$(cat <<'EOF'
 app feature-settings
 app feature-calendar
+app feature-editor
 app core-backup
 app core-storage
 app core-crypto
@@ -19,6 +20,7 @@ app core-index
 feature-settings core-crypto
 feature-settings core-backup
 feature-calendar core-storage
+feature-editor core-storage
 core-backup core-storage
 core-backup core-crypto
 core-index core-storage
