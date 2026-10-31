@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import com.meteor.memory.core.crypto.AppLock
+import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.ui.MeteorRoot
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
@@ -23,8 +24,17 @@ class MainActivity : FragmentActivity() {
     @Inject
     lateinit var appLock: AppLock
 
+    @Inject
+    lateinit var appLog: AppLog
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        appLog.info(
+            "AppStart",
+            "Meteor ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE}) " +
+                "sdk=${android.os.Build.VERSION.SDK_INT} device=${android.os.Build.MODEL}",
+        )
 
         // Keep a stale thumbnail out of the recents switcher while locked.
         applyScreenProtection()

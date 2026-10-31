@@ -36,10 +36,6 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repository.setAnimationsEnabled(enabled) }
     }
 
-    fun setAutoBackupEnabled(enabled: Boolean) {
-        viewModelScope.launch { repository.setAutoBackupEnabled(enabled) }
-    }
-
     fun setAppLockEnabled(enabled: Boolean) {
         viewModelScope.launch { repository.setAppLockEnabled(enabled) }
     }

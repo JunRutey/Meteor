@@ -13,6 +13,7 @@ app core-backup
 app core-storage
 app core-crypto
 app core-time
+app core-log
 feature-settings core-crypto
 feature-settings core-backup
 core-backup core-storage

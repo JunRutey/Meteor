@@ -39,4 +39,9 @@
     <string name="diagnostics_encrypted">%1$d 字节 · 已加密（aes-gcm-v1）</string>
     <string name="diagnostics_unknown">%1$d 字节 · 未识别为加密记录</string>
     <string name="home_open_diagnostics">存储诊断（调试）</string>
+
+    <string name="log_export">导出日志</string>
+    <string name="log_export_working">正在导出…</string>
+    <string name="log_export_done">已导出到 %1$s</string>
+    <string name="log_export_failed">导出失败：%1$s</string>
 </resources>

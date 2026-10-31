@@ -4,6 +4,7 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meteor.memory.core.crypto.AppLock
+import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -36,6 +37,7 @@ import javax.inject.Inject
 class RootViewModel @Inject constructor(
     private val appLock: AppLock,
     private val settingsRepository: SettingsRepository,
+    private val appLog: AppLog,
 ) : ViewModel() {
 
     private val _locked = MutableStateFlow<Boolean?>(null)
@@ -64,6 +66,7 @@ class RootViewModel @Inject constructor(
                     withContext(Dispatchers.IO) {
                         runCatching { appLock.setEnabled(enabled) }
                     }
+                    appLog.info(TAG, "app lock enabled=$enabled")
                     // Enabling locks straight away; disabling drops the gate.
                     _locked.value = enabled
                 }
@@ -77,9 +80,11 @@ class RootViewModel @Inject constructor(
             try {
                 val granted = runCatching { appLock.unlock(activity) }.getOrDefault(false)
                 if (granted) {
+                    appLog.info(TAG, "unlock granted")
                     _unlockFailed.value = false
                     _locked.value = false
                 } else {
+                    appLog.warn(TAG, "unlock denied or cancelled")
                     _unlockFailed.value = true
                 }
             } finally {
@@ -108,7 +113,14 @@ class RootViewModel @Inject constructor(
                     }
                 }.getOrDefault(false)
             }
-            if (wasEnabled) _locked.value = true
+            if (wasEnabled) {
+                appLog.info(TAG, "entered background, lock re-armed")
+                _locked.value = true
+            }
         }
+    }
+
+    private companion object {
+        const val TAG = "AppLock"
     }
 }

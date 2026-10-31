@@ -21,10 +21,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 
 /**
- * Settings screen skeleton: 外观 / 安全 / 备份 / 关于.
+ * Settings screen: 外观 / 安全 / 备份 / 关于.
  *
- * The AI section is added in v0.6. This composable holds no business logic —
- * it renders [AppSettings] and emits intents upward.
+ * Holds no business logic — it renders [AppSettings] and emits intents upward.
+ * Sections that need a service (backup, log export) are injected as slots so
+ * this module never depends on Hilt or on `:app`.
  */
 @Composable
 fun SettingsScreen(
@@ -34,9 +35,10 @@ fun SettingsScreen(
     onFontScaleChanged: (FontScale) -> Unit,
     onAnimationsChanged: (Boolean) -> Unit,
     onAppLockChanged: (Boolean) -> Unit,
-    onAutoBackupChanged: (Boolean) -> Unit,
+    onOpenRepository: () -> Unit,
     modifier: Modifier = Modifier,
     backupActions: @Composable () -> Unit = {},
+    logActions: @Composable () -> Unit = {},
 ) {
     Column(
         modifier = modifier
@@ -89,18 +91,6 @@ fun SettingsScreen(
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
         SectionTitle(stringResource(R.string.settings_section_backup))
-        ToggleRow(
-            title = stringResource(R.string.settings_auto_backup),
-            subtitle = stringResource(R.string.settings_auto_backup_desc),
-            checked = settings.autoBackupEnabled,
-            onCheckedChange = onAutoBackupChanged,
-        )
-        Text(
-            text = stringResource(R.string.settings_backup_retention, settings.backupRetention),
-            style = MaterialTheme.typography.bodySmall,
-        )
-
-        // Injected by :app so this module stays free of Hilt and of the backup service.
         backupActions()
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
@@ -110,6 +100,10 @@ fun SettingsScreen(
             text = stringResource(R.string.settings_about_version, versionName),
             style = MaterialTheme.typography.bodyMedium,
         )
+        OutlinedButton(onClick = onOpenRepository) {
+            Text(text = stringResource(R.string.settings_about_repository))
+        }
+        logActions()
     }
 }
 

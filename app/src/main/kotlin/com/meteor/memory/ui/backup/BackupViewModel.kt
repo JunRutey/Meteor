@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.meteor.memory.core.backup.BackupModule
 import com.meteor.memory.core.backup.BackupResult
 import com.meteor.memory.core.backup.ImportResult
+import com.meteor.memory.core.log.AppLog
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,6 +28,7 @@ data class BackupUiState(
 @HiltViewModel
 class BackupViewModel @Inject constructor(
     private val backupModule: BackupModule,
+    private val appLog: AppLog,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(BackupUiState())
@@ -38,8 +40,14 @@ class BackupViewModel @Inject constructor(
 
         viewModelScope.launch {
             val outcome = when (val result = backupModule.exportPlaintext(destination)) {
-                is BackupResult.Success -> BackupOutcome.Exported(result.fileCount, result.bytes)
-                is BackupResult.Failure -> BackupOutcome.Failed(result.message)
+                is BackupResult.Success -> {
+                    appLog.info(TAG, "export ok: ${result.fileCount} files, ${result.bytes} bytes")
+                    BackupOutcome.Exported(result.fileCount, result.bytes)
+                }
+                is BackupResult.Failure -> {
+                    appLog.error(TAG, "export failed", result.cause)
+                    BackupOutcome.Failed(result.message)
+                }
             }
             _state.value = BackupUiState(busy = false, outcome = outcome)
         }
@@ -51,8 +59,14 @@ class BackupViewModel @Inject constructor(
 
         viewModelScope.launch {
             val outcome = when (val result = backupModule.importFrom(source)) {
-                is ImportResult.Success -> BackupOutcome.Imported(result.fileCount)
-                is ImportResult.Failure -> BackupOutcome.Failed(result.message)
+                is ImportResult.Success -> {
+                    appLog.info(TAG, "import ok: ${result.fileCount} files")
+                    BackupOutcome.Imported(result.fileCount)
+                }
+                is ImportResult.Failure -> {
+                    appLog.error(TAG, "import failed", result.cause)
+                    BackupOutcome.Failed(result.message)
+                }
             }
             _state.value = BackupUiState(busy = false, outcome = outcome)
         }
@@ -60,5 +74,9 @@ class BackupViewModel @Inject constructor(
 
     fun clearOutcome() {
         _state.value = _state.value.copy(outcome = null)
+    }
+
+    private companion object {
+        const val TAG = "Backup"
     }
 }

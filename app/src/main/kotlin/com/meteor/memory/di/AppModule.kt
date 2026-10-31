@@ -12,6 +12,9 @@ import com.meteor.memory.core.crypto.AppLock
 import com.meteor.memory.core.crypto.EncryptedPrefsAppLock
 import com.meteor.memory.core.crypto.FileCrypto
 import com.meteor.memory.core.crypto.androidKeystoreFileCrypto
+import com.meteor.memory.core.log.AppLog
+import com.meteor.memory.core.log.FileAppLogger
+import com.meteor.memory.core.log.LogExporter
 import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.storage.PrivateDiaryQueries
 import com.meteor.memory.core.storage.PrivateStorageRouter
@@ -104,6 +107,14 @@ object AppModule {
         storageRouter: StorageRouter,
         retentionProvider: BackupRetentionProvider,
     ): BackupModule = PlaintextBackupModule(context, storageRouter, retentionProvider)
+
+    @Provides
+    @Singleton
+    fun provideAppLog(@ApplicationContext context: Context): AppLog = FileAppLogger(context)
+
+    @Provides
+    @Singleton
+    fun provideLogExporter(@ApplicationContext context: Context): LogExporter = LogExporter(context)
 
     @Provides
     @Singleton

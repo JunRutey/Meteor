@@ -1,5 +1,8 @@
 package com.meteor.memory.ui
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -19,6 +22,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -41,6 +45,7 @@ import com.meteor.memory.ui.diary.DiaryEditScreen
 import com.meteor.memory.ui.diary.DiaryEditViewModel
 import com.meteor.memory.ui.diary.DiaryListScreen
 import com.meteor.memory.ui.diary.DiaryListViewModel
+import com.meteor.memory.ui.log.LogActions
 import com.meteor.memory.ui.settings.SettingsViewModel
 import java.time.LocalDate
 
@@ -49,6 +54,15 @@ private const val ROUTE_SETTINGS = "settings"
 private const val ROUTE_DIARY = "diary"
 private const val ROUTE_DIARY_EDIT = "diary/edit"
 private const val ROUTE_DIAGNOSTICS = "diagnostics"
+
+/** Shown in the About section; must match README.md. */
+private const val REPOSITORY_URL = "https://github.com/JunRutey/Meteor"
+
+private fun Context.openInBrowser(url: String) {
+    runCatching {
+        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+}
 
 @Composable
 fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
@@ -89,6 +103,7 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
         composable(ROUTE_SETTINGS) {
             val viewModel: SettingsViewModel = hiltViewModel()
             val settings by viewModel.settings.collectAsStateWithLifecycle()
+            val context = LocalContext.current
 
             SettingsScreen(
                 settings = settings,
@@ -97,8 +112,9 @@ fun MeteorNavHost(versionName: String, animationsEnabled: Boolean = true) {
                 onFontScaleChanged = viewModel::setFontScale,
                 onAnimationsChanged = viewModel::setAnimationsEnabled,
                 onAppLockChanged = viewModel::setAppLockEnabled,
-                onAutoBackupChanged = viewModel::setAutoBackupEnabled,
+                onOpenRepository = { context.openInBrowser(REPOSITORY_URL) },
                 backupActions = { BackupActions() },
+                logActions = { LogActions() },
             )
         }
 

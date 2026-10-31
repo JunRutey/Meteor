@@ -3,6 +3,7 @@ package com.meteor.memory.ui.diary
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.time.TimeModule
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -29,6 +30,7 @@ class DiaryEditViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val diaryQueries: DiaryQueries,
     private val timeModule: TimeModule,
+    private val appLog: AppLog,
 ) : ViewModel() {
 
     private val date: LocalDate = LocalDate.parse(checkNotNull(savedStateHandle.get<String>(ARG_DATE)))
@@ -61,6 +63,10 @@ class DiaryEditViewModel @Inject constructor(
             val result = runCatching {
                 withContext(Dispatchers.IO) { diaryQueries.save(date, snapshot.text) }
             }
+            result.fold(
+                onSuccess = { appLog.info(TAG, "diary saved: $date") },
+                onFailure = { appLog.error(TAG, "diary save failed: $date", it) },
+            )
             _state.value = _state.value.copy(
                 isSaving = false,
                 saved = result.isSuccess,
@@ -71,5 +77,6 @@ class DiaryEditViewModel @Inject constructor(
 
     companion object {
         const val ARG_DATE = "date"
+        private const val TAG = "DiaryEdit"
     }
 }

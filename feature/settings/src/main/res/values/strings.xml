@@ -23,9 +23,6 @@
     <string name="settings_app_lock">应用锁</string>
     <string name="settings_app_lock_desc">使用生物识别解锁 Meteor；离开前台后重新上锁</string>
 
-    <string name="settings_auto_backup">自动备份</string>
-    <string name="settings_auto_backup_desc">每天在应用私有目录保留一份快照，仅防应用内误删</string>
-    <string name="settings_backup_retention">保留份数：%1$d</string>
-
     <string name="settings_about_version">Meteor %1$s</string>
+    <string name="settings_about_repository">GitHub 仓库 · JunRutey/Meteor</string>
 </resources>
