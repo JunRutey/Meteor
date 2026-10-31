@@ -1,6 +1,7 @@
 package com.meteor.memory.feature.settings
 
 import android.os.Build
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -22,7 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 
 /**
- * Settings screen: 外观 / 安全 / 备份 / 关于.
+ * Settings screen: 外观 / 安全 / 日志 / 备份 / AI / 关于.
  *
  * Holds no business logic — it renders [AppSettings] and emits intents upward.
  * Sections that need a service (backup, log export) are injected as slots so
@@ -34,11 +35,9 @@ fun SettingsScreen(
     versionName: String,
     onDarkModeChanged: (DarkMode) -> Unit,
     onDynamicColorChanged: (Boolean) -> Unit,
-    onFontScaleChanged: (FontScale) -> Unit,
-    onAnimationsChanged: (Boolean) -> Unit,
     onAppLockChanged: (Boolean) -> Unit,
     onVerboseLoggingChanged: (Boolean) -> Unit,
-    onOpenRepository: () -> Unit,
+    onOpenAbout: () -> Unit,
     logSizeBytes: Long,
     modifier: Modifier = Modifier,
     backupActions: @Composable () -> Unit = {},
@@ -76,23 +75,6 @@ fun SettingsScreen(
             )
         }
 
-        ChoiceRow(
-            title = stringResource(R.string.settings_font_scale),            options = listOf(
-                FontScale.SMALL to stringResource(R.string.settings_font_small),
-                FontScale.NORMAL to stringResource(R.string.settings_font_normal),
-                FontScale.LARGE to stringResource(R.string.settings_font_large),
-            ),
-            selected = settings.fontScale,
-            onSelect = onFontScaleChanged,
-        )
-
-        ToggleRow(
-            title = stringResource(R.string.settings_animations),
-            subtitle = stringResource(R.string.settings_animations_desc),
-            checked = settings.animationsEnabled,
-            onCheckedChange = onAnimationsChanged,
-        )
-
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
         SectionTitle(stringResource(R.string.settings_section_security))
@@ -102,16 +84,6 @@ fun SettingsScreen(
             checked = settings.appLockEnabled,
             onCheckedChange = onAppLockChanged,
         )
-
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
-
-        SectionTitle(stringResource(R.string.settings_section_ai))
-        aiActions()
-
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
-
-        SectionTitle(stringResource(R.string.settings_section_backup))
-        backupActions()
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
@@ -130,13 +102,30 @@ fun SettingsScreen(
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
+        SectionTitle(stringResource(R.string.settings_section_backup))
+        backupActions()
+
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
+        SectionTitle(stringResource(R.string.settings_section_ai))
+        aiActions()
+
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
         SectionTitle(stringResource(R.string.settings_section_about))
-        Text(
-            text = stringResource(R.string.settings_about_version, versionName),
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        OutlinedButton(onClick = onOpenRepository) {
-            Text(text = stringResource(R.string.settings_about_repository))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpenAbout)
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = stringResource(R.string.settings_about_version, versionName),
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Text(text = "›", style = MaterialTheme.typography.titleMedium)
         }
     }
 }
