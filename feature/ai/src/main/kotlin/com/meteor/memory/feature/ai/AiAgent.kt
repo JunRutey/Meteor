@@ -70,7 +70,7 @@ class AiAgent(
                 listener?.onToolCall(call.name, call.arguments)
                 val result = tools.execute(call.name, call.arguments, allowedPersonId)
                     .take(maxToolResultChars)
-                listener?.onToolResult(call.name)
+                listener?.onToolResult(call.name, result)
                 toolChars += result.length
                 messages += AiMessage.tool(call.id, result)
                 if (toolChars >= maxTotalToolChars) {

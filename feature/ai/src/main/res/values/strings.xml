@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="ai_title">AI 与数字人格</string>
-    <string name="ai_title_short">AI</string>
     <string name="ai_back">返回</string>
     <string name="ai_clear">清空</string>
     <string name="ai_open_settings">去设置</string>
@@ -18,15 +17,14 @@
     <string name="ai_persona_ready">人格已蒸馏，可以开始对话。</string>
     <string name="ai_persona_missing">这个人还没有蒸馏人格，对话会只依据档案回答。</string>
     <string name="ai_persona_open">查看人格档案</string>
-    <string name="ai_send_to">内容将通过 API 发送至 %1$s 的服务器</string>
-    <string name="ai_privacy_short">作者不收集、不记录、不跟踪；对话用与日记相同的密钥加密保存在本机。</string>
+    <string name="ai_send_to">内容会发送到 %1$s</string>
     <string name="ai_question_hint">说点什么…</string>
     <string name="ai_send">发送</string>
     <string name="ai_busy">思考中…</string>
     <string name="ai_thinking_process">思考过程</string>
-    <string name="ai_hide_thinking">收起思考</string>
-    <string name="ai_show_process">工具调用（%1$d）</string>
-    <string name="ai_hide_process">收起工具调用</string>
+    <string name="ai_process_group">思考与工具调用（%1$d）</string>
+    <string name="ai_composer_collapse">收起输入</string>
+    <string name="ai_composer_expand">展开输入</string>
     <string name="ai_tool_line">%1$s %2$s · %3$s</string>
     <string name="ai_tool_unknown">调用工具</string>
     <string name="ai_tool_list_people">查看人物列表</string>

@@ -1,7 +1,7 @@
 package com.meteor.memory.feature.ai
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,15 +21,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 
 /** One selectable skill. Labels are resolved by the caller. */
@@ -38,30 +37,28 @@ data class AiSkillChip(val id: String, val label: String, val requiresPerson: Bo
 /** One selectable conversation subject. */
 data class AiPersonChip(val personId: String, val label: String)
 
+/** Scroll distance after which the pickers fold away. */
+private const val PICKER_FOLD_THRESHOLD = 48
+
+/** Tool output shown under a call: first line only, capped at this length. */
+private const val MAX_RESULT_LINE_CHARS = 120
+
 /** One persisted chat bubble. History is encrypted on disk, not in the archive. */
 data class AiChatBubble(
     val fromUser: Boolean,
     val text: String,
     val usage: AiUsage? = null,
     val elapsedMs: Long = 0,
-    /** Thinking trace kept after the turn ends, so it can be re-opened. */
-    val reasoning: String? = null,
-    /** Tool calls made during this turn, kept for the same reason. */
-    val tools: List<AiToolTrace> = emptyList(),
+    /** Thinking segments and tool calls of this turn, in order. */
+    val steps: List<AiProcessStep> = emptyList(),
 )
-
-/** One tool the model is calling (or has called) during the live turn. */
-data class AiToolTrace(val name: String, val detail: String, val done: Boolean)
-
-/** Header and picker rows are list items, so they scroll away with the chat. */
-private const val HEADER_ITEMS = 2
 
 /**
  * The AI domain screen: pick a skill, optionally pick a person, chat.
  *
- * Pickers stay fixed above the transcript; the list follows the newest content
- * while the turn streams. The screen renders state only and owns no business
- * logic.
+ * The title bar stays pinned; the pickers fold away once the transcript is
+ * scrolled forward and unfold when it is scrolled back. The list follows the
+ * newest content while the turn streams. The screen renders state only.
  */
 @Composable
 fun AiScreen(
@@ -79,8 +76,7 @@ fun AiScreen(
     sessionElapsedMs: Long = 0,
     streaming: Boolean = false,
     liveContent: String = "",
-    liveReasoning: String = "",
-    liveTools: List<AiToolTrace> = emptyList(),
+    liveSteps: List<AiProcessStep> = emptyList(),
     onSkillSelect: (String) -> Unit,
     onPersonSelect: (String?) -> Unit,
     onSend: (String) -> Unit,
@@ -91,24 +87,39 @@ fun AiScreen(
     modifier: Modifier = Modifier,
 ) {
     var input by remember { mutableStateOf("") }
+    var composerCollapsed by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
-    // The title bar and pickers scroll with the transcript; once they are gone a
-    // compact bar takes over so "clear" and "back" stay reachable.
-    val scrolled by remember {
-        derivedStateOf {
-            listState.firstVisibleItemIndex > 0 || listState.firstVisibleItemScrollOffset > 0
-        }
+
+    // The title bar is pinned; only the skill/person pickers fold away while the
+    // transcript is being read, and unfold as soon as the list moves back.
+    var pickersCollapsed by remember { mutableStateOf(false) }
+    LaunchedEffect(listState) {
+        var lastIndex = listState.firstVisibleItemIndex
+        var lastOffset = listState.firstVisibleItemScrollOffset
+        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+            .collect { (index, offset) ->
+                val forward = index > lastIndex || (index == lastIndex && offset > lastOffset)
+                val backward = index < lastIndex || (index == lastIndex && offset < lastOffset)
+                if (forward && (index > 0 || offset > PICKER_FOLD_THRESHOLD)) {
+                    pickersCollapsed = true
+                } else if (backward) {
+                    pickersCollapsed = false
+                }
+                lastIndex = index
+                lastOffset = offset
+            }
     }
 
     Column(modifier = modifier.fillMaxSize()) {
         val blocked = blockedMessage
+        ScreenHeader(
+            canClear = messages.isNotEmpty() || streaming,
+            onClear = onClear,
+            onBack = onBack,
+        )
+        HorizontalDivider()
+
         if (blocked != null) {
-            ScreenHeader(
-                canClear = messages.isNotEmpty() || streaming,
-                onClear = onClear,
-                onBack = onBack,
-            )
-            HorizontalDivider()
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -119,151 +130,154 @@ fun AiScreen(
             return@Column
         }
 
-        val showLive = streaming || liveContent.isNotBlank() ||
-            liveReasoning.isNotBlank() || liveTools.isNotEmpty()
-        val contentItems = (if (messages.isEmpty()) 1 else messages.size) +
+        AnimatedVisibility(visible = !pickersCollapsed) {
+            Column {
+                SkillAndScopePicker(
+                    skills = skills,
+                    selectedSkillId = selectedSkillId,
+                    people = people,
+                    selectedPersonId = selectedPersonId,
+                    personaStatus = personaStatus,
+                    onSkillSelect = onSkillSelect,
+                    onPersonSelect = onPersonSelect,
+                    onOpenPersona = onOpenPersona,
+                )
+                HorizontalDivider()
+            }
+        }
+
+        val showLive = streaming || liveContent.isNotBlank() || liveSteps.isNotEmpty()
+        val itemCount = (if (messages.isEmpty()) 1 else messages.size) +
             (if (showLive) 1 else 0) +
             (if (busy && !showLive) 1 else 0) +
             (if (error != null) 1 else 0)
-        // Two leading list items (header + pickers) scroll away with the content.
-        val itemCount = contentItems + HEADER_ITEMS
-        LaunchedEffect(itemCount, liveContent.length, liveReasoning.length, liveTools.size) {
+        LaunchedEffect(itemCount, liveContent.length, liveSteps.size) {
             if (itemCount > 0) listState.scrollToItem(itemCount - 1)
         }
 
-        Box(modifier = Modifier.weight(1f)) {
-            LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+        LazyColumn(modifier = Modifier.weight(1f), state = listState) {
+            if (messages.isEmpty()) {
                 item {
-                    Column {
-                        ScreenHeader(
-                            canClear = messages.isNotEmpty() || streaming,
-                            onClear = onClear,
-                            onBack = onBack,
-                        )
-                        HorizontalDivider()
-                    }
+                    Text(
+                        text = stringResource(R.string.ai_empty_chat),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(16.dp),
+                    )
                 }
+            } else {
+                items(messages) { bubble -> ChatBubble(bubble) }
+            }
+
+            if (showLive) {
                 item {
-                    Column {
-                        SkillAndScopePicker(
-                            skills = skills,
-                            selectedSkillId = selectedSkillId,
-                            people = people,
-                            selectedPersonId = selectedPersonId,
-                            personaStatus = personaStatus,
-                            onSkillSelect = onSkillSelect,
-                            onPersonSelect = onPersonSelect,
-                            onOpenPersona = onOpenPersona,
-                        )
-                        HorizontalDivider()
-                    }
+                    LiveTurn(
+                        content = liveContent,
+                        steps = liveSteps,
+                        streaming = streaming,
+                    )
                 }
-
-                if (messages.isEmpty()) {
-                    item {
-                        Text(
-                            text = stringResource(R.string.ai_empty_chat),
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(16.dp),
-                        )
-                    }
-                } else {
-                    items(messages) { bubble -> ChatBubble(bubble) }
-                }
-
-                if (showLive) {
-                    item {
-                        LiveTurn(
-                            content = liveContent,
-                            reasoning = liveReasoning,
-                            tools = liveTools,
-                            streaming = streaming,
-                        )
-                    }
-                } else if (busy) {
-                    item {
-                        Text(
-                            text = stringResource(R.string.ai_busy),
-                            style = MaterialTheme.typography.bodySmall,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        )
-                    }
-                }
-
-                val message = error
-                if (message != null) {
-                    item {
-                        Text(
-                            text = message,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        )
-                    }
+            } else if (busy) {
+                item {
+                    Text(
+                        text = stringResource(R.string.ai_busy),
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    )
                 }
             }
 
-            // Fully qualified: inside a Column the ColumnScope overload would win
-            // scope resolution and refuse the BoxScope modifier.
-            androidx.compose.animation.AnimatedVisibility(
-                visible = scrolled,
-                modifier = Modifier.align(Alignment.TopCenter),
-            ) {
-                Surface(
-                    color = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 3.dp,
-                    shadowElevation = 2.dp,
-                ) {
-                    ScreenHeader(
-                        title = stringResource(R.string.ai_title_short),
-                        style = MaterialTheme.typography.titleMedium,
-                        canClear = messages.isNotEmpty() || streaming,
-                        onClear = onClear,
-                        onBack = onBack,
+            val message = error
+            if (message != null) {
+                item {
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     )
                 }
             }
         }
 
         HorizontalDivider()
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            if (sessionUsage.totalTokens > 0) {
-                UsageSummary(sessionUsage, sessionElapsedMs)
-            }
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                OutlinedTextField(
-                    value = input,
-                    onValueChange = { input = it },
-                    modifier = Modifier.weight(1f),
-                    label = { Text(stringResource(R.string.ai_question_hint)) },
-                )
-                Button(
-                    onClick = {
-                        val text = input.trim()
-                        if (text.isNotEmpty()) {
-                            input = ""
-                            onSend(text)
-                        }
-                    },
-                    enabled = input.isNotBlank() && !busy,
-                ) {
-                    Text(stringResource(R.string.ai_send))
+        Composer(
+            input = input,
+            onInputChange = { input = it },
+            onSend = {
+                val text = input.trim()
+                if (text.isNotEmpty()) {
+                    input = ""
+                    onSend(text)
                 }
+            },
+            busy = busy,
+            collapsed = composerCollapsed,
+            onToggleCollapsed = { composerCollapsed = !composerCollapsed },
+            sessionUsage = sessionUsage,
+            sessionElapsedMs = sessionElapsedMs,
+            providerLabel = providerLabel,
+        )
+    }
+}
+
+/** Input row. Collapsing it hands the space to the transcript. */
+@Composable
+private fun Composer(
+    input: String,
+    onInputChange: (String) -> Unit,
+    onSend: () -> Unit,
+    busy: Boolean,
+    collapsed: Boolean,
+    onToggleCollapsed: () -> Unit,
+    sessionUsage: AiUsage,
+    sessionElapsedMs: Long,
+    providerLabel: String,
+) {
+    if (collapsed) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            TextButton(onClick = onToggleCollapsed) {
+                Text(stringResource(R.string.ai_composer_expand))
             }
+        }
+        return
+    }
+
+    Column(
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        if (sessionUsage.totalTokens > 0) {
+            UsageSummary(sessionUsage, sessionElapsedMs)
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedTextField(
+                value = input,
+                onValueChange = onInputChange,
+                modifier = Modifier.weight(1f),
+                label = { Text(stringResource(R.string.ai_question_hint)) },
+            )
+            Button(onClick = onSend, enabled = input.isNotBlank() && !busy) {
+                Text(stringResource(R.string.ai_send))
+            }
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(
                 text = stringResource(R.string.ai_send_to, providerLabel),
                 style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.weight(1f),
             )
-            Text(
-                text = stringResource(R.string.ai_privacy_short),
-                style = MaterialTheme.typography.bodySmall,
-            )
+            TextButton(onClick = onToggleCollapsed) {
+                Text(stringResource(R.string.ai_composer_collapse))
+            }
         }
     }
 }
@@ -273,15 +287,16 @@ private fun ScreenHeader(
     canClear: Boolean,
     onClear: () -> Unit,
     onBack: () -> Unit,
-    title: String = stringResource(R.string.ai_title),
-    style: TextStyle = MaterialTheme.typography.headlineSmall,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(text = title, style = style)
+        Text(
+            text = stringResource(R.string.ai_title),
+            style = MaterialTheme.typography.headlineSmall,
+        )
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             TextButton(onClick = onClear, enabled = canClear) {
                 Text(stringResource(R.string.ai_clear))
@@ -367,11 +382,7 @@ private fun ChatBubble(bubble: AiChatBubble) {
         horizontalAlignment = if (bubble.fromUser) Alignment.End else Alignment.Start,
     ) {
         if (!bubble.fromUser) {
-            ProcessBlocks(
-                tools = bubble.tools,
-                reasoning = bubble.reasoning.orEmpty(),
-                initiallyOpen = false,
-            )
+            ProcessSteps(steps = bubble.steps, initiallyExpanded = false)
         }
         Surface(
             color = if (bubble.fromUser) {
@@ -395,87 +406,101 @@ private fun ChatBubble(bubble: AiChatBubble) {
 }
 
 /**
- * Tool chain and thinking trace of one turn.
+ * One folding group per turn: "思考与工具调用（n）".
  *
- * Both survive the end of the turn: the finished bubble keeps them, collapsed,
- * so they can be re-opened instead of vanishing once the answer arrives.
+ * Inside, thinking segments and tool calls keep the order they happened in. A
+ * finished turn starts collapsed, so the answer stays readable, but the whole
+ * process can be re-opened at any time.
  */
 @Composable
-private fun ProcessBlocks(
-    tools: List<AiToolTrace>,
-    reasoning: String,
-    initiallyOpen: Boolean,
-) {
-    if (tools.isEmpty() && reasoning.isBlank()) return
+private fun ProcessSteps(steps: List<AiProcessStep>, initiallyExpanded: Boolean) {
+    if (steps.isEmpty()) return
 
-    if (tools.isNotEmpty()) {
-        var toolsOpen by remember(initiallyOpen) { mutableStateOf(initiallyOpen) }
-        Surface(
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            shape = MaterialTheme.shapes.small,
-        ) {
-            Column(modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp)) {
-                TextButton(onClick = { toolsOpen = !toolsOpen }) {
-                    Text(
-                        stringResource(
-                            if (toolsOpen) R.string.ai_hide_process else R.string.ai_show_process,
-                            tools.size,
-                        ),
-                    )
-                }
-                if (toolsOpen) {
-                    tools.forEach { trace ->
-                        Text(
-                            text = stringResource(
-                                R.string.ai_tool_line,
-                                if (trace.done) "✓" else "…",
-                                toolLabel(trace.name),
-                                trace.detail,
-                            ),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
+    var expanded by remember(initiallyExpanded) { mutableStateOf(initiallyExpanded) }
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = MaterialTheme.shapes.small,
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)) {
+            TextButton(onClick = { expanded = !expanded }) {
+                Text(
+                    text = chevron(expanded) + stringResource(R.string.ai_process_group, steps.size),
+                )
             }
-        }
-    }
-
-    if (reasoning.isNotBlank()) {
-        var reasoningOpen by remember(initiallyOpen) { mutableStateOf(initiallyOpen) }
-        Surface(
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            shape = MaterialTheme.shapes.small,
-        ) {
-            Column(modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp)) {
-                TextButton(onClick = { reasoningOpen = !reasoningOpen }) {
-                    Text(
-                        stringResource(
-                            if (reasoningOpen) R.string.ai_hide_thinking else R.string.ai_thinking_process,
-                        ),
-                    )
-                }
-                if (reasoningOpen) {
-                    Text(text = reasoning, style = MaterialTheme.typography.bodySmall)
+            if (expanded) {
+                steps.forEach { step ->
+                    when (step) {
+                        is AiProcessStep.Reasoning -> ReasoningStep(step.text)
+                        is AiProcessStep.Tool -> ToolStep(step)
+                    }
                 }
             }
         }
     }
 }
 
-/** The in-flight turn: tool chain, thinking trace and streamed answer text. */
+/** One thinking segment, folded on its own inside the group. */
+@Composable
+private fun ReasoningStep(text: String) {
+    var open by remember { mutableStateOf(false) }
+    Column(modifier = Modifier.fillMaxWidth()) {
+        TextButton(onClick = { open = !open }) {
+            Text(text = chevron(open) + stringResource(R.string.ai_thinking_process))
+        }
+        if (open) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 6.dp),
+            )
+        }
+    }
+}
+
+/** One tool call: status, name, arguments, and the first line of its output. */
+@Composable
+private fun ToolStep(step: AiProcessStep.Tool) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, bottom = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(1.dp),
+    ) {
+        Text(
+            text = stringResource(
+                R.string.ai_tool_line,
+                if (step.done) "✓" else "…",
+                toolLabel(step.name),
+                step.arguments,
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        val result = step.result
+        if (!result.isNullOrBlank()) {
+            Text(
+                text = "↳ " + result.lineSequence().first().take(MAX_RESULT_LINE_CHARS),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 12.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun chevron(open: Boolean): String = if (open) "▾ " else "▸ "
+
+/** The in-flight turn: process steps plus the streamed answer text. */
 @Composable
 private fun LiveTurn(
     content: String,
-    reasoning: String,
-    tools: List<AiToolTrace>,
+    steps: List<AiProcessStep>,
     streaming: Boolean,
 ) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        ProcessBlocks(tools = tools, reasoning = reasoning, initiallyOpen = true)
+        ProcessSteps(steps = steps, initiallyExpanded = true)
 
         if (content.isNotBlank()) {
             Surface(

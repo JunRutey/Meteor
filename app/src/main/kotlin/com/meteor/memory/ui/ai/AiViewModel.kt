@@ -14,7 +14,7 @@ import com.meteor.memory.feature.ai.AiModule
 import com.meteor.memory.feature.ai.AiPresets
 import com.meteor.memory.feature.ai.AiProviderException
 import com.meteor.memory.feature.ai.AiSkill
-import com.meteor.memory.feature.ai.AiToolTrace
+import com.meteor.memory.feature.ai.AiProcessStep
 import com.meteor.memory.feature.ai.AiUsage
 import com.meteor.memory.feature.ai.ChatRequest
 import com.meteor.memory.feature.ai.ChatTurn
@@ -51,8 +51,7 @@ data class AiUiState(
     val sessionElapsedMs: Long = 0,
     val streaming: Boolean = false,
     val liveContent: String = "",
-    val liveReasoning: String = "",
-    val liveTools: List<AiToolTrace> = emptyList(),
+    val liveSteps: List<AiProcessStep> = emptyList(),
 )
 
 @HiltViewModel
@@ -159,8 +158,7 @@ class AiViewModel @Inject constructor(
                 busy = true,
                 streaming = true,
                 liveContent = "",
-                liveReasoning = "",
-                liveTools = emptyList(),
+                liveSteps = emptyList(),
                 errorCode = 0,
                 errorDetail = null,
             )
@@ -173,34 +171,54 @@ class AiViewModel @Inject constructor(
             }
 
             override fun onReasoning(delta: String) {
-                _state.update { it.copy(liveReasoning = it.liveReasoning + delta) }
+                _state.update { state ->
+                    // Consecutive deltas belong to the same thinking segment; a
+                    // delta after a tool call starts a new one.
+                    val steps = state.liveSteps
+                    val last = steps.lastOrNull()
+                    val updated = if (last is AiProcessStep.Reasoning) {
+                        steps.dropLast(1) + last.copy(text = last.text + delta)
+                    } else {
+                        steps + AiProcessStep.Reasoning(delta)
+                    }
+                    state.copy(liveSteps = updated)
+                }
             }
 
             override fun onToolCall(name: String, arguments: String) {
                 _state.update {
                     it.copy(
-                        liveTools = it.liveTools + AiToolTrace(
+                        liveSteps = it.liveSteps + AiProcessStep.Tool(
                             name = name,
-                            detail = arguments.take(80),
-                            done = false,
+                            arguments = arguments.take(MAX_TOOL_ARG_CHARS),
                         ),
                     )
                 }
             }
 
-            override fun onToolResult(name: String) {
+            override fun onToolResult(name: String, result: String) {
                 _state.update { state ->
-                    val index = state.liveTools.indexOfLast { it.name == name && !it.done }
+                    val index = state.liveSteps.indexOfLast {
+                        it is AiProcessStep.Tool && it.name == name && !it.done
+                    }
                     if (index < 0) {
                         state
                     } else {
+                        val step = state.liveSteps[index] as AiProcessStep.Tool
                         state.copy(
-                            liveTools = state.liveTools.toMutableList().also {
-                                it[index] = it[index].copy(done = true)
+                            liveSteps = state.liveSteps.toMutableList().also {
+                                it[index] = step.copy(
+                                    result = result.take(MAX_TOOL_RESULT_CHARS),
+                                    done = true,
+                                )
                             },
                         )
                     }
                 }
+            }
+
+            override fun onToolResult(name: String) {
+                onToolResult(name, "")
             }
         }
 
@@ -212,8 +230,7 @@ class AiViewModel @Inject constructor(
                         busy = false,
                         streaming = false,
                         liveContent = "",
-                        liveReasoning = "",
-                        liveTools = emptyList(),
+                        liveSteps = emptyList(),
                         errorCode = 0,
                         errorDetail = "not-configured",
                     )
@@ -238,17 +255,15 @@ class AiViewModel @Inject constructor(
                         busy = false,
                         streaming = false,
                         liveContent = "",
-                        liveReasoning = "",
-                        liveTools = emptyList(),
+                        liveSteps = emptyList(),
                         messages = state.messages + AiChatBubble(
                             fromUser = false,
                             text = reply.text,
                             usage = usage.takeIf { it.totalTokens > 0 },
                             elapsedMs = reply.elapsedMs,
-                            // Carry the process into the finished bubble; it used
-                            // to be dropped here and could never be seen again.
-                            reasoning = state.liveReasoning.takeIf { it.isNotBlank() },
-                            tools = state.liveTools,
+                            // Keep the ordered thinking/tool steps with the bubble;
+                            // they used to be dropped the moment the answer landed.
+                            steps = state.liveSteps,
                         ),
                         sessionUsage = state.sessionUsage.merge(usage),
                         sessionElapsedMs = state.sessionElapsedMs + reply.elapsedMs,
@@ -262,8 +277,7 @@ class AiViewModel @Inject constructor(
                         busy = false,
                         streaming = false,
                         liveContent = "",
-                        liveReasoning = "",
-                        liveTools = emptyList(),
+                        liveSteps = emptyList(),
                         errorCode = (error as? AiProviderException)?.code ?: 0,
                         errorDetail = (error as? AiProviderException)?.message,
                     )
@@ -283,8 +297,7 @@ class AiViewModel @Inject constructor(
                 sessionElapsedMs = 0,
                 streaming = false,
                 liveContent = "",
-                liveReasoning = "",
-                liveTools = emptyList(),
+                liveSteps = emptyList(),
                 errorCode = 0,
                 errorDetail = null,
             )
@@ -308,8 +321,7 @@ class AiViewModel @Inject constructor(
                     sessionElapsedMs = 0,
                     streaming = false,
                     liveContent = "",
-                    liveReasoning = "",
-                    liveTools = emptyList(),
+                    liveSteps = emptyList(),
                 )
             }
         }
@@ -350,5 +362,9 @@ class AiViewModel @Inject constructor(
     companion object {
         const val ARG_PERSON_ID = "personId"
         private const val TAG = "Ai"
+
+        /** Arguments and results are shown inline, so keep them short. */
+        private const val MAX_TOOL_ARG_CHARS = 160
+        private const val MAX_TOOL_RESULT_CHARS = 400
     }
 }

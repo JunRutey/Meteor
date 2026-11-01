@@ -53,6 +53,14 @@ interface AiChatListener {
     fun onToolCall(name: String, arguments: String)
 
     fun onToolResult(name: String)
+
+    /**
+     * Same event, carrying what the tool returned so the transcript can show it.
+     *
+     * The default forwards to [onToolResult] so listeners that only need the
+     * name keep working (R2: new capability via a defaulted method).
+     */
+    fun onToolResult(name: String, result: String) = onToolResult(name)
 }
 
 /** One recurring term of a person's records. */
