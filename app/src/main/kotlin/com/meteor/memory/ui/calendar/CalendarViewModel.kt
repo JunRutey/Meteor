@@ -9,6 +9,7 @@ import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.storage.Mood
 import com.meteor.memory.core.storage.MoodQueries
+import com.meteor.memory.feature.editor.ImageCompressor
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -92,7 +93,7 @@ class CalendarViewModel @Inject constructor(
         viewModelScope.launch {
             val saved = withContext(Dispatchers.IO) {
                 runCatching {
-                    val token = imageStore.save(bytes, personId = null)
+                    val token = imageStore.save(ImageCompressor.compress(bytes), personId = null)
                     val at = date.atTime(12, 0).atZone(ZoneId.systemDefault()).toInstant()
                     File(File(context.filesDir, StorageLayout.ROOT_NAME), token)
                         .setLastModified(at.toEpochMilli())

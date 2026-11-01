@@ -60,7 +60,12 @@ object ImageCompressor {
     private const val QUALITY = 80
 
     fun compress(bytes: ByteArray): ByteArray {
-        val original = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: return bytes
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        val longestEdge = max(bounds.outWidth, bounds.outHeight)
+        val sampleSize = Integer.highestOneBit((longestEdge / MAX_EDGE).coerceAtLeast(1))
+        val options = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+        val original = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return bytes
         val longest = max(original.width, original.height)
         val scaled = if (longest > MAX_EDGE) {
             val ratio = MAX_EDGE.toFloat() / longest
