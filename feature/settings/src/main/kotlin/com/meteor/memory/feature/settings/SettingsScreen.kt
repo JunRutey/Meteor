@@ -35,6 +35,7 @@ fun SettingsScreen(
     versionName: String,
     onDarkModeChanged: (DarkMode) -> Unit,
     onDynamicColorChanged: (Boolean) -> Unit,
+    onAnimationsChanged: (Boolean) -> Unit,
     onAppLockChanged: (Boolean) -> Unit,
     onVerboseLoggingChanged: (Boolean) -> Unit,
     onOpenAbout: () -> Unit,
@@ -76,6 +77,13 @@ fun SettingsScreen(
                 onCheckedChange = onDynamicColorChanged,
             )
         }
+
+        ToggleRow(
+            title = stringResource(R.string.settings_animations),
+            subtitle = stringResource(R.string.settings_animations_desc),
+            checked = settings.animationsEnabled,
+            onCheckedChange = onAnimationsChanged,
+        )
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
 

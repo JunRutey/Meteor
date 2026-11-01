@@ -10,7 +10,7 @@ data class AppSettings(
     val darkMode: DarkMode = DarkMode.FOLLOW_SYSTEM,
     /** Material You wallpaper colours. Only takes effect on Android 12+. */
     val dynamicColor: Boolean = true,
-    val animationsEnabled: Boolean = true,
+    val animationsEnabled: Boolean = false,
     val fontScale: FontScale = FontScale.SYSTEM,
     val appLockEnabled: Boolean = false,
     /** Record every log level, not just warnings and errors. */

@@ -22,7 +22,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             darkMode = prefs[KEY_DARK_MODE]?.let { runCatching { DarkMode.valueOf(it) }.getOrNull() }
                 ?: DarkMode.FOLLOW_SYSTEM,
             dynamicColor = prefs[KEY_DYNAMIC_COLOR] ?: true,
-            animationsEnabled = prefs[KEY_ANIMATIONS] ?: true,
+            animationsEnabled = prefs[KEY_ANIMATIONS] ?: false,
             fontScale = prefs[KEY_FONT_SCALE]?.let { runCatching { FontScale.valueOf(it) }.getOrNull() }
                 ?: FontScale.SYSTEM,
             appLockEnabled = prefs[KEY_APP_LOCK] ?: false,

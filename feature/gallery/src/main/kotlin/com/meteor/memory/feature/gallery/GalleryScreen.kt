@@ -1,5 +1,16 @@
 package com.meteor.memory.feature.gallery
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -66,6 +77,7 @@ fun GalleryScreen(
     onDelete: (List<String>) -> Unit,
     onBack: () -> Unit,
     title: String? = null,
+    animationsEnabled: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var selection by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -132,13 +144,34 @@ fun GalleryScreen(
                                 }
                             },
                             onLongPress = { selection = selection.toggle(item.token) },
+                            animationsEnabled = animationsEnabled,
                         )
                     }
                 }
             }
         }
 
-        if (selection.isNotEmpty()) {
+        AnimatedVisibility(
+            visible = selection.isNotEmpty(),
+            enter = if (animationsEnabled) {
+                fadeIn(tween(durationMillis = 150, easing = FastOutSlowInEasing)) +
+                    slideInVertically(
+                        initialOffsetY = { it / 2 },
+                        animationSpec = tween(durationMillis = 190, easing = FastOutSlowInEasing),
+                    )
+            } else {
+                EnterTransition.None
+            },
+            exit = if (animationsEnabled) {
+                fadeOut(tween(durationMillis = 100, easing = FastOutSlowInEasing)) +
+                    slideOutVertically(
+                        targetOffsetY = { it / 2 },
+                        animationSpec = tween(durationMillis = 140, easing = FastOutSlowInEasing),
+                    )
+            } else {
+                ExitTransition.None
+            },
+        ) {
             SelectionBar(
                 count = selection.size,
                 onCancel = { selection = emptySet() },
@@ -189,6 +222,7 @@ private fun GalleryTile(
     selecting: Boolean,
     onTap: () -> Unit,
     onLongPress: () -> Unit,
+    animationsEnabled: Boolean,
 ) {
     Box(
         modifier = Modifier
@@ -208,7 +242,21 @@ private fun GalleryTile(
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop,
         )
-        if (selected) {
+        AnimatedVisibility(
+            visible = selected,
+            enter = if (animationsEnabled) {
+                fadeIn(tween(durationMillis = 120)) +
+                    scaleIn(initialScale = 0.92f, animationSpec = tween(durationMillis = 160))
+            } else {
+                EnterTransition.None
+            },
+            exit = if (animationsEnabled) {
+                fadeOut(tween(durationMillis = 90)) +
+                    scaleOut(targetScale = 0.96f, animationSpec = tween(durationMillis = 120))
+            } else {
+                ExitTransition.None
+            },
+        ) {
             Box(modifier = Modifier.fillMaxSize().background(SELECTED_SCRIM))
             Box(
                 modifier = Modifier

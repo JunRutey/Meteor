@@ -8,9 +8,11 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -107,17 +109,54 @@ private fun Context.openInBrowser(url: String) {
 @Composable
 fun MeteorNavHost(
     versionName: String,
-    animationsEnabled: Boolean = true,
+    animationsEnabled: Boolean = false,
     aiEnabled: Boolean = false,
 ) {
     val navController = rememberNavController()
 
-    // Archive R11: turning animations off must kill screen transitions too.
     val enter: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
-        if (animationsEnabled) fadeIn(tween(durationMillis = 220)) else EnterTransition.None
+        if (animationsEnabled) {
+            fadeIn(tween(durationMillis = 180, easing = FastOutSlowInEasing)) +
+                slideIntoContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+                )
+        } else {
+            EnterTransition.None
+        }
     }
     val exit: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
-        if (animationsEnabled) fadeOut(tween(durationMillis = 180)) else ExitTransition.None
+        if (animationsEnabled) {
+            fadeOut(tween(durationMillis = 110, easing = FastOutLinearInEasing)) +
+                slideOutOfContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                    animationSpec = tween(durationMillis = 170, easing = FastOutSlowInEasing),
+                )
+        } else {
+            ExitTransition.None
+        }
+    }
+    val popEnter: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
+        if (animationsEnabled) {
+            fadeIn(tween(durationMillis = 180, easing = FastOutSlowInEasing)) +
+                slideIntoContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.End,
+                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+                )
+        } else {
+            EnterTransition.None
+        }
+    }
+    val popExit: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
+        if (animationsEnabled) {
+            fadeOut(tween(durationMillis = 110, easing = FastOutLinearInEasing)) +
+                slideOutOfContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.End,
+                    animationSpec = tween(durationMillis = 170, easing = FastOutSlowInEasing),
+                )
+        } else {
+            ExitTransition.None
+        }
     }
 
     NavHost(
@@ -125,8 +164,8 @@ fun MeteorNavHost(
         startDestination = ROUTE_CALENDAR,
         enterTransition = enter,
         exitTransition = exit,
-        popEnterTransition = enter,
-        popExitTransition = exit,
+        popEnterTransition = popEnter,
+        popExitTransition = popExit,
     ) {
         composable(ROUTE_CALENDAR) {
             val viewModel: CalendarViewModel = hiltViewModel()
@@ -318,6 +357,7 @@ fun MeteorNavHost(
             GalleryScreen(
                 days = days,
                 loading = loading,
+                animationsEnabled = animationsEnabled,
                 onOpen = { token -> navController.navigate("gallery/${Uri.encode(token)}") },
                 onDelete = viewModel::delete,
                 onBack = { navController.popBackStack() },
@@ -331,11 +371,14 @@ fun MeteorNavHost(
         ) {
             val viewModel: ImageViewerViewModel = hiltViewModel()
             val bitmap by viewModel.bitmap.collectAsStateWithLifecycle()
+            val loading by viewModel.loading.collectAsStateWithLifecycle()
 
             ImageViewerScreen(
                 bitmap = bitmap,
                 caption = stringResource(R.string.home_open_gallery),
                 onBack = { navController.popBackStack() },
+                loading = loading,
+                animationsEnabled = animationsEnabled,
             )
         }
 
@@ -376,6 +419,7 @@ fun MeteorNavHost(
                 streaming = state.streaming,
                 liveContent = state.liveContent,
                 liveSteps = state.liveSteps,
+                animationsEnabled = animationsEnabled,
                 onSkillSelect = viewModel::selectSkill,
                 onPersonSelect = viewModel::selectPerson,
                 onSend = viewModel::send,
@@ -444,6 +488,7 @@ fun MeteorNavHost(
                 versionName = versionName,
                 onDarkModeChanged = viewModel::setDarkMode,
                 onDynamicColorChanged = viewModel::setDynamicColor,
+                onAnimationsChanged = viewModel::setAnimationsEnabled,
                 onAppLockChanged = viewModel::setAppLockEnabled,
                 onVerboseLoggingChanged = viewModel::setVerboseLogging,
                 onOpenAbout = { navController.navigate(ROUTE_ABOUT) },

@@ -1,6 +1,15 @@
 package com.meteor.memory.feature.ai
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.FastOutLinearInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -77,6 +86,7 @@ fun AiScreen(
     streaming: Boolean = false,
     liveContent: String = "",
     liveSteps: List<AiProcessStep> = emptyList(),
+    animationsEnabled: Boolean = false,
     onSkillSelect: (String) -> Unit,
     onPersonSelect: (String?) -> Unit,
     onSend: (String) -> Unit,
@@ -130,7 +140,25 @@ fun AiScreen(
             return@Column
         }
 
-        AnimatedVisibility(visible = !pickersCollapsed) {
+        AnimatedVisibility(
+            visible = !pickersCollapsed,
+            enter = if (animationsEnabled) {
+                fadeIn(tween(durationMillis = 130, easing = FastOutSlowInEasing)) +
+                    expandVertically(
+                        animationSpec = tween(durationMillis = 170, easing = FastOutSlowInEasing),
+                    )
+            } else {
+                EnterTransition.None
+            },
+            exit = if (animationsEnabled) {
+                fadeOut(tween(durationMillis = 100, easing = FastOutLinearInEasing)) +
+                    shrinkVertically(
+                        animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing),
+                    )
+            } else {
+                ExitTransition.None
+            },
+        ) {
             Column {
                 SkillAndScopePicker(
                     skills = skills,
