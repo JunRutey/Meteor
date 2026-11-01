@@ -67,6 +67,13 @@ fun DiaryEditScreen(
                         color = MaterialTheme.colorScheme.primary,
                     )
                 }
+                if (state.isInsertingImage) {
+                    Text(
+                        text = stringResource(R.string.diary_adding_image),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             TextButton(onClick = onBack) {
                 Text(text = stringResource(R.string.diary_back))
@@ -98,12 +105,16 @@ fun DiaryEditScreen(
 
         Button(
             onClick = onSave,
-            enabled = !state.isSaving,
+            enabled = !state.isSaving && !state.isInsertingImage,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(
                 text = stringResource(
-                    if (state.isSaving) R.string.diary_saving else R.string.diary_save,
+                    when {
+                        state.isSaving -> R.string.diary_saving
+                        state.isInsertingImage -> R.string.diary_adding_image
+                        else -> R.string.diary_save
+                    },
                 ),
             )
         }

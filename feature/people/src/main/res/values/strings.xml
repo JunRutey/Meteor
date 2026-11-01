@@ -41,6 +41,7 @@
     <string name="people_body_hint">关于这个人，想记点什么？可以插图、加链接</string>
     <string name="people_save">保存</string>
     <string name="people_saving">保存中…</string>
+    <string name="people_adding_image">正在处理图片…</string>
     <string name="people_saved">已保存并加密</string>
 
     <string name="people_relation_family">家人</string>

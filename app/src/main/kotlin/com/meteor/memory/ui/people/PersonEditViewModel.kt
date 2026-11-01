@@ -16,6 +16,7 @@ import com.meteor.memory.feature.editor.EditorModule
 import com.meteor.memory.feature.editor.MarkdownEditing
 import com.meteor.memory.ui.common.decodeImages
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -38,6 +39,7 @@ data class PersonEditState(
     /** Referenced images whose bytes exist but produced no bitmap. */
     val missingImages: Set<String> = emptySet(),
     val saving: Boolean = false,
+    val insertingImage: Boolean = false,
     val saved: Boolean = false,
     val error: String? = null,
 )
@@ -66,6 +68,7 @@ class PersonEditViewModel @Inject constructor(
 
     /** Images removed from the notes; their files go away only after a save. */
     private val pendingDeletes = mutableSetOf<String>()
+    private var pendingImageInsertions = 0
 
     init {
         load()
@@ -107,12 +110,33 @@ class PersonEditViewModel @Inject constructor(
     fun imageFor(token: String): ImageBitmap? = _state.value.images[token]
 
     fun insertImage(bytes: ByteArray) {
-        runCatching { editorModule.insertImage(document(), bytes, personId) }
-            .onSuccess { updated ->
-                _state.update { it.copy(notes = updated.body, saved = false) }
-                refreshImages(updated.body)
+        val base = document()
+        pendingImageInsertions++
+        _state.update { it.copy(insertingImage = true, saved = false) }
+
+        viewModelScope.launch {
+            try {
+                val inserted = withContext(Dispatchers.IO) {
+                    editorModule.insertImage(base, bytes, personId)
+                }
+                val token = MarkdownEditing.imagesOf(inserted.body).lastOrNull()?.token
+                if (token == null) {
+                    appLog.warn(TAG, "insert image produced no image reference: $personId")
+                    return@launch
+                }
+
+                val body = MarkdownEditing.appendImage(_state.value.notes, token)
+                _state.update { it.copy(notes = body, saved = false) }
+                refreshImages(body)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                appLog.warn(TAG, "insert image failed: $personId", error)
+            } finally {
+                pendingImageInsertions--
+                _state.update { it.copy(insertingImage = pendingImageInsertions > 0) }
             }
-            .onFailure { appLog.warn(TAG, "insert image failed: $personId", it) }
+        }
     }
 
     fun insertLink(target: String, label: String?) {
@@ -141,7 +165,7 @@ class PersonEditViewModel @Inject constructor(
 
     fun save() {
         val current = _state.value
-        if (current.saving) return
+        if (current.saving || current.insertingImage) return
         val name = current.displayName.trim()
         // The button is disabled for a blank name; guard anyway so a profile file
         // can never lose the one field PersonProfileCodec requires.

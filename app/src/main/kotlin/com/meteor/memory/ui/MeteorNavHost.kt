@@ -281,6 +281,7 @@ fun MeteorNavHost(
                 note = state.note,
                 notes = state.notes,
                 saving = state.saving,
+                insertingImage = state.insertingImage,
                 saved = state.saved,
                 error = state.error,
                 onNameChanged = viewModel::onNameChanged,

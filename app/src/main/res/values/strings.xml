@@ -19,6 +19,7 @@
     <string name="diary_hint">今天发生了什么？</string>
     <string name="diary_save">保存</string>
     <string name="diary_saving">保存中…</string>
+    <string name="diary_adding_image">正在处理图片…</string>
     <string name="diary_saved">已保存并加密</string>
     <string name="diary_signed_at">记录于 %1$s</string>
     <string name="diary_back">返回</string>

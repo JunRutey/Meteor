@@ -54,6 +54,7 @@ fun PersonEditScreen(
     note: String,
     notes: String,
     saving: Boolean,
+    insertingImage: Boolean,
     saved: Boolean,
     error: String?,
     onNameChanged: (String) -> Unit,
@@ -78,6 +79,7 @@ fun PersonEditScreen(
             Header(
                 saved = saved,
                 saving = saving,
+                insertingImage = insertingImage,
                 canSave = displayName.isNotBlank(),
                 onSave = onSave,
                 onBack = onBack,
@@ -166,6 +168,7 @@ fun PersonEditScreen(
 private fun Header(
     saved: Boolean,
     saving: Boolean,
+    insertingImage: Boolean,
     canSave: Boolean,
     onSave: () -> Unit,
     onBack: () -> Unit,
@@ -183,10 +186,11 @@ private fun Header(
                 style = MaterialTheme.typography.headlineSmall,
             )
             Text(
-                text = if (saved) {
-                    stringResource(R.string.people_saved)
-                } else {
-                    stringResource(R.string.people_edit_subtitle)
+                text = when {
+                    saving -> stringResource(R.string.people_saving)
+                    insertingImage -> stringResource(R.string.people_adding_image)
+                    saved -> stringResource(R.string.people_saved)
+                    else -> stringResource(R.string.people_edit_subtitle)
                 },
                 style = MaterialTheme.typography.labelSmall,
                 color = if (saved) {
@@ -197,7 +201,7 @@ private fun Header(
             )
         }
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            TextButton(onClick = onSave, enabled = !saving && canSave) {
+            TextButton(onClick = onSave, enabled = !saving && !insertingImage && canSave) {
                 Text(
                     text = stringResource(
                         if (saving) R.string.people_saving else R.string.people_save,

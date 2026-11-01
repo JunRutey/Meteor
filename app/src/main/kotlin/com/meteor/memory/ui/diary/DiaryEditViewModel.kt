@@ -17,6 +17,7 @@ import com.meteor.memory.feature.editor.MarkdownEditing
 import com.meteor.memory.ui.common.decodeImages
 import com.meteor.memory.ui.search.SearchService
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -43,6 +44,7 @@ data class DiaryEditorState(
     /** Referenced images whose bytes exist but produced no bitmap. */
     val missingImages: Set<String> = emptySet(),
     val isSaving: Boolean = false,
+    val isInsertingImage: Boolean = false,
     val saved: Boolean = false,
     val error: String? = null,
 )
@@ -75,6 +77,7 @@ class DiaryEditViewModel @Inject constructor(
      * stored record still points at.
      */
     private val pendingDeletes = mutableSetOf<String>()
+    private var pendingImageInsertions = 0
 
     init {
         viewModelScope.launch {
@@ -101,16 +104,35 @@ class DiaryEditViewModel @Inject constructor(
     fun imageFor(token: String): ImageBitmap? = _state.value.images[token]
 
     fun insertImage(bytes: ByteArray) {
-        // Base on what the user has typed right now, not on the stale document:
-        // otherwise the inserted image would overwrite unsaved text.
-        document = document.copy(body = _state.value.text)
-        runCatching { editorModule.insertImage(document, bytes, personId = null) }
-            .onSuccess { updated ->
-                document = updated
-                _state.update { it.copy(text = updated.body, saved = false) }
-                refreshImages(updated.body)
+        val base = document.copy(body = _state.value.text)
+        pendingImageInsertions++
+        _state.update { it.copy(isInsertingImage = true, saved = false) }
+
+        viewModelScope.launch {
+            try {
+                val inserted = withContext(Dispatchers.IO) {
+                    editorModule.insertImage(base, bytes, personId = null)
+                }
+                val token = MarkdownEditing.imagesOf(inserted.body).lastOrNull()?.token
+                if (token == null) {
+                    appLog.warn(TAG, "insert image produced no image reference")
+                    return@launch
+                }
+
+                // Merge into the latest text so typing while compression runs is preserved.
+                val body = MarkdownEditing.appendImage(_state.value.text, token)
+                document = inserted.copy(body = body)
+                _state.update { it.copy(text = body, saved = false) }
+                refreshImages(body)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                appLog.warn(TAG, "insert image failed", error)
+            } finally {
+                pendingImageInsertions--
+                _state.update { it.copy(isInsertingImage = pendingImageInsertions > 0) }
             }
-            .onFailure { appLog.warn(TAG, "insert image failed", it) }
+        }
     }
 
     fun insertLink(target: String, label: String?) {
@@ -141,7 +163,7 @@ class DiaryEditViewModel @Inject constructor(
 
     fun save() {
         val snapshot = _state.value
-        if (snapshot.isSaving) return
+        if (snapshot.isSaving || snapshot.isInsertingImage) return
         _state.update { it.copy(isSaving = true, error = null) }
 
         viewModelScope.launch {
