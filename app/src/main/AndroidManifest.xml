@@ -31,17 +31,53 @@
             when the keyboard opens (ADR-024). Edge-to-edge means the window is not
             literally resized; the IME inset is delivered to Compose instead, and
             the tree pads once at the root.
+
+            No MAIN/LAUNCHER filter here on purpose: the launcher entry is the
+            LauncherEntry alias below, so hiding the icon does not disable this
+            activity too (ADR-031). It stays exported so home-screen shortcuts
+            created by older versions, which point at this component, keep
+            working after the upgrade.
         -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize"
-            android:theme="@style/Theme.Meteor">
+            android:theme="@style/Theme.Meteor" />
+
+        <!--
+            The component a launcher sees. "隐藏桌面图标" disables exactly this
+            alias via PackageManager; MainActivity keeps working so the secret
+            dial code can still open the app.
+        -->
+        <activity-alias
+            android:name=".LauncherEntry"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
+
+        <!--
+            Way back in while the launcher icon is hidden: the system dialer
+            dispatches *#*#314159#*#* as a protected broadcast whose data URI is
+            android_secret_code://314159. The filter matches that host only.
+        -->
+        <receiver
+            android:name=".system.SecretCodeReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.provider.Telephony.SECRET_CODE" />
+                <data
+                    android:scheme="android_secret_code"
+                    android:host="314159" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

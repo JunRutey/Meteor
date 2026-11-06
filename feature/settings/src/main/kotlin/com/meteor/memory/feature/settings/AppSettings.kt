@@ -13,6 +13,15 @@ data class AppSettings(
     val animationsEnabled: Boolean = false,
     val fontScale: FontScale = FontScale.SYSTEM,
     val appLockEnabled: Boolean = false,
+    /**
+     * Hide the launcher entry. The app stays reachable by dialling
+     * `*#*#314159#*#*` (ADR-031).
+     *
+     * This only records the intent: `:app` owns the `LauncherEntry` alias and
+     * mirrors this flag onto the component state, so there is one knob and the
+     * icon is derived from it (ADR-031).
+     */
+    val hideLauncherIcon: Boolean = false,
     /** Record every log level, not just warnings and errors. */
     val verboseLogging: Boolean = false,
     val autoBackupEnabled: Boolean = true,

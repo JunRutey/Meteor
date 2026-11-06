@@ -10,13 +10,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -37,6 +43,7 @@ fun SettingsScreen(
     onDynamicColorChanged: (Boolean) -> Unit,
     onAnimationsChanged: (Boolean) -> Unit,
     onAppLockChanged: (Boolean) -> Unit,
+    onHideLauncherIconChanged: (Boolean) -> Unit,
     onVerboseLoggingChanged: (Boolean) -> Unit,
     onOpenAbout: () -> Unit,
     logSizeBytes: Long,
@@ -93,6 +100,11 @@ fun SettingsScreen(
             subtitle = stringResource(R.string.settings_app_lock_desc),
             checked = settings.appLockEnabled,
             onCheckedChange = onAppLockChanged,
+        )
+
+        HideLauncherIconRow(
+            hidden = settings.hideLauncherIcon,
+            onHiddenChange = onHideLauncherIconChanged,
         )
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
@@ -201,5 +213,51 @@ private fun ToggleRow(
             Text(text = subtitle, style = MaterialTheme.typography.bodySmall)
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+/**
+ * Hiding the launcher entry is the only setting that can lock the user out of
+ * the app (the way back in is the dial code, and not every OEM dialer dispatches
+ * it), so switching it on asks for confirmation first. Switching it off never
+ * does: the app is right here. See ADR-031.
+ */
+@Composable
+private fun HideLauncherIconRow(
+    hidden: Boolean,
+    onHiddenChange: (Boolean) -> Unit,
+) {
+    var confirming by rememberSaveable { mutableStateOf(false) }
+
+    ToggleRow(
+        title = stringResource(R.string.settings_hide_launcher_icon),
+        subtitle = stringResource(R.string.settings_hide_launcher_icon_desc),
+        checked = hidden,
+        onCheckedChange = { next ->
+            if (next) confirming = true else onHiddenChange(false)
+        },
+    )
+
+    if (confirming) {
+        AlertDialog(
+            onDismissRequest = { confirming = false },
+            title = { Text(text = stringResource(R.string.settings_hide_launcher_icon_confirm_title)) },
+            text = { Text(text = stringResource(R.string.settings_hide_launcher_icon_confirm_body)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirming = false
+                        onHiddenChange(true)
+                    },
+                ) {
+                    Text(text = stringResource(R.string.settings_hide_launcher_icon_confirm_ok))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirming = false }) {
+                    Text(text = stringResource(R.string.settings_hide_launcher_icon_confirm_cancel))
+                }
+            },
+        )
     }
 }

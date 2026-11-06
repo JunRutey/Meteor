@@ -86,6 +86,15 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repository.setAppLockEnabled(enabled) }
     }
 
+    /**
+     * Records the choice only: `com.meteor.memory.ui.RootViewModel` is the
+     * single writer of the launcher component state, so the switch and the icon
+     * cannot disagree (ADR-031).
+     */
+    fun setHideLauncherIcon(hidden: Boolean) {
+        viewModelScope.launch { repository.setHideLauncherIcon(hidden) }
+    }
+
     fun setVerboseLogging(enabled: Boolean) {
         viewModelScope.launch {
             repository.setVerboseLogging(enabled)
@@ -140,15 +149,15 @@ class SettingsViewModel @Inject constructor(
     suspend fun saveApiKey(key: String) {
         withContext(Dispatchers.IO) {
             reader.saveApiKey(key)
-            _apiKeyPresent.value = reader.hasApiKey()
-        }
+            reader.hasApiKey()
+        }.also { _apiKeyPresent.value = it }
     }
 
     suspend fun clearApiKey() {
         withContext(Dispatchers.IO) {
             reader.clearApiKey()
-            _apiKeyPresent.value = false
         }
+        _apiKeyPresent.value = false
     }
 
     fun testAiConnection() {

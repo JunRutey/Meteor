@@ -4,18 +4,23 @@
 
 ---
 
-## 1. 铁律：本地绝不构建
+## 1. 环境说明：这台机器不构建（仅限当前维护者环境）
 
-- **禁止**在本机执行 `gradle`、`gradlew`、`./gradlew assemble*`、`test*`、`lint*`、`build`、`install*`。
-- **禁止**在本机执行 `gradle --dry-run`、`gradle tasks`、`gradle help` 等任何会启动 Gradle 守护进程的命令。
-- 本地只做：读写源码、读写配置、`git` 操作、阅读文档。
-- 唯一合法的构建与验证场所是 **GitHub Actions**。
+> **适用范围**：本条只约束**当前维护者的这台开发机**，以及在这台机器上工作的自动化代理。
+> 它不是仓库级的通用规则，其他开发者可以按各自习惯在本地构建，不受此条限制。
 
-原因：本机 JDK/SDK 版本与 CI 不一致（本机 JDK 17、仅 android-35），本地构建结果不可信，且会污染工作区与耗时。
+- 在这台机器上**禁止**执行 `gradle`、`gradlew`、`./gradlew assemble*`、`test*`、`lint*`、`build`、`install*`。
+- 在这台机器上**禁止**执行 `gradle --dry-run`、`gradle tasks`、`gradle help` 等任何会启动 Gradle 守护进程的命令。
+- 在这台机器上只做：读写源码、读写配置、`git` 操作、阅读文档。
+- 在这台机器上，构建与验证一律交给 **GitHub Actions**。
 
-## 2. 验证闭环：只看 CI
+原因：这台机器 JDK/SDK 版本与 CI 不一致（本机 JDK 17、仅 android-35），本地构建结果不可信，且会污染工作区与耗时。这是个人环境限制，不是对项目构建方式的规范。
 
-改动后唯一的验收方式是推送到 GitHub 并等待 Actions 结果。
+**对其他开发者**：欢迎使用本机 Gradle / IDE 进行迭代。无论是否本地构建过，合并前都必须以 CI 结果为准。
+
+## 2. 验证闭环：以 CI 为准
+
+**合并前的最终验收标准是 GitHub Actions 通过**。本地构建只是开发期的辅助手段（是否执行由各开发者自行决定），不能替代 CI。
 
 - 失败时读取日志：`gh run list --limit 5` → `gh run view <run-id> --log-failed`
 - 修复后再推，直到 `CI` 工作流绿灯。
