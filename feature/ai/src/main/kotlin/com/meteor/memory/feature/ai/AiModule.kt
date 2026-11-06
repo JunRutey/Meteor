@@ -67,7 +67,22 @@ interface AiChatListener {
      * explicit user decision; the safe default is to deny the operation.
      */
     suspend fun onToolApproval(name: String, arguments: String): Boolean = false
+
+    /**
+     * Called once for all approval-required tools returned in one model turn.
+     * The default preserves compatibility with listeners that only support
+     * approving one tool at a time.
+     */
+    suspend fun onToolApprovals(approvals: List<AiToolApproval>): Boolean {
+        for (approval in approvals) {
+            if (!onToolApproval(approval.name, approval.arguments)) return false
+        }
+        return true
+    }
 }
+
+/** A mutation the model wants to perform and the exact arguments to review. */
+data class AiToolApproval(val name: String, val arguments: String)
 
 /** One recurring term of a person's records. */
 data class PersonaTopic(val term: String, val count: Int)

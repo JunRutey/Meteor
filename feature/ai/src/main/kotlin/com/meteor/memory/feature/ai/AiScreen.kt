@@ -88,7 +88,7 @@ fun AiScreen(
     streaming: Boolean = false,
     liveContent: String = "",
     liveSteps: List<AiProcessStep> = emptyList(),
-    pendingToolApproval: Pair<String, String>? = null,
+    pendingToolApprovals: List<AiToolApproval> = emptyList(),
     onSkillSelect: (String) -> Unit,
     onPersonSelect: (String?) -> Unit,
     onSend: (String) -> Unit,
@@ -138,24 +138,69 @@ fun AiScreen(
         }
     }
 
-    pendingToolApproval?.let { (name, arguments) ->
+    if (pendingToolApprovals.isNotEmpty()) {
+        val isBatch = pendingToolApprovals.size > 1
         AlertDialog(
             onDismissRequest = { onToolApproval(false) },
-            title = { Text(stringResource(R.string.ai_tool_approval_title)) },
+            title = {
+                Text(
+                    stringResource(
+                        if (isBatch) {
+                            R.string.ai_tool_approval_batch_title
+                        } else {
+                            R.string.ai_tool_approval_title
+                        },
+                    ),
+                )
+            },
             text = {
                 Column(
                     modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text(stringResource(R.string.ai_tool_approval_message, toolLabel(name)))
-                    SelectionContainer {
-                        Text(arguments, style = MaterialTheme.typography.bodySmall)
+                    if (isBatch) {
+                        Text(
+                            stringResource(
+                                R.string.ai_tool_approval_batch_message,
+                                pendingToolApprovals.size,
+                            ),
+                        )
+                    } else {
+                        Text(
+                            stringResource(
+                                R.string.ai_tool_approval_message,
+                                toolLabel(pendingToolApprovals.single().name),
+                            ),
+                        )
+                    }
+                    pendingToolApprovals.forEachIndexed { index, approval ->
+                        if (isBatch) {
+                            Text(
+                                stringResource(
+                                    R.string.ai_tool_approval_item,
+                                    index + 1,
+                                    toolLabel(approval.name),
+                                ),
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                        }
+                        SelectionContainer {
+                            Text(approval.arguments, style = MaterialTheme.typography.bodySmall)
+                        }
                     }
                 }
             },
             confirmButton = {
                 TextButton(onClick = { onToolApproval(true) }) {
-                    Text(stringResource(R.string.ai_tool_approval_confirm))
+                    Text(
+                        stringResource(
+                            if (isBatch) {
+                                R.string.ai_tool_approval_confirm_all
+                            } else {
+                                R.string.ai_tool_approval_confirm
+                            },
+                        ),
+                    )
                 }
             },
             dismissButton = {

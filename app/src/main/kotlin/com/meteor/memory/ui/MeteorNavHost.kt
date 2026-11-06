@@ -424,7 +424,7 @@ fun MeteorNavHost(
                 streaming = state.streaming,
                 liveContent = state.liveContent,
                 liveSteps = state.liveSteps,
-                pendingToolApproval = state.pendingToolApproval,
+                pendingToolApprovals = state.pendingToolApprovals,
                 onSkillSelect = viewModel::selectSkill,
                 onPersonSelect = viewModel::selectPerson,
                 onSend = viewModel::send,

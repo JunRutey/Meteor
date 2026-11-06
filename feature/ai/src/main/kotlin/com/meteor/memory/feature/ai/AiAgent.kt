@@ -9,8 +9,8 @@ data class AgentResult(
 )
 
 /**
- * Bounded tool loop. Read tools run directly; mutating tools require explicit
- * approval from the app listener and fail closed without one. Every request
+ * Bounded tool loop. Read tools run directly; tools marked as requiring approval
+ * fail closed without an explicit decision from the app listener. Every request
  * and result is charged against a budget (ADR-027).
  */
 class AiAgent(
@@ -65,12 +65,17 @@ class AiAgent(
                 reasoningContent = completion.reasoningContent,
             )
 
+            val approvals = calls
+                .filter { tools.requiresApproval(it.name) }
+                .map { AiToolApproval(it.name, it.arguments) }
+            val approved = approvals.isEmpty() || listener?.onToolApprovals(approvals) == true
+
             var budgetReached = false
             for (call in calls) {
                 listener?.onToolCall(call.name, call.arguments)
                 val result = if (
                     tools.requiresApproval(call.name) &&
-                    listener?.onToolApproval(call.name, call.arguments) != true
+                    !approved
                 ) {
                     """{"error":"user-denied"}"""
                 } else {

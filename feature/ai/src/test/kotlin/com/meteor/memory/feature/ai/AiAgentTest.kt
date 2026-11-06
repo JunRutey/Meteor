@@ -214,6 +214,85 @@ class AiAgentTest {
     }
 
     @Test
+    fun `mutations from one model turn share one approval decision`() = runBlocking {
+        val provider = FakeProvider(
+            AiCompletion(
+                null,
+                listOf(
+                    AiToolCall("c1", "save_diary", """{"date":"2026-03-08","body":"one"}"""),
+                    AiToolCall("c2", "save_diary", """{"date":"2026-03-09","body":"two"}"""),
+                ),
+            ),
+            AiCompletion("done", emptyList()),
+        )
+        val toolbox = FakeToolbox(approvalRequired = true)
+        val approvalBatches = mutableListOf<List<AiToolApproval>>()
+        val listener = object : AiChatListener {
+            override fun onContent(delta: String) = Unit
+            override fun onReasoning(delta: String) = Unit
+            override fun onToolCall(name: String, arguments: String) = Unit
+            override fun onToolResult(name: String) = Unit
+
+            override suspend fun onToolApprovals(approvals: List<AiToolApproval>): Boolean {
+                approvalBatches += approvals
+                return true
+            }
+        }
+
+        AiAgent(provider, toolbox, listener = listener).run(conversation(), allowedPersonId = null)
+
+        assertEquals(1, approvalBatches.size)
+        assertEquals(
+            listOf(
+                AiToolApproval("save_diary", """{"date":"2026-03-08","body":"one"}"""),
+                AiToolApproval("save_diary", """{"date":"2026-03-09","body":"two"}"""),
+            ),
+            approvalBatches.single(),
+        )
+        assertEquals(2, toolbox.calls.size)
+    }
+
+    @Test
+    fun `denying a batch prevents every protected tool from executing`() = runBlocking {
+        val provider = FakeProvider(
+            AiCompletion(
+                null,
+                listOf(
+                    AiToolCall("c1", "save_diary", """{"body":"one"}"""),
+                    AiToolCall("c2", "save_diary", """{"body":"two"}"""),
+                ),
+            ),
+            AiCompletion("not changed", emptyList()),
+        )
+        val toolbox = FakeToolbox(approvalRequired = true)
+        val results = mutableListOf<String>()
+        var approvalRequestCount = 0
+        val listener = object : AiChatListener {
+            override fun onContent(delta: String) = Unit
+            override fun onReasoning(delta: String) = Unit
+            override fun onToolCall(name: String, arguments: String) = Unit
+            override fun onToolResult(name: String) = Unit
+
+            override suspend fun onToolApprovals(approvals: List<AiToolApproval>): Boolean {
+                approvalRequestCount++
+                assertEquals(2, approvals.size)
+                return false
+            }
+
+            override fun onToolResult(name: String, result: String) {
+                results += result
+            }
+        }
+
+        AiAgent(provider, toolbox, listener = listener).run(conversation(), allowedPersonId = null)
+
+        assertEquals(1, approvalRequestCount)
+        assertTrue(toolbox.calls.isEmpty())
+        assertEquals(2, results.size)
+        assertTrue(results.all { it.contains("user-denied") })
+    }
+
+    @Test
     fun `the conversation must start with a system prompt`() {
         val error = assertThrows(
             IllegalArgumentException::class.java,

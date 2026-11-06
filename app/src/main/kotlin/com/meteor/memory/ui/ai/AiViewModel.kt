@@ -15,6 +15,7 @@ import com.meteor.memory.feature.ai.AiPresets
 import com.meteor.memory.feature.ai.AiProviderException
 import com.meteor.memory.feature.ai.AiSkill
 import com.meteor.memory.feature.ai.AiProcessStep
+import com.meteor.memory.feature.ai.AiToolApproval
 import com.meteor.memory.feature.ai.AiUsage
 import com.meteor.memory.feature.ai.ChatRequest
 import com.meteor.memory.feature.ai.ChatTurn
@@ -53,7 +54,7 @@ data class AiUiState(
     val streaming: Boolean = false,
     val liveContent: String = "",
     val liveSteps: List<AiProcessStep> = emptyList(),
-    val pendingToolApproval: Pair<String, String>? = null,
+    val pendingToolApprovals: List<AiToolApproval> = emptyList(),
 )
 
 @HiltViewModel
@@ -225,16 +226,16 @@ class AiViewModel @Inject constructor(
                 onToolResult(name, "")
             }
 
-            override suspend fun onToolApproval(name: String, arguments: String): Boolean {
+            override suspend fun onToolApprovals(approvals: List<AiToolApproval>): Boolean {
                 val decision = CompletableDeferred<Boolean>()
                 toolApprovalDecision = decision
-                _state.update { it.copy(pendingToolApproval = name to arguments) }
+                _state.update { it.copy(pendingToolApprovals = approvals.toList()) }
                 return try {
                     decision.await()
                 } finally {
                     if (toolApprovalDecision === decision) {
                         toolApprovalDecision = null
-                        _state.update { it.copy(pendingToolApproval = null) }
+                        _state.update { it.copy(pendingToolApprovals = emptyList()) }
                     }
                 }
             }
@@ -317,7 +318,7 @@ class AiViewModel @Inject constructor(
                 streaming = false,
                 liveContent = "",
                 liveSteps = emptyList(),
-                pendingToolApproval = null,
+                pendingToolApprovals = emptyList(),
                 errorCode = 0,
                 errorDetail = null,
             )
