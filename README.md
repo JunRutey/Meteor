@@ -38,11 +38,13 @@
  ├── :core-index         FTS 全文索引（FTS5 → FTS4 → LIKE 运行时降级）
  ├── :core-crypto        Keystore AES-GCM、应用锁、AI 凭据加密存储
  ├── :core-log           按天落盘的诊断日志与导出
- └── :core-time          时间水印、locale 格式化
+ ├── :core-time          时间水印、locale 格式化
+ └── :core-notify        每日日记提醒调度与通知渠道
 ```
 
 依赖严格单向、无环，由 `tools/check-module-graph.sh` 在 CI 中强制；
-`:core-index` 可被 `-Pmeteor.excludeModules=core-index` 整体移除（CI 有专门任务验证）。
+`:core-index` 可被 `-Pmeteor.excludeModules=core-index` 整体移除（CI 有专门任务验证）；
+`:core-notify` 可被 `-Pmeteor.excludeModules=core-notify` 整体移除。
 `:feature-ai` 刻意不依赖 `:core-index`：自己在解密后的记录上检索，索引被排除时 AI 仍可用。
 
 关键取舍记录在 [`docs/adr`](docs/adr)：人物目录用 `person_id`、CJK 分词、

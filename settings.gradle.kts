@@ -56,6 +56,7 @@ fun meteorModule(name: String) {
 
 // --- v0.1 module set -------------------------------------------------------
 meteorModule("core-time")
+meteorModule("core-notify")
 meteorModule("core-crypto")
 meteorModule("core-storage")
 meteorModule("core-backup")

@@ -2,6 +2,7 @@ package com.meteor.memory
 
 import android.app.Application
 import com.meteor.memory.core.log.AppLog
+import com.meteor.memory.system.NotificationFeature
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
 
@@ -11,8 +12,12 @@ class MeteorApp : Application() {
     @Inject
     lateinit var appLog: AppLog
 
+    @Inject
+    lateinit var notificationFeature: NotificationFeature
+
     override fun onCreate() {
         super.onCreate()
+        notificationFeature.initialize()
         installCrashHandler()
     }
 

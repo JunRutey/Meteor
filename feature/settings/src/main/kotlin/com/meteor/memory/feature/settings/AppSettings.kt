@@ -26,6 +26,10 @@ data class AppSettings(
     val verboseLogging: Boolean = false,
     val autoBackupEnabled: Boolean = true,
     val backupRetention: Int = DEFAULT_BACKUP_RETENTION,
+    /** Daily missing-diary reminder; opt-in on a fresh install. */
+    val diaryReminderEnabled: Boolean = false,
+    /** Minutes after local midnight; defaults to 20:00. */
+    val diaryReminderTimeMinutes: Int = DEFAULT_DIARY_REMINDER_TIME_MINUTES,
     /**
      * AI entry point (ADR-027). Off by default: a fresh install must not ship a
      * networked feature that is already on. Nothing leaves the device unless
@@ -52,6 +56,7 @@ data class AppSettings(
 ) {
     companion object {
         const val DEFAULT_BACKUP_RETENTION = 7
+        const val DEFAULT_DIARY_REMINDER_TIME_MINUTES = 20 * 60
         const val DEFAULT_AI_PROVIDER = "deepseek"
         const val DEFAULT_AI_REASONING = "auto"
     }

@@ -1,8 +1,11 @@
 package com.meteor.memory.ui
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContentTransitionScope
@@ -20,9 +23,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -481,8 +486,25 @@ fun MeteorNavHost(
             val apiKeyPresent by viewModel.apiKeyPresent.collectAsStateWithLifecycle()
             val aiTest by viewModel.aiTest.collectAsStateWithLifecycle()
             val aiModels by viewModel.aiModels.collectAsStateWithLifecycle()
+            val notificationsAllowed by viewModel.notificationsAllowed.collectAsStateWithLifecycle()
+            val canScheduleExactAlarms by viewModel.canScheduleExactAlarms.collectAsStateWithLifecycle()
+            val context = LocalContext.current
+            var notificationPermissionDenied by rememberSaveable { mutableStateOf(false) }
+            val notificationPermissionLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.RequestPermission(),
+            ) { granted ->
+                if (granted) {
+                    notificationPermissionDenied = false
+                    viewModel.setDiaryReminderEnabled(true)
+                } else {
+                    notificationPermissionDenied = true
+                }
+            }
 
-            RefreshOnResume { viewModel.refreshLogSize() }
+            RefreshOnResume {
+                viewModel.refreshLogSize()
+                viewModel.refreshNotificationPermissions()
+            }
 
             SettingsScreen(
                 settings = settings,
@@ -498,6 +520,30 @@ fun MeteorNavHost(
                 onVerboseLoggingChanged = viewModel::setVerboseLogging,
                 onOpenAbout = { navController.navigate(ROUTE_ABOUT) },
                 logSizeBytes = logSizeBytes,
+                notificationFeatureAvailable = viewModel.notificationFeatureAvailable,
+                notificationsAllowed = notificationsAllowed,
+                canScheduleExactAlarms = canScheduleExactAlarms,
+                notificationPermissionDenied = notificationPermissionDenied,
+                onReminderEnabledChanged = { enabled ->
+                    if (!enabled) {
+                        viewModel.setDiaryReminderEnabled(false)
+                    } else if (
+                        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                        ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.POST_NOTIFICATIONS,
+                        ) == PackageManager.PERMISSION_GRANTED
+                    ) {
+                        notificationPermissionDenied = false
+                        viewModel.setDiaryReminderEnabled(true)
+                    } else {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                },
+                onReminderTimeChanged = viewModel::setDiaryReminderTimeMinutes,
+                onOpenExactAlarmSettings = viewModel::openExactAlarmSettings,
+                onOpenNotificationSettings = viewModel::openNotificationSettings,
+                onDismissNotificationPermissionDenied = { notificationPermissionDenied = false },
                 onOpenDiagnostics = if (BuildConfig.DEBUG) {
                     { navController.navigate(ROUTE_DIAGNOSTICS) }
                 } else {

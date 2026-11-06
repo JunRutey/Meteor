@@ -30,6 +30,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             verboseLogging = prefs[KEY_VERBOSE_LOGGING] ?: false,
             autoBackupEnabled = prefs[KEY_AUTO_BACKUP] ?: true,
             backupRetention = prefs[KEY_BACKUP_RETENTION] ?: AppSettings.DEFAULT_BACKUP_RETENTION,
+            diaryReminderEnabled = prefs[KEY_DIARY_REMINDER_ENABLED] ?: false,
+            diaryReminderTimeMinutes = (prefs[KEY_DIARY_REMINDER_TIME] ?: AppSettings.DEFAULT_DIARY_REMINDER_TIME_MINUTES)
+                .coerceIn(0, 1439),
             aiEnabled = prefs[KEY_AI_ENABLED] ?: false,
             aiConsentAccepted = prefs[KEY_AI_CONSENT] ?: false,
             aiProvider = prefs[KEY_AI_PROVIDER] ?: AppSettings.DEFAULT_AI_PROVIDER,
@@ -63,6 +66,12 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
 
     suspend fun setBackupRetention(count: Int) =
         store.edit { it[KEY_BACKUP_RETENTION] = count.coerceIn(1, 30) }
+
+    suspend fun setDiaryReminderEnabled(enabled: Boolean) =
+        store.edit { it[KEY_DIARY_REMINDER_ENABLED] = enabled }
+
+    suspend fun setDiaryReminderTimeMinutes(minutes: Int) =
+        store.edit { it[KEY_DIARY_REMINDER_TIME] = minutes.coerceIn(0, 1439) }
 
     suspend fun setAiEnabled(enabled: Boolean) = store.edit { it[KEY_AI_ENABLED] = enabled }
 
@@ -114,6 +123,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val KEY_VERBOSE_LOGGING = booleanPreferencesKey("verbose_logging")
         val KEY_AUTO_BACKUP = booleanPreferencesKey("auto_backup_enabled")
         val KEY_BACKUP_RETENTION = intPreferencesKey("backup_retention")
+        val KEY_DIARY_REMINDER_ENABLED = booleanPreferencesKey("diary_reminder_enabled")
+        val KEY_DIARY_REMINDER_TIME = intPreferencesKey("diary_reminder_time_minutes")
         val KEY_AI_ENABLED = booleanPreferencesKey("ai_enabled")
         val KEY_AI_CONSENT = booleanPreferencesKey("ai_consent_accepted")
         val KEY_AI_PROVIDER = stringPreferencesKey("ai_provider")

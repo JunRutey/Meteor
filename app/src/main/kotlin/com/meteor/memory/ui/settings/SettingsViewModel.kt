@@ -10,6 +10,7 @@ import com.meteor.memory.feature.settings.DarkMode
 import com.meteor.memory.feature.settings.FontScale
 import com.meteor.memory.feature.settings.SettingsRepository
 import com.meteor.memory.system.LauncherPermissionGuide
+import com.meteor.memory.system.NotificationFeature
 import com.meteor.memory.ui.ai.AiSettingsReader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -44,6 +45,7 @@ class SettingsViewModel @Inject constructor(
     private val reader: AiSettingsReader,
     private val aiModule: AiModule,
     private val launcherPermissionGuide: LauncherPermissionGuide,
+    private val notificationFeature: NotificationFeature,
 ) : ViewModel() {
 
     /**
@@ -52,6 +54,13 @@ class SettingsViewModel @Inject constructor(
      * change at runtime, so this is read once.
      */
     val launcherIconNeedsSystemGrants: Boolean = launcherPermissionGuide.needsManualGrants()
+    val notificationFeatureAvailable: Boolean = notificationFeature.available
+
+    private val _notificationsAllowed = MutableStateFlow(notificationFeature.canPostNotifications())
+    val notificationsAllowed: StateFlow<Boolean> = _notificationsAllowed.asStateFlow()
+
+    private val _canScheduleExactAlarms = MutableStateFlow(notificationFeature.canScheduleExactAlarms())
+    val canScheduleExactAlarms: StateFlow<Boolean> = _canScheduleExactAlarms.asStateFlow()
 
     val settings: StateFlow<AppSettings> = repository.settings.stateIn(
         scope = viewModelScope,
@@ -112,6 +121,35 @@ class SettingsViewModel @Inject constructor(
     /** Opens MIUI's auto-start manager; falls back to the permission editor. */
     fun openAutoStartSettings() {
         launcherPermissionGuide.openAutoStartSettings()
+    }
+
+    fun setDiaryReminderEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setDiaryReminderEnabled(enabled)
+            notificationFeature.syncReminder()
+            refreshNotificationPermissions()
+        }
+    }
+
+    fun setDiaryReminderTimeMinutes(minutes: Int) {
+        viewModelScope.launch {
+            repository.setDiaryReminderTimeMinutes(minutes)
+            notificationFeature.syncReminder()
+        }
+    }
+
+    fun refreshNotificationPermissions() {
+        _notificationsAllowed.value = notificationFeature.canPostNotifications()
+        _canScheduleExactAlarms.value = notificationFeature.canScheduleExactAlarms()
+        viewModelScope.launch { notificationFeature.syncReminder() }
+    }
+
+    fun openNotificationSettings() {
+        notificationFeature.openNotificationSettings()
+    }
+
+    fun openExactAlarmSettings() {
+        notificationFeature.openExactAlarmSettings()
     }
 
     fun setVerboseLogging(enabled: Boolean) {
