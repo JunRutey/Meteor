@@ -109,7 +109,7 @@ private fun Context.openInBrowser(url: String) {
 @Composable
 fun MeteorNavHost(
     versionName: String,
-    animationsEnabled: Boolean = false,
+    animationsEnabled: Boolean = true,
     aiEnabled: Boolean = false,
 ) {
     val navController = rememberNavController()

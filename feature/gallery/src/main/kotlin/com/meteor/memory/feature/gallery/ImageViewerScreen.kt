@@ -35,7 +35,7 @@ fun ImageViewerScreen(
     caption: String,
     onBack: () -> Unit,
     loading: Boolean = false,
-    animationsEnabled: Boolean = false,
+    animationsEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
