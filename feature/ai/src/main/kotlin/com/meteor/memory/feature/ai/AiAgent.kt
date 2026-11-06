@@ -9,9 +9,9 @@ data class AgentResult(
 )
 
 /**
- * Bounded tool loop. The model may ask for **read-only** archive tools for at
- * most [maxSteps] rounds; every request and result is charged against a budget
- * so a looping model cannot burn a user's quota without limit (ADR-027).
+ * Bounded tool loop. Read tools run directly; mutating tools require explicit
+ * approval from the app listener and fail closed without one. Every request
+ * and result is charged against a budget (ADR-027).
  */
 class AiAgent(
     private val provider: AiProvider,
@@ -68,8 +68,14 @@ class AiAgent(
             var budgetReached = false
             for (call in calls) {
                 listener?.onToolCall(call.name, call.arguments)
-                val result = tools.execute(call.name, call.arguments, allowedPersonId)
-                    .take(maxToolResultChars)
+                val result = if (
+                    tools.requiresApproval(call.name) &&
+                    listener?.onToolApproval(call.name, call.arguments) != true
+                ) {
+                    """{"error":"user-denied"}"""
+                } else {
+                    tools.execute(call.name, call.arguments, allowedPersonId).take(maxToolResultChars)
+                }
                 listener?.onToolResult(call.name, result)
                 toolChars += result.length
                 messages += AiMessage.tool(call.id, result)

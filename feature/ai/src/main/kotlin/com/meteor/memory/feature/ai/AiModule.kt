@@ -61,6 +61,12 @@ interface AiChatListener {
      * name keep working (R2: new capability via a defaulted method).
      */
     fun onToolResult(name: String, result: String) = onToolResult(name)
+
+    /**
+     * Called before a mutating tool executes. Implementations must obtain an
+     * explicit user decision; the safe default is to deny the operation.
+     */
+    suspend fun onToolApproval(name: String, arguments: String): Boolean = false
 }
 
 /** One recurring term of a person's records. */

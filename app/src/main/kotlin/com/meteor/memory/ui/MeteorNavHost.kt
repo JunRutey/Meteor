@@ -419,6 +419,7 @@ fun MeteorNavHost(
                 streaming = state.streaming,
                 liveContent = state.liveContent,
                 liveSteps = state.liveSteps,
+                pendingToolApproval = state.pendingToolApproval,
                 animationsEnabled = animationsEnabled,
                 onSkillSelect = viewModel::selectSkill,
                 onPersonSelect = viewModel::selectPerson,
@@ -426,6 +427,7 @@ fun MeteorNavHost(
                 onOpenPersona = { personId -> navController.navigate("ai/persona/$personId") },
                 onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
                 onClear = viewModel::clear,
+                onToolApproval = viewModel::decideToolApproval,
                 onBack = { navController.popBackStack() },
             )
         }
@@ -514,6 +516,11 @@ fun MeteorNavHost(
                         modelsFailed = aiModels.failed,
                         writeEnabled = settings.aiWriteEnabled,
                         testing = aiTest.running,
+                        writeDiary = settings.aiWriteDiary,
+                        writePeople = settings.aiWritePeople,
+                        onWriteDiaryChange = viewModel::setAiWriteDiary,
+                        onWritePeopleChange = viewModel::setAiWritePeople,
+                        onRequestApiKey = viewModel::apiKeyOnce,
                         testMessage = aiTestText(aiTest),
                         onEnabledChange = viewModel::setAiEnabled,
                         onConsentAccepted = viewModel::acceptAiConsent,

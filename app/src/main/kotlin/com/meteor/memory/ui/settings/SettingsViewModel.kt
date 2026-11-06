@@ -123,15 +123,29 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repository.setAiWriteEnabled(enabled) }
     }
 
-    fun saveApiKey(key: String) {
-        viewModelScope.launch(Dispatchers.IO) {
+    fun setAiWriteDiary(enabled: Boolean) {
+        viewModelScope.launch { repository.setAiWriteDiary(enabled) }
+    }
+
+    fun setAiWritePeople(enabled: Boolean) {
+        viewModelScope.launch { repository.setAiWritePeople(enabled) }
+    }
+
+    /**
+     * Plaintext key for the reveal/copy buttons. Keystore decryption happens on
+     * the IO dispatcher; callers must not log or persist the result.
+     */
+    suspend fun apiKeyOnce(): String? = withContext(Dispatchers.IO) { reader.apiKey() }
+
+    suspend fun saveApiKey(key: String) {
+        withContext(Dispatchers.IO) {
             reader.saveApiKey(key)
             _apiKeyPresent.value = reader.hasApiKey()
         }
     }
 
-    fun clearApiKey() {
-        viewModelScope.launch(Dispatchers.IO) {
+    suspend fun clearApiKey() {
+        withContext(Dispatchers.IO) {
             reader.clearApiKey()
             _apiKeyPresent.value = false
         }

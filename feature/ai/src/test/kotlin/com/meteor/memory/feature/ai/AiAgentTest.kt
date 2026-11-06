@@ -25,7 +25,7 @@ class AiAgentTest {
         override suspend fun probe() = ProbeResult(ok = true, code = 200)
     }
 
-    private class FakeToolbox : Toolbox {
+    private class FakeToolbox(private val approvalRequired: Boolean = false) : Toolbox {
         val calls = mutableListOf<Triple<String, String, String?>>()
 
         override fun specs(): List<AiToolSpec> =
@@ -35,6 +35,8 @@ class AiAgentTest {
             calls += Triple(name, arguments, allowedPersonId)
             return """{"ok":true}"""
         }
+
+        override fun requiresApproval(name: String): Boolean = approvalRequired
     }
 
     private fun conversation() = listOf(AiMessage.system("system"), AiMessage.user("question"))
@@ -150,6 +152,65 @@ class AiAgentTest {
         assertTrue(events.contains("call:search_archive"))
         assertTrue(events.contains("result:search_archive"))
         assertTrue(events.contains("content:done"))
+    }
+
+    @Test
+    fun `mutating tools are denied without explicit approval`() = runBlocking {
+        val provider = FakeProvider(
+            AiCompletion(null, listOf(AiToolCall("c1", "save_diary", """{"body":"change"}"""))),
+            AiCompletion("not changed", emptyList()),
+        )
+        val toolbox = FakeToolbox(approvalRequired = true)
+        val events = mutableListOf<String>()
+        val listener = object : AiChatListener {
+            override fun onContent(delta: String) = Unit
+            override fun onReasoning(delta: String) = Unit
+            override fun onToolCall(name: String, arguments: String) = Unit
+            override fun onToolResult(name: String) = Unit
+            override suspend fun onToolApproval(name: String, arguments: String): Boolean = false
+            override fun onToolResult(name: String, result: String) {
+                events += result
+            }
+        }
+
+        AiAgent(provider, toolbox, listener = listener).run(conversation(), allowedPersonId = null)
+
+        assertTrue(toolbox.calls.isEmpty())
+        assertTrue(events.any { it.contains("user-denied") })
+    }
+
+    @Test
+    fun `mutating tools fail closed when no approval listener exists`() = runBlocking {
+        val provider = FakeProvider(
+            AiCompletion(null, listOf(AiToolCall("c1", "save_diary", """{"body":"change"}"""))),
+            AiCompletion("not changed", emptyList()),
+        )
+        val toolbox = FakeToolbox(approvalRequired = true)
+
+        AiAgent(provider, toolbox).run(conversation(), allowedPersonId = null)
+
+        assertTrue(toolbox.calls.isEmpty())
+    }
+
+    @Test
+    fun `mutating tools execute only after explicit approval`() = runBlocking {
+        val provider = FakeProvider(
+            AiCompletion(null, listOf(AiToolCall("c1", "save_diary", """{"body":"change"}"""))),
+            AiCompletion("done", emptyList()),
+        )
+        val toolbox = FakeToolbox(approvalRequired = true)
+        val listener = object : AiChatListener {
+            override fun onContent(delta: String) = Unit
+            override fun onReasoning(delta: String) = Unit
+            override fun onToolCall(name: String, arguments: String) = Unit
+            override fun onToolResult(name: String) = Unit
+            override suspend fun onToolApproval(name: String, arguments: String): Boolean =
+                name == "save_diary" && arguments.contains("change")
+        }
+
+        AiAgent(provider, toolbox, listener = listener).run(conversation(), allowedPersonId = null)
+
+        assertEquals(1, toolbox.calls.size)
     }
 
     @Test

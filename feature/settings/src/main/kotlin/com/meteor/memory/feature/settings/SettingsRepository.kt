@@ -36,6 +36,10 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             aiModel = prefs[KEY_AI_MODEL].orEmpty(),
             aiReasoning = prefs[KEY_AI_REASONING] ?: AppSettings.DEFAULT_AI_REASONING,
             aiWriteEnabled = prefs[KEY_AI_WRITE] ?: false,
+            // Defaults stay true so an existing "write enabled" install keeps
+            // exactly the same tool set after the upgrade (ADR-030).
+            aiWriteDiary = prefs[KEY_AI_WRITE_DIARY] ?: true,
+            aiWritePeople = prefs[KEY_AI_WRITE_PEOPLE] ?: true,
         )
     }
 
@@ -76,6 +80,12 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     suspend fun setAiWriteEnabled(enabled: Boolean) =
         store.edit { it[KEY_AI_WRITE] = enabled }
 
+    suspend fun setAiWriteDiary(enabled: Boolean) =
+        store.edit { it[KEY_AI_WRITE_DIARY] = enabled }
+
+    suspend fun setAiWritePeople(enabled: Boolean) =
+        store.edit { it[KEY_AI_WRITE_PEOPLE] = enabled }
+
     /**
      * v0.7.1: the AI entry default flipped to off.
      *
@@ -106,5 +116,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val KEY_AI_MODEL = stringPreferencesKey("ai_model")
         val KEY_AI_REASONING = stringPreferencesKey("ai_reasoning")
         val KEY_AI_WRITE = booleanPreferencesKey("ai_write_enabled")
+        val KEY_AI_WRITE_DIARY = booleanPreferencesKey("ai_write_diary")
+        val KEY_AI_WRITE_PEOPLE = booleanPreferencesKey("ai_write_people")
     }
 }

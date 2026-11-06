@@ -1,11 +1,18 @@
 package com.meteor.memory.feature.ai
 
+import android.content.ClipData
+import android.content.ClipDescription
+import android.content.ClipboardManager
+import android.content.Context
+import android.os.Build
+import android.os.PersistableBundle
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -17,15 +24,22 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /**
  * The AI block inside the settings screen (ADR-027).
@@ -47,6 +61,8 @@ fun AiSettingsSection(
     modelsLoading: Boolean = false,
     modelsFailed: Boolean = false,
     writeEnabled: Boolean = false,
+    writeDiary: Boolean = true,
+    writePeople: Boolean = true,
     testing: Boolean,
     testMessage: String?,
     onEnabledChange: (Boolean) -> Unit,
@@ -57,14 +73,40 @@ fun AiSettingsSection(
     onReasoningChange: (String) -> Unit,
     onRefreshModels: () -> Unit = {},
     onWriteChange: (Boolean) -> Unit = {},
-    onSaveApiKey: (String) -> Unit,
-    onClearApiKey: () -> Unit,
+    onWriteDiaryChange: (Boolean) -> Unit = {},
+    onWritePeopleChange: (Boolean) -> Unit = {},
+    onSaveApiKey: suspend (String) -> Unit,
+    onClearApiKey: suspend () -> Unit,
+    /** Plaintext key for reveal/copy; must already run off the main thread. */
+    onRequestApiKey: suspend () -> String? = { null },
     onTestConnection: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var showConsent by remember { mutableStateOf(false) }
     var showModels by remember { mutableStateOf(false) }
     var keyDraft by remember { mutableStateOf("") }
+
+    // The saved key stays masked by default. It is only held in memory while the
+    // settings block is composed, and the reveal resets when the key changes.
+    var storedKey by remember { mutableStateOf<String?>(null) }
+    var revealed by remember { mutableStateOf(false) }
+    var copied by remember { mutableStateOf(false) }
+    var keyActionFailed by remember { mutableStateOf(false) }
+    var keyActionInProgress by remember { mutableStateOf(false) }
+    var keyVersion by remember { mutableStateOf(0) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    LaunchedEffect(apiKeyPresent, keyVersion) {
+        storedKey = if (apiKeyPresent) onRequestApiKey() else null
+        revealed = false
+    }
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(COPIED_BADGE_MS)
+            copied = false
+        }
+    }
 
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(
@@ -232,34 +274,150 @@ fun AiSettingsSection(
                 Switch(checked = writeEnabled, onCheckedChange = onWriteChange)
             }
 
+            // Granular grants (ADR-030): the master switch alone no longer means
+            // "the model may rewrite everything".
+            if (writeEnabled) {
+                Column(
+                    modifier = Modifier.padding(start = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    ToggleRow(
+                        title = stringResource(R.string.ai_settings_write_diary),
+                        subtitle = stringResource(R.string.ai_settings_write_diary_desc),
+                        checked = writeDiary,
+                        onCheckedChange = onWriteDiaryChange,
+                    )
+                    ToggleRow(
+                        title = stringResource(R.string.ai_settings_write_people),
+                        subtitle = stringResource(R.string.ai_settings_write_people_desc),
+                        checked = writePeople,
+                        onCheckedChange = onWritePeopleChange,
+                    )
+                }
+            }
+
+            if (apiKeyPresent) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    SelectionContainer(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = when {
+                                storedKey == null -> stringResource(R.string.ai_settings_key_loading)
+                                revealed -> storedKey.orEmpty()
+                                else -> maskApiKey(storedKey.orEmpty())
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                    TextButton(onClick = { revealed = !revealed }) {
+                        Text(
+                            stringResource(
+                                if (revealed) {
+                                    R.string.ai_settings_key_hide
+                                } else {
+                                    R.string.ai_settings_key_show
+                                },
+                            ),
+                        )
+                    }
+                    TextButton(
+                        onClick = {
+                            val key = storedKey.orEmpty()
+                            if (key.isNotBlank()) {
+                                copied = copySecret(context, key)
+                                keyActionFailed = !copied
+                            }
+                        },
+                        enabled = storedKey != null,
+                    ) {
+                        Text(
+                            stringResource(
+                                if (copied) {
+                                    R.string.ai_settings_key_copied
+                                } else {
+                                    R.string.ai_settings_key_copy
+                                },
+                            ),
+                        )
+                    }
+                }
+                Text(
+                    text = stringResource(R.string.ai_settings_key_saved),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+
+            // Paste works like any text field; the draft is never echoed back.
             OutlinedTextField(
                 value = keyDraft,
                 onValueChange = { keyDraft = it },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
-                label = { Text(text = stringResource(R.string.ai_settings_key)) },
+                label = { Text(text = stringResource(R.string.ai_settings_key_new)) },
+                placeholder = { Text(text = stringResource(R.string.ai_settings_key_new_hint)) },
             )
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (apiKeyPresent) {
-                    Text(
-                        text = stringResource(R.string.ai_settings_key_saved),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
                 Button(
                     onClick = {
-                        onSaveApiKey(keyDraft.trim())
-                        keyDraft = ""
+                        scope.launch {
+                            keyActionInProgress = true
+                            keyActionFailed = false
+                            try {
+                                onSaveApiKey(keyDraft.trim())
+                                keyDraft = ""
+                                storedKey = null
+                                revealed = false
+                                // Same presence, new value: force the masked preview to reload.
+                                keyVersion++
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                keyActionFailed = true
+                            } finally {
+                                keyActionInProgress = false
+                            }
+                        }
                     },
-                    enabled = keyDraft.isNotBlank(),
+                    enabled = keyDraft.isNotBlank() && !keyActionInProgress,
                 ) {
                     Text(text = stringResource(R.string.ai_settings_key_save))
                 }
-                TextButton(onClick = onClearApiKey, enabled = apiKeyPresent) {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            keyActionInProgress = true
+                            keyActionFailed = false
+                            try {
+                                onClearApiKey()
+                                storedKey = null
+                                revealed = false
+                                keyDraft = ""
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                keyActionFailed = true
+                            } finally {
+                                keyActionInProgress = false
+                            }
+                        }
+                    },
+                    enabled = apiKeyPresent && !keyActionInProgress,
+                ) {
                     Text(text = stringResource(R.string.ai_settings_key_clear))
                 }
+            }
+            if (keyActionFailed) {
+                Text(
+                    text = stringResource(R.string.ai_settings_key_action_failed),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
 
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -302,3 +460,51 @@ private fun reasoningLabel(mode: ReasoningMode): String = stringResource(
         ReasoningMode.MAX -> R.string.ai_reasoning_max
     },
 )
+
+@Composable
+private fun ToggleRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(text = title, style = MaterialTheme.typography.bodyLarge)
+            Text(text = subtitle, style = MaterialTheme.typography.bodySmall)
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+/**
+ * `sk-********1a2b`: enough for the user to recognise which key is stored,
+ * never enough to reuse it. Keys too short to split are hidden completely.
+ */
+internal fun maskApiKey(key: String): String {
+    val trimmed = key.trim()
+    if (trimmed.length <= MASK_HEAD_CHARS + MASK_TAIL_CHARS) return MASK_CHAR.repeat(MASK_DOTS)
+    return trimmed.take(MASK_HEAD_CHARS) + MASK_CHAR.repeat(MASK_DOTS) + trimmed.takeLast(MASK_TAIL_CHARS)
+}
+
+/** Marks the clip as sensitive on Android 13+, so it is not previewed in the UI. */
+private fun copySecret(context: Context, key: String): Boolean {
+    val clipboard = context.getSystemService(ClipboardManager::class.java) ?: return false
+    val clip = ClipData.newPlainText(context.getString(R.string.ai_settings_key_clip_label), key)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        clip.description.extras = PersistableBundle().apply {
+            putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true)
+        }
+    }
+    return runCatching { clipboard.setPrimaryClip(clip) }.isSuccess
+}
+
+private const val MASK_CHAR = "*"
+private const val MASK_HEAD_CHARS = 3
+private const val MASK_TAIL_CHARS = 4
+private const val MASK_DOTS = 8
+private const val COPIED_BADGE_MS = 1_500L

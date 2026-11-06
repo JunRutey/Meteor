@@ -22,6 +22,7 @@ import com.meteor.memory.feature.ai.SkillStage
 import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,6 +53,7 @@ data class AiUiState(
     val streaming: Boolean = false,
     val liveContent: String = "",
     val liveSteps: List<AiProcessStep> = emptyList(),
+    val pendingToolApproval: Pair<String, String>? = null,
 )
 
 @HiltViewModel
@@ -69,6 +71,8 @@ class AiViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(AiUiState())
     val state: StateFlow<AiUiState> = _state.asStateFlow()
+    @Volatile
+    private var toolApprovalDecision: CompletableDeferred<Boolean>? = null
 
     init {
         observeReadiness()
@@ -220,6 +224,20 @@ class AiViewModel @Inject constructor(
             override fun onToolResult(name: String) {
                 onToolResult(name, "")
             }
+
+            override suspend fun onToolApproval(name: String, arguments: String): Boolean {
+                val decision = CompletableDeferred<Boolean>()
+                toolApprovalDecision = decision
+                _state.update { it.copy(pendingToolApproval = name to arguments) }
+                return try {
+                    decision.await()
+                } finally {
+                    if (toolApprovalDecision === decision) {
+                        toolApprovalDecision = null
+                        _state.update { it.copy(pendingToolApproval = null) }
+                    }
+                }
+            }
         }
 
         viewModelScope.launch {
@@ -288,6 +306,7 @@ class AiViewModel @Inject constructor(
     }
 
     fun clear() {
+        decideToolApproval(approved = false)
         val key = scopeKey(_state.value.selectedSkill, _state.value.selectedPersonId)
         viewModelScope.launch(Dispatchers.IO) { runCatching { chatStore.clear(key) } }
         _state.update {
@@ -298,9 +317,19 @@ class AiViewModel @Inject constructor(
                 streaming = false,
                 liveContent = "",
                 liveSteps = emptyList(),
+                pendingToolApproval = null,
                 errorCode = 0,
                 errorDetail = null,
             )
+        }
+
+        fun decideToolApproval(approved: Boolean) {
+            toolApprovalDecision?.complete(approved)
+        }
+
+        override fun onCleared() {
+            decideToolApproval(approved = false)
+            super.onCleared()
         }
     }
 

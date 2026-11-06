@@ -36,6 +36,10 @@ data class AppSettings(
     val aiReasoning: String = DEFAULT_AI_REASONING,
     /** When true the model may create/update diaries, moods and people. */
     val aiWriteEnabled: Boolean = false,
+    /** Sub-grant of [aiWriteEnabled]: diary entries and moods (ADR-030). */
+    val aiWriteDiary: Boolean = true,
+    /** Sub-grant of [aiWriteEnabled]: create/update person profiles (ADR-030). */
+    val aiWritePeople: Boolean = true,
 ) {
     companion object {
         const val DEFAULT_BACKUP_RETENTION = 7

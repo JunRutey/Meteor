@@ -193,6 +193,8 @@ object AppModule {
         personQueries = personQueries,
         moodQueries = moodQueries,
         diaryQueries = diaryQueries,
+        // Read-only attachment tools reuse the same store the importer writes to.
+        attachments = attachmentStore,
         personaStore = FilePersonaStore(storageRouter),
         skillLoader = { path ->
             runCatching {
