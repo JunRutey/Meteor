@@ -65,7 +65,7 @@ fun Mood.emoji(): String = when (this) {
 }
 
 /**
- * 首页：月份网格 + 选中日卡片 + 右下角搜索/AI 圆钮 + 快捷入口。
+ * 首页：月份网格 + 选中日卡片 + 顶部搜索/设置入口 + AI 圆钮 + 快捷入口。
  *
  * 日历仍然手写（ADR-017）：格子是几十个、依赖 API 无法本地验证，手写 150 行更稳。
  * 齿轮/放大镜/星芒同样是 Canvas 手绘，避免为此引入 material-icons 依赖。
@@ -111,16 +111,30 @@ fun CalendarScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(text = appName, style = MaterialTheme.typography.headlineSmall)
-                val settingsLabel = stringResource(R.string.calendar_open_settings)
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(CircleShape)
-                        .clickable(onClick = onOpenSettings)
-                        .semantics { contentDescription = settingsLabel },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    GearIcon(label = settingsLabel)
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    val searchLabel = stringResource(R.string.calendar_open_search)
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .clickable(onClick = onOpenSearch)
+                            .semantics { contentDescription = searchLabel },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        MagnifierIcon(label = searchLabel)
+                    }
+
+                    val settingsLabel = stringResource(R.string.calendar_open_settings)
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(CircleShape)
+                            .clickable(onClick = onOpenSettings)
+                            .semantics { contentDescription = settingsLabel },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        GearIcon(label = settingsLabel)
+                    }
                 }
             }
 
@@ -190,15 +204,6 @@ fun CalendarScreen(
             horizontalAlignment = Alignment.End,
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            val searchLabel = stringResource(R.string.calendar_open_search)
-            FloatingActionButton(
-                onClick = onOpenSearch,
-                shape = CircleShape,
-                modifier = Modifier.semantics { contentDescription = searchLabel },
-            ) {
-                MagnifierIcon(label = searchLabel)
-            }
-
             onOpenAi?.let { open ->
                 val aiLabel = stringResource(R.string.calendar_open_ai)
                 FloatingActionButton(
@@ -405,25 +410,27 @@ private fun Mood.label(): String = stringResource(
 @Composable
 private fun GearIcon(label: String) {
     val tint = LocalContentColor.current
-    Canvas(Modifier.size(22.dp).semantics { contentDescription = label }) {
+    val cutout = MaterialTheme.colorScheme.background
+    Canvas(Modifier.size(24.dp).semantics { contentDescription = label }) {
         val c = center
         val r = size.minDimension / 2f
         repeat(8) { i ->
             rotate(degrees = i * 45f, pivot = c) {
                 drawRect(
                     color = tint,
-                    topLeft = Offset(c.x - r * 0.11f, c.y - r),
-                    size = androidx.compose.ui.geometry.Size(r * 0.22f, r * 0.34f),
+                    topLeft = Offset(c.x - r * 0.17f, c.y - r),
+                    size = androidx.compose.ui.geometry.Size(r * 0.34f, r * 0.40f),
                 )
             }
         }
-        drawCircle(color = tint, radius = r * 0.58f, style = Stroke(width = r * 0.20f))
+        drawCircle(color = tint, radius = r * 0.72f)
+        drawCircle(color = cutout, radius = r * 0.30f)
     }
 }
 
 @Composable
 private fun MagnifierIcon(label: String) {
-    val tint = LocalContentColor.current
+    val tint = Color.Black
     Canvas(Modifier.size(22.dp).semantics { contentDescription = label }) {
         val stroke = size.minDimension * 0.11f
         val radius = size.minDimension * 0.30f

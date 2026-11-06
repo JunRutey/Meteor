@@ -58,6 +58,8 @@ import com.meteor.memory.feature.people.PersonEditScreen
 import com.meteor.memory.feature.people.PersonRecordRow
 import com.meteor.memory.feature.settings.SettingsScreen
 import com.meteor.memory.ui.about.AboutScreen
+import com.meteor.memory.ui.about.ChangelogScreen
+import com.meteor.memory.ui.about.DonateScreen
 import com.meteor.memory.ui.ai.AiBlocked
 import com.meteor.memory.ui.ai.AiViewModel
 import com.meteor.memory.ui.ai.PersonaViewModel
@@ -90,6 +92,8 @@ private const val ROUTE_SETTINGS = "settings"
 private const val ROUTE_DIARY_EDIT = "diary/edit"
 private const val ROUTE_DIARY_VIEW = "diary/view/{date}"
 private const val ROUTE_ABOUT = "about"
+private const val ROUTE_ABOUT_DONATE = "about/donate"
+private const val ROUTE_ABOUT_CHANGELOG = "about/changelog"
 private const val ROUTE_CHATS = "chats"
 private const val ROUTE_DIAGNOSTICS = "diagnostics"
 private const val ROUTE_SEARCH = "search"
@@ -519,6 +523,8 @@ fun MeteorNavHost(
                 onOpenAutoStartSettings = viewModel::openAutoStartSettings,
                 onVerboseLoggingChanged = viewModel::setVerboseLogging,
                 onOpenAbout = { navController.navigate(ROUTE_ABOUT) },
+                onOpenDonate = { navController.navigate(ROUTE_ABOUT_DONATE) },
+                onOpenChangelog = { navController.navigate(ROUTE_ABOUT_CHANGELOG) },
                 logSizeBytes = logSizeBytes,
                 notificationFeatureAvailable = viewModel.notificationFeatureAvailable,
                 notificationsAllowed = notificationsAllowed,
@@ -594,6 +600,14 @@ fun MeteorNavHost(
                 onOpenRepository = { context.openInBrowser(REPOSITORY_URL) },
                 onBack = { navController.popBackStack() },
             )
+        }
+
+        composable(ROUTE_ABOUT_DONATE) {
+            DonateScreen(onBack = { navController.popBackStack() })
+        }
+
+        composable(ROUTE_ABOUT_CHANGELOG) {
+            ChangelogScreen(onBack = { navController.popBackStack() })
         }
 
         composable(ROUTE_CHATS) {

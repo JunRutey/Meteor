@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.align
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -31,6 +32,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -41,6 +43,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
@@ -49,6 +52,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 
 /** One selectable skill. Labels are resolved by the caller. */
 data class AiSkillChip(val id: String, val label: String, val requiresPerson: Boolean)
@@ -103,6 +107,7 @@ fun AiScreen(
     var personMenuExpanded by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
     val bottomSlackPx = with(LocalDensity.current) { BOTTOM_SLACK_DP.dp.roundToPx() }
     var followTail by remember { mutableStateOf(true) }
 
@@ -238,7 +243,7 @@ fun AiScreen(
     Column(modifier = modifier.fillMaxSize()) {
         WorkspaceHeader(
             providerLabel = providerLabel,
-            canClear = messages.isNotEmpty() || streaming,
+            canClear = messages.isNotEmpty() && !busy,
             onBack = onBack,
             onClear = { confirmClear = true },
             onOpenSettings = onOpenSettings,
@@ -255,6 +260,7 @@ fun AiScreen(
                 people = people,
                 selectedPersonId = selectedPersonId,
                 personaStatus = personaStatus,
+                enabled = !busy,
                 personMenuExpanded = personMenuExpanded,
                 onPersonMenuExpandedChange = { personMenuExpanded = it },
                 onSkillSelect = onSkillSelect,
@@ -273,41 +279,70 @@ fun AiScreen(
                     listState.scrollToItem(itemCount - 1, SCROLL_TO_END_OFFSET)
                 }
             }
+            val jumpLatestDescription = stringResource(R.string.ai_jump_latest)
 
-            LazyColumn(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
-                state = listState,
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                if (messages.isEmpty()) {
-                    item(key = "welcome") {
-                        WelcomePanel(onSend = { text -> submit(text) })
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    state = listState,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    if (messages.isEmpty()) {
+                        item(key = "welcome") {
+                            WelcomePanel(
+                                enabled = !busy,
+                                onSend = { text -> submit(text) },
+                            )
+                        }
+                    } else {
+                        itemsIndexed(
+                            items = messages,
+                            key = { index, _ -> "message-$index" },
+                        ) { _, bubble ->
+                            ChatMessage(bubble)
+                        }
                     }
-                } else {
-                    itemsIndexed(
-                        items = messages,
-                        key = { index, _ -> "message-$index" },
-                    ) { _, bubble ->
-                        ChatMessage(bubble)
+
+                    if (showLive) {
+                        item(key = "live") {
+                            LiveTurn(
+                                content = liveContent,
+                                steps = liveSteps,
+                                streaming = streaming,
+                            )
+                        }
+                    } else if (busy) {
+                        item(key = "busy") {
+                            ThinkingIndicator()
+                        }
+                    }
+
+                    error?.let { message ->
+                        item(key = "error") { ErrorCard(message) }
                     }
                 }
 
-                if (showLive) {
-                    item(key = "live") {
-                        LiveTurn(
-                            content = liveContent,
-                            steps = liveSteps,
-                            streaming = streaming,
+                if (!followTail && listState.canScrollForward) {
+                    SmallFloatingActionButton(
+                        onClick = {
+                            followTail = true
+                            coroutineScope.launch {
+                                listState.animateScrollToItem(
+                                    index = listState.layoutInfo.totalItemsCount - 1,
+                                    scrollOffset = SCROLL_TO_END_OFFSET,
+                                )
+                            }
+                        },
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+                    ) {
+                        Text(
+                            text = "↓",
+                            modifier = Modifier.semantics {
+                                contentDescription = jumpLatestDescription
+                            },
+                            style = MaterialTheme.typography.titleLarge,
                         )
                     }
-                } else if (busy) {
-                    item(key = "busy") {
-                        ThinkingIndicator()
-                    }
-                }
-
-                error?.let { message ->
-                    item(key = "error") { ErrorCard(message) }
                 }
             }
 
@@ -389,6 +424,7 @@ private fun ConversationContext(
     people: List<AiPersonChip>,
     selectedPersonId: String?,
     personaStatus: String?,
+    enabled: Boolean,
     personMenuExpanded: Boolean,
     onPersonMenuExpandedChange: (Boolean) -> Unit,
     onSkillSelect: (String) -> Unit,
@@ -410,6 +446,7 @@ private fun ConversationContext(
                     FilterChip(
                         selected = skill.id == selectedSkillId,
                         onClick = { onSkillSelect(skill.id) },
+                        enabled = enabled,
                         label = { Text(skill.label) },
                     )
                 }
@@ -436,6 +473,7 @@ private fun ConversationContext(
                 FilterChip(
                     selected = selectedPersonId != null,
                     onClick = { onPersonMenuExpandedChange(true) },
+                    enabled = enabled,
                     label = { Text(personLabel) },
                 )
                 DropdownMenu(
@@ -444,6 +482,7 @@ private fun ConversationContext(
                 ) {
                     DropdownMenuItem(
                         text = { Text(stringResource(R.string.ai_scope_archive)) },
+                        enabled = enabled,
                         onClick = {
                             onPersonSelect(null)
                             onPersonMenuExpandedChange(false)
@@ -452,6 +491,7 @@ private fun ConversationContext(
                     people.forEach { person ->
                         DropdownMenuItem(
                             text = { Text(person.label) },
+                            enabled = enabled,
                             onClick = {
                                 onPersonSelect(person.personId)
                                 onPersonMenuExpandedChange(false)
@@ -475,7 +515,7 @@ private fun ConversationContext(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                TextButton(onClick = { onOpenPersona(personId) }) {
+                TextButton(onClick = { onOpenPersona(personId) }, enabled = enabled) {
                     Text(stringResource(R.string.ai_persona_open))
                 }
             }
@@ -484,7 +524,7 @@ private fun ConversationContext(
 }
 
 @Composable
-private fun WelcomePanel(onSend: (String) -> Unit) {
+private fun WelcomePanel(enabled: Boolean, onSend: (String) -> Unit) {
     Column(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 28.dp),
         verticalArrangement = Arrangement.spacedBy(18.dp),
@@ -524,7 +564,7 @@ private fun WelcomePanel(onSend: (String) -> Unit) {
         ).forEach { promptId ->
             val prompt = stringResource(promptId)
             Surface(
-                modifier = Modifier.fillMaxWidth().clickable { onSend(prompt) },
+                modifier = Modifier.fillMaxWidth().clickable(enabled = enabled) { onSend(prompt) },
                 color = MaterialTheme.colorScheme.surfaceVariant,
                 shape = MaterialTheme.shapes.large,
             ) {

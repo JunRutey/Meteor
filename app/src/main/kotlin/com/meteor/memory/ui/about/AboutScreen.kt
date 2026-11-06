@@ -8,13 +8,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -31,10 +30,10 @@ import androidx.compose.ui.unit.dp
 import com.meteor.memory.R
 
 /**
- * 关于页：这么运作 / 加密说明 / GitHub / 打赏 / 逐版本更新日志。
+ * 关于页：这么运作 / 加密说明 / GitHub。
  *
  * 长正文放在 assets 的 Markdown 文件中（数据，不是代码字面量），短标签走 strings.xml。
- * 打赏码缺失时整块隐藏，缺图不会挡住编译。
+ * 打赏码与更新日志分别在独立页面展示。
  */
 @Composable
 fun AboutScreen(
@@ -45,10 +44,7 @@ fun AboutScreen(
 ) {
     val context = LocalContext.current
     val aboutMd = remember { readAsset(context, "about.md").orEmpty() }
-    val changelogMd = remember { readAsset(context, "changelog.md").orEmpty() }
-    val donate = remember { readDonate(context) }
     val aboutLines = remember(aboutMd) { aboutMd.lines() }
-    val changelogLines = remember(changelogMd) { changelogMd.lines() }
 
     LazyColumn(
         modifier = modifier.fillMaxSize().padding(16.dp),
@@ -83,16 +79,23 @@ fun AboutScreen(
                 Text(text = stringResource(R.string.about_repository))
             }
         }
+    }
+}
 
+@Composable
+fun DonateScreen(
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val donate = remember { readDonate(context) }
+
+    LazyColumn(
+        modifier = modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        item { AboutDetailHeader(title = stringResource(R.string.about_donate), onBack = onBack) }
         if (donate != null) {
-            item { HorizontalDivider() }
-            item {
-                Text(
-                    text = stringResource(R.string.about_donate),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-            }
             item {
                 Image(
                     bitmap = donate.asImageBitmap(),
@@ -101,20 +104,39 @@ fun AboutScreen(
                     contentScale = ContentScale.Fit,
                 )
             }
+        } else {
+            item { Text(text = stringResource(R.string.about_donate_unavailable)) }
         }
+    }
+}
 
-        item {
-            Spacer(Modifier.height(8.dp))
-            HorizontalDivider()
-        }
-        item {
-            Text(
-                text = stringResource(R.string.about_changelog),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary,
-            )
-        }
+@Composable
+fun ChangelogScreen(
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val changelogMd = remember { readAsset(context, "changelog.md").orEmpty() }
+    val changelogLines = remember(changelogMd) { changelogMd.lines() }
+
+    LazyColumn(
+        modifier = modifier.fillMaxSize().padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        item { AboutDetailHeader(title = stringResource(R.string.about_changelog), onBack = onBack) }
         items(changelogLines) { line -> DocsLine(line) }
+    }
+}
+
+@Composable
+private fun AboutDetailHeader(title: String, onBack: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(text = title, style = MaterialTheme.typography.headlineSmall)
+        TextButton(onClick = onBack) { Text(text = stringResource(R.string.about_back)) }
     }
 }
 

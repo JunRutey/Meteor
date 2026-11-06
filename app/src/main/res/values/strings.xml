@@ -76,6 +76,7 @@
     <string name="about_version">Meteor %1$s</string>
     <string name="about_repository">GitHub 仓库 · JunRutey/Meteor</string>
     <string name="about_donate">打赏</string>
+    <string name="about_donate_unavailable">打赏二维码暂不可用。</string>
     <string name="about_changelog">更新日志</string>
 
     <string name="chats_title">记录</string>

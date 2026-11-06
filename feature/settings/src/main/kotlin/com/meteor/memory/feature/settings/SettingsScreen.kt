@@ -57,6 +57,8 @@ fun SettingsScreen(
     onOpenAutoStartSettings: () -> Unit = {},
     onVerboseLoggingChanged: (Boolean) -> Unit,
     onOpenAbout: () -> Unit,
+    onOpenDonate: () -> Unit,
+    onOpenChangelog: () -> Unit,
     logSizeBytes: Long,
     notificationFeatureAvailable: Boolean,
     notificationsAllowed: Boolean,
@@ -188,6 +190,12 @@ fun SettingsScreen(
                 style = MaterialTheme.typography.bodyLarge,
             )
             Text(text = "›", style = MaterialTheme.typography.titleMedium)
+        }
+        OutlinedButton(onClick = onOpenDonate, modifier = Modifier.fillMaxWidth()) {
+            Text(text = stringResource(R.string.settings_about_donate))
+        }
+        OutlinedButton(onClick = onOpenChangelog, modifier = Modifier.fillMaxWidth()) {
+            Text(text = stringResource(R.string.settings_about_changelog))
         }
 
         // Debug builds only: the entry lives here now that the old home screen

@@ -48,5 +48,7 @@
     <string name="settings_hide_launcher_icon_confirm_cancel">取消</string>
 
     <string name="settings_about_version">Meteor %1$s</string>
+    <string name="settings_about_donate">打赏</string>
+    <string name="settings_about_changelog">更新日志</string>
     <string name="settings_open_diagnostics">存储诊断（调试）</string>
 </resources>
