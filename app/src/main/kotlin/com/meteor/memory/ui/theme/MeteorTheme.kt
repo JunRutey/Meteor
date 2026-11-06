@@ -26,7 +26,7 @@ import androidx.core.view.WindowCompat
  * When the user turns animations off, every screen must read this local and
  * skip transitions / list animations / emoji bounces.
  */
-val LocalAnimationsEnabled = staticCompositionLocalOf { false }
+val LocalAnimationsEnabled = staticCompositionLocalOf { true }
 
 private val MeteorDark = darkColorScheme(
     primary = Color(0xFF9CC7FF),
@@ -45,7 +45,7 @@ private val MeteorLight = lightColorScheme(
 @Composable
 fun MeteorTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    animationsEnabled: Boolean = false,
+    animationsEnabled: Boolean = true,
     /** Material You wallpaper colours; ignored below Android 12. */
     dynamicColor: Boolean = true,
     /** Multiplier on top of the system font scale. 1f = follow the system. */

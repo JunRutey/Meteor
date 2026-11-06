@@ -77,7 +77,7 @@ fun GalleryScreen(
     onDelete: (List<String>) -> Unit,
     onBack: () -> Unit,
     title: String? = null,
-    animationsEnabled: Boolean = false,
+    animationsEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     var selection by remember { mutableStateOf<Set<String>>(emptySet()) }

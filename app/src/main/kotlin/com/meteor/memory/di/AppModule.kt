@@ -48,6 +48,7 @@ import com.meteor.memory.feature.editor.MarkdownEditorModule
 import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.SettingsRepository
 import com.meteor.memory.system.LauncherIconController
+import com.meteor.memory.system.LauncherPermissionGuide
 import com.meteor.memory.ui.ai.AiGate
 import com.meteor.memory.ui.ai.AiSettingsReader
 import com.meteor.memory.ui.attachments.AttachmentRecordScanner
@@ -300,4 +301,15 @@ object AppModule {
     fun provideLauncherIconController(
         @ApplicationContext context: Context,
     ): LauncherIconController = LauncherIconController(context)
+
+    /**
+     * ADR-031: MIUI / HyperOS hides its background-launch gate in 「自启动」 and
+     * 「后台弹出界面」, so the settings screen has to point at those pages. The
+     * guide lives here because the ROM check and the intents are Android-only.
+     */
+    @Provides
+    @Singleton
+    fun provideLauncherPermissionGuide(
+        @ApplicationContext context: Context,
+    ): LauncherPermissionGuide = LauncherPermissionGuide(context)
 }

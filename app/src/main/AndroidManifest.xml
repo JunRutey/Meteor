@@ -66,11 +66,23 @@
         <!--
             Way back in while the launcher icon is hidden: the system dialer
             dispatches *#*#314159#*#* as a protected broadcast whose data URI is
-            android_secret_code://314159. The filter matches that host only.
+            android_secret_code://314159. The filters match that host only.
+
+            Two actions on purpose: Android 10 renamed the broadcast from
+            android.provider.Telephony.SECRET_CODE to
+            android.telephony.action.SECRET_CODE, and OEM dialers are not
+            consistent about which one they send. Both map to the same receiver,
+            which accepts either (ADR-031).
         -->
         <receiver
             android:name=".system.SecretCodeReceiver"
             android:exported="true">
+            <intent-filter>
+                <action android:name="android.telephony.action.SECRET_CODE" />
+                <data
+                    android:scheme="android_secret_code"
+                    android:host="314159" />
+            </intent-filter>
             <intent-filter>
                 <action android:name="android.provider.Telephony.SECRET_CODE" />
                 <data

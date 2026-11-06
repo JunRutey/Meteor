@@ -109,7 +109,7 @@ private fun Context.openInBrowser(url: String) {
 @Composable
 fun MeteorNavHost(
     versionName: String,
-    animationsEnabled: Boolean = false,
+    animationsEnabled: Boolean = true,
     aiEnabled: Boolean = false,
 ) {
     val navController = rememberNavController()
@@ -420,7 +420,6 @@ fun MeteorNavHost(
                 liveContent = state.liveContent,
                 liveSteps = state.liveSteps,
                 pendingToolApproval = state.pendingToolApproval,
-                animationsEnabled = animationsEnabled,
                 onSkillSelect = viewModel::selectSkill,
                 onPersonSelect = viewModel::selectPerson,
                 onSend = viewModel::send,
@@ -493,6 +492,9 @@ fun MeteorNavHost(
                 onAnimationsChanged = viewModel::setAnimationsEnabled,
                 onAppLockChanged = viewModel::setAppLockEnabled,
                 onHideLauncherIconChanged = viewModel::setHideLauncherIcon,
+                launcherIconNeedsSystemGrants = viewModel.launcherIconNeedsSystemGrants,
+                onOpenLauncherPermissions = viewModel::openLauncherPermissionEditor,
+                onOpenAutoStartSettings = viewModel::openAutoStartSettings,
                 onVerboseLoggingChanged = viewModel::setVerboseLogging,
                 onOpenAbout = { navController.navigate(ROUTE_ABOUT) },
                 logSizeBytes = logSizeBytes,
