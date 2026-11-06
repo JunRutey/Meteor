@@ -420,7 +420,6 @@ fun MeteorNavHost(
                 liveContent = state.liveContent,
                 liveSteps = state.liveSteps,
                 pendingToolApproval = state.pendingToolApproval,
-                animationsEnabled = animationsEnabled,
                 onSkillSelect = viewModel::selectSkill,
                 onPersonSelect = viewModel::selectPerson,
                 onSend = viewModel::send,
