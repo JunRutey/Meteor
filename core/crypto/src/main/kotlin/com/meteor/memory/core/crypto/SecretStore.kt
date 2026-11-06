@@ -5,6 +5,7 @@ import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import java.nio.charset.StandardCharsets
 import java.util.Base64
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Encrypted key/value storage for credentials that must never reach DataStore,
@@ -67,9 +68,18 @@ class KeyStoreSecretStore(
     private val legacy: SecretStore? = null,
 ) : SecretStore {
 
+    /**
+     * Keys already searched for in [legacy] and not found there. Remembering
+     * misses per key keeps a missing credential from reopening the old
+     * encrypted preferences on every read, while still migrating a different
+     * key that the old installation did store.
+     */
+    private val legacyMisses = ConcurrentHashMap.newKeySet<String>()
+
     override fun get(key: String): String? {
         storage.get(key)?.let { return decrypt(it) }
-        val old = legacy?.get(key) ?: return null
+        if (legacy == null || !legacyMisses.add(key)) return null
+        val old = legacy.get(key) ?: return null
         put(key, old)
         legacy.remove(key)
         return old

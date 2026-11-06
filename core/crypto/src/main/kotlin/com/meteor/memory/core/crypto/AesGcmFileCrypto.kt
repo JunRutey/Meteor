@@ -44,7 +44,9 @@ class AesGcmFileCrypto(
         require(ciphertext.size > 1 + TAG_BITS / 8) { "ciphertext too short" }
 
         val ivLength = ciphertext[0].toInt() and 0xFF
-        require(ivLength in 12..16 && ciphertext.size > 1 + ivLength) { "invalid IV length $ivLength" }
+        require(ivLength in MIN_IV_BYTES..MAX_IV_BYTES && ciphertext.size > 1 + ivLength) {
+            "invalid IV length $ivLength"
+        }
 
         val iv = ciphertext.copyOfRange(1, 1 + ivLength)
         val payload = ciphertext.copyOfRange(1 + ivLength, ciphertext.size)
@@ -62,6 +64,14 @@ class AesGcmFileCrypto(
     private companion object {
         const val TRANSFORMATION = "AES/GCM/NoPadding"
         const val TAG_BITS = 128
+
+        /**
+         * [encrypt] always stores the cipher's 12-byte nonce. The reader accepts
+         * the wider 12..16 nonce range GCM itself allows, so a future format
+         * change does not have to be able to rewrite files written today.
+         */
+        const val MIN_IV_BYTES = 12
+        const val MAX_IV_BYTES = 16
     }
 }
 

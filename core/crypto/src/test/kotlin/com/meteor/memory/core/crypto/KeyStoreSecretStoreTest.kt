@@ -73,6 +73,46 @@ class KeyStoreSecretStoreTest {
     }
 
     @Test
+    fun `a key the legacy store does not have is looked up only once`() {
+        var reads = 0
+        val legacy = object : SecretStore {
+            override fun get(key: String): String? {
+                reads++
+                return null
+            }
+
+            override fun put(key: String, value: String) = Unit
+
+            override fun remove(key: String) = Unit
+        }
+        val store = KeyStoreSecretStore(MapStore(), crypto(), legacy)
+
+        assertNull(store.get("k"))
+        assertNull(store.get("k"))
+        assertEquals(1, reads)
+    }
+
+    @Test
+    fun `another key still reaches the legacy store after a miss`() {
+        var reads = 0
+        val legacy = object : SecretStore {
+            override fun get(key: String): String? {
+                reads++
+                return if (key == "second") "old-second" else null
+            }
+
+            override fun put(key: String, value: String) = Unit
+
+            override fun remove(key: String) = Unit
+        }
+        val store = KeyStoreSecretStore(MapStore(), crypto(), legacy)
+
+        assertNull(store.get("first"))
+        assertEquals("old-second", store.get("second"))
+        assertEquals(2, reads)
+    }
+
+    @Test
     fun `remove clears the value`() {
         val storage = MapStore()
         val store = KeyStoreSecretStore(storage, crypto())
