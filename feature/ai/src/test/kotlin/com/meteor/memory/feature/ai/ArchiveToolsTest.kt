@@ -1,6 +1,8 @@
 package com.meteor.memory.feature.ai
 
 import com.meteor.memory.core.storage.AttachmentStore
+import com.meteor.memory.core.storage.ArchiveDeleteResult
+import com.meteor.memory.core.storage.ArchiveRecordDeleter
 import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.storage.Document
 import com.meteor.memory.core.storage.Mood
@@ -71,6 +73,21 @@ class ArchiveToolsTest {
         }
     }
 
+    private class RecordingDeleter : ArchiveRecordDeleter {
+        var deletedDiary: LocalDate? = null
+        var deletedMood: LocalDate? = null
+
+        override fun deleteDiary(date: LocalDate): ArchiveDeleteResult {
+            deletedDiary = date
+            return ArchiveDeleteResult.DELETED
+        }
+
+        override fun deleteMood(date: LocalDate): ArchiveDeleteResult {
+            deletedMood = date
+            return ArchiveDeleteResult.DELETED
+        }
+    }
+
     private object NoPeople : PersonQueries {
         override fun list(): List<PersonEntry> = emptyList()
 
@@ -126,19 +143,34 @@ class ArchiveToolsTest {
         override fun save(date: LocalDate, mood: Mood) = Unit
     }
 
+    private class RecordingMoods : MoodQueries {
+        var saved: Pair<LocalDate, Mood>? = null
+
+        override fun range(from: LocalDate, to: LocalDate): Map<LocalDate, Mood> = emptyMap()
+
+        override fun read(date: LocalDate): Mood? = null
+
+        override fun save(date: LocalDate, mood: Mood) {
+            saved = date to mood
+        }
+    }
+
     private fun tools(
         attachments: AttachmentStore? = null,
         permissions: AiToolPermissions = AiToolPermissions.READ_ONLY,
         diaries: DiaryQueries = RecordingDiaries(),
+        moods: MoodQueries = NoMoods,
         people: PersonQueries = NoPeople,
+        deleter: ArchiveRecordDeleter? = null,
     ): ArchiveTools = ArchiveTools(
         rootDir = root,
         scanner = RecordScanner { emptyList() },
         personQueries = people,
-        moodQueries = NoMoods,
+        moodQueries = moods,
         diaryQueries = diaries,
         attachments = attachments,
         permissions = permissions,
+        archiveRecordDeleter = deleter,
     )
 
     private fun errorOf(json: String): String = JSONObject(json).optString("error")
@@ -157,6 +189,7 @@ class ArchiveToolsTest {
         val diaryOnly = tools(permissions = AiToolPermissions(writeDiary = true)).specs().map { it.name }
         assertTrue(diaryOnly.toString(), diaryOnly.contains(ArchiveTools.TOOL_SAVE_DIARY))
         assertFalse(diaryOnly.toString(), diaryOnly.contains(ArchiveTools.TOOL_CREATE_PERSON))
+        assertFalse(diaryOnly.toString(), diaryOnly.contains(ArchiveTools.TOOL_DELETE_RECORD))
 
         val peopleOnly = tools(permissions = AiToolPermissions(writePeople = true)).specs().map { it.name }
         assertTrue(peopleOnly.toString(), peopleOnly.contains(ArchiveTools.TOOL_CREATE_PERSON))
@@ -164,12 +197,75 @@ class ArchiveToolsTest {
     }
 
     @Test
+    fun `mood tool accepts the seventh mood without approval`() {
+        val moods = RecordingMoods()
+        val archiveTools = tools(
+            permissions = AiToolPermissions(writeDiary = true),
+            moods = moods,
+        )
+        val spec = archiveTools.specs().single { it.name == ArchiveTools.TOOL_SET_MOOD }
+        val moodValues = JSONObject(spec.parametersJson)
+            .getJSONObject("properties")
+            .getJSONObject("mood")
+            .getJSONArray("enum")
+            .let { values -> (0 until values.length()).map(values::getString) }
+        val date = LocalDate.parse("2026-03-08")
+
+        val result = archiveTools.execute(
+            ArchiveTools.TOOL_SET_MOOD,
+            """{"date":"$date","mood":"emm"}""",
+            allowedPersonId = null,
+        )
+
+        assertEquals(listOf("happy", "calm", "excited", "tired", "sad", "angry", "emm"), moodValues)
+        assertFalse(archiveTools.requiresApproval(ArchiveTools.TOOL_SET_MOOD))
+        assertTrue(JSONObject(result).optBoolean("saved"))
+        assertEquals(date to Mood.EMM, moods.saved)
+    }
+
+    @Test
     fun `mutating tools are marked as requiring approval`() {
         val archiveTools = tools(permissions = AiToolPermissions(writeDiary = true, writePeople = true))
 
         assertTrue(archiveTools.requiresApproval(ArchiveTools.TOOL_SAVE_DIARY))
-        assertTrue(archiveTools.requiresApproval(ArchiveTools.TOOL_CREATE_PERSON))
+        assertTrue(archiveTools.requiresApproval(ArchiveTools.TOOL_UPDATE_PERSON))
+        assertTrue(archiveTools.requiresApproval(ArchiveTools.TOOL_DELETE_RECORD))
+        assertFalse(archiveTools.requiresApproval(ArchiveTools.TOOL_APPEND_DIARY))
+        assertFalse(archiveTools.requiresApproval(ArchiveTools.TOOL_SET_MOOD))
+        assertFalse(archiveTools.requiresApproval(ArchiveTools.TOOL_CREATE_PERSON))
         assertFalse(archiveTools.requiresApproval(ArchiveTools.TOOL_READ_DIARY))
+    }
+
+    @Test
+    fun `diary and mood deletion are limited to explicit dates and types`() {
+        val deleter = RecordingDeleter()
+        val archiveTools = tools(
+            permissions = AiToolPermissions(writeDiary = true),
+            deleter = deleter,
+        )
+        val date = LocalDate.parse("2026-03-08")
+        val diaryResult = archiveTools.execute(
+            ArchiveTools.TOOL_DELETE_RECORD,
+            """{"record_type":"diary","date":"$date"}""",
+            allowedPersonId = null,
+        )
+        val moodResult = archiveTools.execute(
+            ArchiveTools.TOOL_DELETE_RECORD,
+            """{"record_type":"mood","date":"$date"}""",
+            allowedPersonId = null,
+        )
+        val invalidType = archiveTools.execute(
+            ArchiveTools.TOOL_DELETE_RECORD,
+            """{"record_type":"profile","date":"$date"}""",
+            allowedPersonId = null,
+        )
+
+        assertTrue(JSONObject(diaryResult).optBoolean("deleted"))
+        assertTrue(JSONObject(moodResult).optBoolean("deleted"))
+        assertEquals("bad-record-type", errorOf(invalidType))
+        assertEquals(date, deleter.deletedDiary)
+        assertEquals(date, deleter.deletedMood)
+        assertTrue(archiveTools.specs().any { it.name == ArchiveTools.TOOL_DELETE_RECORD })
     }
 
     @Test
@@ -230,9 +326,11 @@ class ArchiveToolsTest {
     @Test
     fun `persona scope refuses global writes and mood reads`() {
         val diaries = RecordingDiaries()
+        val deleter = RecordingDeleter()
         val scoped = tools(
             permissions = AiToolPermissions(writeDiary = true),
             diaries = diaries,
+            deleter = deleter,
         )
 
         assertEquals(
@@ -249,7 +347,18 @@ class ArchiveToolsTest {
             "not-allowed",
             errorOf(scoped.execute(ArchiveTools.TOOL_READ_MOODS, "{}", allowedPersonId = "p1")),
         )
+        assertEquals(
+            "not-allowed",
+            errorOf(
+                scoped.execute(
+                    ArchiveTools.TOOL_DELETE_RECORD,
+                    """{"record_type":"diary","date":"2026-01-01"}""",
+                    allowedPersonId = "p1",
+                ),
+            ),
+        )
         assertNull(diaries.saved)
+        assertNull(deleter.deletedDiary)
     }
 
     @Test

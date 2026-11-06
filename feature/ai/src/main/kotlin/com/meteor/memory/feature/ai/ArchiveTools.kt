@@ -1,6 +1,8 @@
 package com.meteor.memory.feature.ai
 
 import com.meteor.memory.core.storage.AttachmentStore
+import com.meteor.memory.core.storage.ArchiveDeleteResult
+import com.meteor.memory.core.storage.ArchiveRecordDeleter
 import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.storage.Document
 import com.meteor.memory.core.storage.Mood
@@ -27,9 +29,9 @@ interface Toolbox {
 /**
  * The agent's capability set (ADR-027 / ADR-028 / ADR-030).
  *
- * Read tools are always available. Write tools (diary, mood, people) exist only
- * for the capabilities granted in [permissions]; there is deliberately no
- * delete, export, share, network-fetch or shell tool.
+ * Read tools are always available. Write tools (diary, mood, people, deletion)
+ * exist only for the capabilities granted in [permissions]; there is
+ * deliberately no export, share, network-fetch or shell tool.
  *
  * Isolation rules, enforced here rather than by the prompt:
  * - [allowedPersonId] scopes every read and write to one person's data;
@@ -46,6 +48,7 @@ class ArchiveTools(
     private val attachments: AttachmentStore? = null,
     private val permissions: AiToolPermissions = AiToolPermissions.READ_ONLY,
     private val zone: ZoneId = ZoneId.systemDefault(),
+    private val archiveRecordDeleter: ArchiveRecordDeleter? = null,
 ) : Toolbox {
 
     private val documents: List<Document> by lazy { scanner.scan() }
@@ -64,10 +67,8 @@ class ArchiveTools(
         available(spec.name) && permissions.allows(capability)
     }
 
-    override fun requiresApproval(name: String): Boolean = when (TOOL_CAPABILITIES[name]) {
-        AiToolCapability.WRITE_DIARY, AiToolCapability.WRITE_PEOPLE -> true
-        else -> false
-    }
+    override fun requiresApproval(name: String): Boolean =
+        name in APPROVAL_REQUIRED_TOOLS
 
     /** Always returns a JSON string; failures are JSON too, never exceptions. */
     override fun execute(name: String, arguments: String, allowedPersonId: String?): String = runCatching {
@@ -76,7 +77,7 @@ class ArchiveTools(
         if (!permissions.allows(capability)) return@runCatching errorJson("permission-denied")
         if (
             allowedPersonId != null &&
-            name in setOf(TOOL_READ_MOODS, TOOL_SAVE_DIARY, TOOL_APPEND_DIARY, TOOL_SET_MOOD, TOOL_CREATE_PERSON)
+            name in PERSON_SCOPE_DENIED_TOOLS
         ) {
             return@runCatching errorJson("not-allowed")
         }
@@ -134,6 +135,10 @@ class ArchiveTools(
                 note = args.str("note"),
                 notes = args.str("notes"),
                 allowedPersonId = allowedPersonId,
+            )
+            TOOL_DELETE_RECORD -> deleteRecord(
+                recordType = args.str("record_type"),
+                date = args.str("date"),
             )
 
             else -> errorJson("unknown-tool")
@@ -495,6 +500,24 @@ class ArchiveTools(
             .toString()
     }
 
+    private fun deleteRecord(recordType: String, date: String): String {
+        val day = parseDate(date) ?: return errorJson("bad-date")
+        val deleter = archiveRecordDeleter ?: return errorJson("tool-unavailable")
+        val result = when (recordType) {
+            "diary" -> deleter.deleteDiary(day)
+            "mood" -> deleter.deleteMood(day)
+            else -> return errorJson("bad-record-type")
+        }
+        return when (result) {
+            ArchiveDeleteResult.DELETED -> JSONObject().put("deleted", true)
+                .put("record_type", recordType)
+                .put("date", day.toString())
+                .toString()
+            ArchiveDeleteResult.NOT_FOUND -> errorJson("not-found")
+            ArchiveDeleteResult.FAILED -> errorJson("delete-failed")
+        }
+    }
+
     private fun createPerson(name: String, relation: String, note: String, notes: String): String {
         val displayName = name.trim()
         if (displayName.isBlank()) return errorJson("empty-name")
@@ -533,8 +556,11 @@ class ArchiveTools(
     // --- guards ------------------------------------------------------------
 
     /** Attachment tools exist only when a store was wired in. */
-    private fun available(name: String): Boolean =
-        attachments != null || name !in ATTACHMENT_TOOLS
+    private fun available(name: String): Boolean = when {
+        name in ATTACHMENT_TOOLS -> attachments != null
+        name == TOOL_DELETE_RECORD -> archiveRecordDeleter != null
+        else -> true
+    }
 
     /**
      * Strict string argument. A non-string (number, object, array, JSON null) is
@@ -605,6 +631,7 @@ class ArchiveTools(
         const val TOOL_SET_MOOD = "set_mood"
         const val TOOL_CREATE_PERSON = "create_person"
         const val TOOL_UPDATE_PERSON = "update_person"
+        const val TOOL_DELETE_RECORD = "delete_record"
 
         private const val MAX_PEOPLE = 100
         private const val MAX_RECORDS = 200
@@ -626,6 +653,15 @@ class ArchiveTools(
 
         /** Tools that need an [AttachmentStore]; hidden when none was wired. */
         private val ATTACHMENT_TOOLS = setOf(TOOL_LIST_ATTACHMENTS, TOOL_READ_ATTACHMENT_TEXT)
+        private val APPROVAL_REQUIRED_TOOLS = setOf(TOOL_SAVE_DIARY, TOOL_UPDATE_PERSON, TOOL_DELETE_RECORD)
+        private val PERSON_SCOPE_DENIED_TOOLS = setOf(
+            TOOL_READ_MOODS,
+            TOOL_SAVE_DIARY,
+            TOOL_APPEND_DIARY,
+            TOOL_SET_MOOD,
+            TOOL_CREATE_PERSON,
+            TOOL_DELETE_RECORD,
+        )
 
         /**
          * The single classification table. A tool that is missing here can never
@@ -649,6 +685,7 @@ class ArchiveTools(
             TOOL_SET_MOOD to AiToolCapability.WRITE_DIARY,
             TOOL_CREATE_PERSON to AiToolCapability.WRITE_PEOPLE,
             TOOL_UPDATE_PERSON to AiToolCapability.WRITE_PEOPLE,
+            TOOL_DELETE_RECORD to AiToolCapability.WRITE_DIARY,
         )
 
         private val READ_SPECS = listOf(
@@ -725,8 +762,8 @@ class ArchiveTools(
             ),
             AiToolSpec(
                 name = TOOL_SET_MOOD,
-                description = "设置某一天的心情：happy/calm/excited/tired/sad/angry。",
-                parametersJson = """{"type":"object","properties":{"date":{"type":"string"},"mood":{"type":"string"}},"required":["date","mood"]}""",
+                description = "设置某一天的心情，不需要额外确认。可选值：happy/calm/excited/tired/sad/angry/emm。",
+                parametersJson = """{"type":"object","properties":{"date":{"type":"string"},"mood":{"type":"string","enum":["happy","calm","excited","tired","sad","angry","emm"]}},"required":["date","mood"]}""",
             ),
             AiToolSpec(
                 name = TOOL_CREATE_PERSON,
@@ -737,6 +774,11 @@ class ArchiveTools(
                 name = TOOL_UPDATE_PERSON,
                 description = "更新一个人物档案：只改你给出的字段（note 备注、notes 正文），其余保持不变。",
                 parametersJson = """{"type":"object","properties":{"person_id":{"type":"string"},"name":{"type":"string"},"relation":{"type":"string"},"note":{"type":"string"},"notes":{"type":"string"}},"required":["person_id"]}""",
+            ),
+            AiToolSpec(
+                name = TOOL_DELETE_RECORD,
+                description = "按明确日期删除一条日记或心情记录。只能在全档案对话中调用；删除前应用会要求用户确认。",
+                parametersJson = """{"type":"object","properties":{"record_type":{"type":"string","enum":["diary","mood"]},"date":{"type":"string","description":"YYYY-MM-DD"}},"required":["record_type","date"]}""",
             ),
         )
 
