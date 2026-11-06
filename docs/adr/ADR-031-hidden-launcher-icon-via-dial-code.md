@@ -81,3 +81,41 @@ CI 只能证明编译、单测与 lint。运行时行为需要装机复核：
 3. 回到设置关掉开关 → 图标重新出现，无需重启应用。
 4. `adb shell dumpsys package com.meteor.memory | grep LauncherEntry`
    应看到 disabled-components 里有该别名（debug 包为 `com.meteor.memory.debug`）。
+
+## 七、修订 · 实机复核（v0.8.0 之后）
+
+v0.8.0 上线后在小米澎湃 3（HyperOS，Android 16）复核：打开开关后隐藏正常，但拨号唤不起。
+拆开是两个独立问题，都已修：
+
+1. **暗号的 action 变了。** Android 10 起系统派发的是
+   `android.telephony.action.SECRET_CODE`；`android.provider.Telephony.SECRET_CODE`
+   只是旧值。v0.8.0 只声明了旧值，所以按新值派发的系统上接收器根本不会被调用。
+   现在 manifest 两个 filter 都声明，`SecretCodeReceiver` 两个 action 都接受
+   （与 InstallerX-Revived 的处理一致）。
+2. **澎湃把「后台启动」做成了两个用户开关。** 实测：给 Meteor 打开「自启动」和
+   「后台弹出界面」后，暗号能正常唤起；两项没开时，即使接收器收到广播，
+   `startActivity` 也会被系统丢弃，而且**不抛异常**（只有 logcat 里
+   `Background activity start ... blocked`）。因此：
+   - 确认弹窗新增这两个开关的说明与跳转入口（`LauncherPermissionGuide`）：
+     `miui.intent.action.APP_PERM_EDITOR`（带 `extra_pkgname`）与
+     `miui.intent.action.OP_AUTO_START`，两者失败都回退到系统「应用详情」页；
+   - `SecretCodeReceiver` 把「收到暗号 / 启动失败」写进应用日志，
+     让「按了没反应」能区分「广播没来」与「广播到了但被系统拦下」。
+
+这两项都不是公开 API，也不做权限值探测：MIUI 的两个开关查不到、AppOps 编号是
+私有的，硬编码只会在下次系统更新时静默失效；能做的只有「识别 ROM + 把用户送到该去
+的页面 + 留下日志」。
+
+结论没有变化——图标仍然是别名、`MainActivity` 始终可被显式启动——但「能不能找回」
+的前提现在写清楚了：**拨号盘派发暗号 + 系统允许后台启动**，缺一不可。
+
+### R1 五问（本次修订）
+
+1. 属于哪个模块？仍是 `:app`（`LauncherPermissionGuide`、接收器、manifest）
+   与 `:feature-settings`（弹窗文案与两个回调），不新增模块。
+2. 依赖谁？无新增依赖边：`:feature-settings` 只多两个 `() -> Unit` 参数，
+   不认识 MIUI；ROM 判断与 Intent 都在 `:app`。
+3. 对外接口？`SettingsScreen` 多三个带默认值的参数，旧调用点不需要改。
+4. 移除该模块后？删除 `:app` 的 guide 与两个回调，弹窗退化为纯确认框，仍可编译。
+5. 数据格式变更？没有，偏好键不变。
+

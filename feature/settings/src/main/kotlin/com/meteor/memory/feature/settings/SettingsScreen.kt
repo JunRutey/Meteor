@@ -44,6 +44,14 @@ fun SettingsScreen(
     onAnimationsChanged: (Boolean) -> Unit,
     onAppLockChanged: (Boolean) -> Unit,
     onHideLauncherIconChanged: (Boolean) -> Unit,
+    /**
+     * MIUI / HyperOS only lets the dial code bring the app back once 「自启动」 and
+     * 「后台弹出界面」 are granted (ADR-031), so the confirm dialog has to say so
+     * and offer the two system pages. False on every other ROM.
+     */
+    launcherIconNeedsSystemGrants: Boolean = false,
+    onOpenLauncherPermissions: () -> Unit = {},
+    onOpenAutoStartSettings: () -> Unit = {},
     onVerboseLoggingChanged: (Boolean) -> Unit,
     onOpenAbout: () -> Unit,
     logSizeBytes: Long,
@@ -104,7 +112,10 @@ fun SettingsScreen(
 
         HideLauncherIconRow(
             hidden = settings.hideLauncherIcon,
+            needsSystemGrants = launcherIconNeedsSystemGrants,
             onHiddenChange = onHideLauncherIconChanged,
+            onOpenPermissions = onOpenLauncherPermissions,
+            onOpenAutoStart = onOpenAutoStartSettings,
         )
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
@@ -218,14 +229,20 @@ private fun ToggleRow(
 
 /**
  * Hiding the launcher entry is the only setting that can lock the user out of
- * the app (the way back in is the dial code, and not every OEM dialer dispatches
- * it), so switching it on asks for confirmation first. Switching it off never
- * does: the app is right here. See ADR-031.
+ * the app, so switching it on asks for confirmation first. The way back in is
+ * the dial code, which the ROM has to allow twice: the dialer must dispatch it
+ * and the system must let a background receiver start an activity. MIUI /
+ * HyperOS gates the second half behind 「自启动」 and 「后台弹出界面」, so on those
+ * ROMs the dialog also offers the two system pages. Switching it off never asks:
+ * the app is right here. See ADR-031.
  */
 @Composable
 private fun HideLauncherIconRow(
     hidden: Boolean,
+    needsSystemGrants: Boolean,
     onHiddenChange: (Boolean) -> Unit,
+    onOpenPermissions: () -> Unit,
+    onOpenAutoStart: () -> Unit,
 ) {
     var confirming by rememberSaveable { mutableStateOf(false) }
 
@@ -242,7 +259,28 @@ private fun HideLauncherIconRow(
         AlertDialog(
             onDismissRequest = { confirming = false },
             title = { Text(text = stringResource(R.string.settings_hide_launcher_icon_confirm_title)) },
-            text = { Text(text = stringResource(R.string.settings_hide_launcher_icon_confirm_body)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(text = stringResource(R.string.settings_hide_launcher_icon_confirm_body))
+                    // MIUI / HyperOS answers "start the app from the background"
+                    // with two switches of its own; without them the dial code is
+                    // a dead end (ADR-031).
+                    if (needsSystemGrants) {
+                        Text(
+                            text = stringResource(R.string.settings_hide_launcher_icon_grants),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            TextButton(onClick = onOpenPermissions) {
+                                Text(text = stringResource(R.string.settings_hide_launcher_icon_open_permissions))
+                            }
+                            TextButton(onClick = onOpenAutoStart) {
+                                Text(text = stringResource(R.string.settings_hide_launcher_icon_open_autostart))
+                            }
+                        }
+                    }
+                }
+            },
             confirmButton = {
                 TextButton(
                     onClick = {

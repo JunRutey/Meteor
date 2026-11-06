@@ -9,6 +9,7 @@ import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.DarkMode
 import com.meteor.memory.feature.settings.FontScale
 import com.meteor.memory.feature.settings.SettingsRepository
+import com.meteor.memory.system.LauncherPermissionGuide
 import com.meteor.memory.ui.ai.AiSettingsReader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -42,7 +43,15 @@ class SettingsViewModel @Inject constructor(
     private val appLog: AppLog,
     private val reader: AiSettingsReader,
     private val aiModule: AiModule,
+    private val launcherPermissionGuide: LauncherPermissionGuide,
 ) : ViewModel() {
+
+    /**
+     * True on MIUI / HyperOS, where hiding the icon only stays recoverable once
+     * the user turns on 「自启动」 and 「后台弹出界面」 (ADR-031). The ROM does not
+     * change at runtime, so this is read once.
+     */
+    val launcherIconNeedsSystemGrants: Boolean = launcherPermissionGuide.needsManualGrants()
 
     val settings: StateFlow<AppSettings> = repository.settings.stateIn(
         scope = viewModelScope,
@@ -93,6 +102,16 @@ class SettingsViewModel @Inject constructor(
      */
     fun setHideLauncherIcon(hidden: Boolean) {
         viewModelScope.launch { repository.setHideLauncherIcon(hidden) }
+    }
+
+    /** Opens MIUI's permission editor; falls back to the app info screen. */
+    fun openLauncherPermissionEditor() {
+        launcherPermissionGuide.openAppPermissionEditor()
+    }
+
+    /** Opens MIUI's auto-start manager; falls back to the permission editor. */
+    fun openAutoStartSettings() {
+        launcherPermissionGuide.openAutoStartSettings()
     }
 
     fun setVerboseLogging(enabled: Boolean) {
