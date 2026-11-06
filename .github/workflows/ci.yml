@@ -78,7 +78,7 @@ jobs:
   # Archive R3: "a feature module must be removable". This actually drops a
   # module from the build and proves the rest still compiles.
   pluggability:
-    name: Pluggability (no core-index)
+    name: Pluggability (no core-index / core-notify)
     runs-on: ubuntu-latest
     needs: module-graph
     steps:
@@ -97,3 +97,6 @@ jobs:
 
       - name: Assemble without :core-index
         run: gradle :app:assembleDebug -Pmeteor.excludeModules=core-index --stacktrace --no-daemon
+
+      - name: Assemble without :core-notify
+        run: gradle :app:assembleDebug -Pmeteor.excludeModules=core-notify --stacktrace --no-daemon

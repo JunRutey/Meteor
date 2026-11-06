@@ -6,8 +6,8 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
-// R3 (archive): every module must be removable. Dropping :core-index swaps in a
-// no-op SearchService and removes the dependency, so the rest still compiles.
+// R3 (archive): every module must be removable. Dropping :core-index or
+// :core-notify selects its no-op app implementation and removes the dependency.
 val excludedModules: Set<String> =
     (providers.gradleProperty("meteor.excludeModules").orNull ?: "")
         .split(',')
@@ -16,6 +16,7 @@ val excludedModules: Set<String> =
         .toSet()
 
 val indexEnabled: Boolean = "core-index" !in excludedModules
+val notificationsEnabled: Boolean = "core-notify" !in excludedModules
 
 android {
     namespace = "com.meteor.memory"
@@ -38,6 +39,7 @@ android {
     sourceSets {
         getByName("main") {
             java.srcDir(if (indexEnabled) "src/indexEnabled/kotlin" else "src/indexDisabled/kotlin")
+            java.srcDir(if (notificationsEnabled) "src/notificationsEnabled/kotlin" else "src/notificationsDisabled/kotlin")
         }
     }
 
@@ -89,6 +91,9 @@ dependencies {
     implementation(project(":core-storage"))
     implementation(project(":core-crypto"))
     implementation(project(":core-time"))
+    if (notificationsEnabled) {
+        implementation(project(":core-notify"))
+    }
     implementation(project(":core-log"))
     if (indexEnabled) {
         implementation(project(":core-index"))

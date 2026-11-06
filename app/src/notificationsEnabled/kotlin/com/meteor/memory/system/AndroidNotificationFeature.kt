@@ -1,0 +1,159 @@
+package com.meteor.memory.system
+
+import android.Manifest
+import android.annotation.SuppressLint
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import com.meteor.memory.MainActivity
+import com.meteor.memory.R
+import com.meteor.memory.core.notify.DailyReminderPolicy
+import com.meteor.memory.core.notify.DailyReminderScheduler
+import com.meteor.memory.core.notify.NotificationChannels
+import com.meteor.memory.core.storage.DiaryQueries
+import com.meteor.memory.feature.settings.SettingsRepository
+import dagger.Binds
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import java.time.LocalTime
+import java.time.ZonedDateTime
+import javax.inject.Inject
+import javax.inject.Singleton
+
+@Singleton
+class AndroidNotificationFeature @Inject constructor(
+    @ApplicationContext private val context: Context,
+    private val settingsRepository: SettingsRepository,
+    private val diaryQueries: DiaryQueries,
+    private val scheduler: DailyReminderScheduler,
+) : NotificationFeature {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    override val available: Boolean = true
+
+    override fun initialize() {
+        NotificationChannels.create(context)
+        scope.launch { syncReminder() }
+    }
+
+    override fun canPostNotifications(): Boolean =
+        NotificationManagerCompat.from(context).areNotificationsEnabled() &&
+            (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS,
+                ) == PackageManager.PERMISSION_GRANTED)
+
+    override fun canScheduleExactAlarms(): Boolean = scheduler.canScheduleExactAlarms()
+
+    override fun openNotificationSettings() {
+        context.startActivity(
+            Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }
+
+    override fun openExactAlarmSettings() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        context.startActivity(
+            Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                .setData(Uri.fromParts("package", context.packageName, null))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    }
+
+    override suspend fun syncReminder() {
+        val settings = settingsRepository.settings.first()
+        if (!settings.diaryReminderEnabled || !canPostNotifications()) {
+            scheduler.cancel()
+            return
+        }
+        val hour = settings.diaryReminderTimeMinutes / 60
+        val minute = settings.diaryReminderTimeMinutes % 60
+        scheduler.scheduleDaily(hour, minute)
+    }
+
+    override suspend fun handleReminderAlarm() {
+        val settings = settingsRepository.settings.first()
+        if (!settings.diaryReminderEnabled || !canPostNotifications()) {
+            scheduler.cancel()
+            return
+        }
+
+        val now = ZonedDateTime.now()
+        val reminderTime = LocalTime.of(
+            settings.diaryReminderTimeMinutes / 60,
+            settings.diaryReminderTimeMinutes % 60,
+        )
+        scheduler.scheduleDaily(reminderTime.hour, reminderTime.minute, now)
+        val hasDiaryToday = now.toLocalDate() in diaryQueries.dates()
+        if (DailyReminderPolicy.shouldRemind(hasDiaryToday, now.toLocalTime(), reminderTime)) {
+            postDailyReminder()
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun postDailyReminder() {
+        val openApp = PendingIntent.getActivity(
+            context,
+            DAILY_REMINDER_REQUEST_CODE,
+            Intent(context, MainActivity::class.java).addFlags(
+                Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP,
+            ),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = NotificationCompat.Builder(context, NotificationChannels.DAILY_REMINDER)
+            .setSmallIcon(android.R.drawable.ic_menu_edit)
+            .setContentTitle(context.getString(R.string.diary_reminder_notification_title))
+            .setContentText(context.getString(R.string.diary_reminder_notification_body))
+            .setContentIntent(openApp)
+            .setAutoCancel(true)
+            .build()
+
+        NotificationManagerCompat.from(context).notify(DAILY_REMINDER_NOTIFICATION_ID, notification)
+    }
+
+    private companion object {
+        const val DAILY_REMINDER_NOTIFICATION_ID = 2020
+        const val DAILY_REMINDER_REQUEST_CODE = 2020
+    }
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+abstract class NotificationFeatureBinding {
+    @Binds
+    @Singleton
+    abstract fun bindNotificationFeature(feature: AndroidNotificationFeature): NotificationFeature
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+object NotificationSchedulerModule {
+    @Provides
+    @Singleton
+    fun provideDailyReminderScheduler(
+        @ApplicationContext context: Context,
+    ): DailyReminderScheduler =
+        DailyReminderScheduler(
+            context,
+            DailyReminderReceiver::class.java,
+            DailyReminderReceiver.ACTION_DAILY_REMINDER,
+        )
+}

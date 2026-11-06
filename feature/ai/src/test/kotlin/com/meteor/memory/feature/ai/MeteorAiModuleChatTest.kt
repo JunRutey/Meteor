@@ -124,6 +124,26 @@ class MeteorAiModuleChatTest {
         assertTrue(system, system.contains("Current date:"))
     }
 
+    @Test
+    fun `system prompt supports general conversation and direct tool execution`() = runBlocking {
+        val provider = CapturingProvider()
+        val ai = module(provider, emptyList())
+
+        ai.chat(
+            ChatRequest(
+                skillName = "test-chat",
+                question = "你好",
+                config = config.copy(writeEnabled = true, writeDiary = true),
+            ),
+        )
+
+        val system = provider.requests.single().first().content.orEmpty()
+        assertTrue(system, system.contains("not a search-only interface"))
+        assertTrue(system, system.contains("answer general questions"))
+        assertTrue(system, system.contains("instead of asking the user to confirm again in chat"))
+        assertTrue(system, system.contains("setting a mood"))
+    }
+
     private companion object {
         val CHAT_SKILL = """
             ---

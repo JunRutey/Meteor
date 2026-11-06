@@ -58,8 +58,8 @@ class FilePersonaStore(private val router: StorageRouter) : PersonaStore {
  * The v0.6 implementation of the frozen [AiModule] (ADR-027).
  *
  * It owns three things: local retrieval (works with AI off), the skill library,
- * and the bounded agent used for distillation and chat. Mutating chat tools
- * require explicit approval from the app. The provider
+ * and the bounded agent used for distillation and chat. Tools marked as
+ * requiring approval obtain an explicit decision from the app. The provider
  * is created per call from the caller-supplied [AiConfig], so changing the key
  * or model never needs a restart. Nothing here logs a prompt or a response.
  */
@@ -165,13 +165,23 @@ class MeteorAiModule(
 
         val system = buildString {
             append(skill.body)
+            if (!skill.requiresPerson) {
+                append("\n\n# General conversation and archive tools\n")
+                append("You are a capable conversational assistant, not a search-only interface. ")
+                append("Chat naturally, answer general questions, and help with the user's requested tasks. ")
+                append("Use archive tools only when the request concerns the user's personal archive; ")
+                append("do not invent personal memories or claim an archive change succeeded without a successful tool result. ")
+                append("If a requested archive change has all required details, call its available tool directly ")
+                append("instead of asking the user to confirm again in chat. Ask a brief clarification only ")
+                append("when a required detail is missing or ambiguous. App confirmation may still be required.")
+            }
             append("\n\nCurrent date: ").append(today)
             append(" (").append(today.dayOfWeek).append("), time zone ")
                 .append(java.util.TimeZone.getDefault().id).append('.')
-            append("\nArchive facts: ").append(overview).append('.')
-            append("\nFor time questions use read_diary(date) for a single day, list_diary_dates to list ")
-            append("which days exist, list_records(from,to) for a span, and read_moods(days=N) for moods. ")
-            append("Never claim a day is empty before checking these tools.")
+            append("\nArchive facts (use only for archive-related questions): ").append(overview).append('.')
+            append("\nFor questions about dates in the user's archive, use read_diary(date) for a single day, ")
+            append("list_diary_dates to list which days exist, list_records(from,to) for a span, ")
+            append("and read_moods(days=N) for moods. Never claim an archive day is empty before checking these tools.")
             if (persona != null && persona.body.isNotBlank()) {
                 append("\n\n# Persona file\n\n").append(persona.body.take(MAX_PERSONA_CHARS))
             } else if (!request.personId.isNullOrBlank()) {
@@ -200,17 +210,19 @@ class MeteorAiModule(
                 append("Appending a diary, setting a mood, and creating a person do not require confirmation. ")
                 append("Anything not on this list is unavailable.")
             } else {
-                append("\n\nTools are read-only; never claim to have changed anything.")
+                append("\n\nTools are read-only; never claim to have changed anything. ")
+                append("You may still answer general questions and chat normally.")
             }
             if (prefetched.isNotBlank()) {
                 append("\n\n# Pre-retrieved archive context\n\n")
                 append(prefetched)
                 if (window != null) {
-                    append("\n\nThis block is the requested time window, retrieved locally. ")
-                    append("Answer from it and cite dates; use read_record only for a fuller passage.")
+                    append("\n\nThis block is a locally retrieved archive window. ")
+                    append("Use it only for archive-related questions, cite dates, and use read_record for a fuller passage.")
                 } else {
-                    append("\n\nThis block was retrieved locally by keywords from the question. ")
-                    append("Prefer it and cite dates. Call read_record (with its record_id) only when you need a fuller passage.")
+                    append("\n\nThis block was retrieved locally by keywords. ")
+                    append("Use it only when relevant to an archive-related request; cite dates and call read_record ")
+                    append("(with its record_id) only when you need a fuller passage.")
                 }
             }
         }

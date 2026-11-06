@@ -1,6 +1,8 @@
 package com.meteor.memory.feature.settings
 
+import android.app.TimePickerDialog
 import android.os.Build
+import android.text.format.DateFormat
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -23,13 +25,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 
 /**
- * Settings screen: 外观 / 安全 / 日志 / 备份 / AI / 关于.
+ * Settings screen: appearance / security / logs / notifications / backup / AI / about.
  *
  * Holds no business logic — it renders [AppSettings] and emits intents upward.
  * Sections that need a service (backup, log export) are injected as slots so
@@ -54,7 +57,18 @@ fun SettingsScreen(
     onOpenAutoStartSettings: () -> Unit = {},
     onVerboseLoggingChanged: (Boolean) -> Unit,
     onOpenAbout: () -> Unit,
+    onOpenDonate: () -> Unit,
+    onOpenChangelog: () -> Unit,
     logSizeBytes: Long,
+    notificationFeatureAvailable: Boolean,
+    notificationsAllowed: Boolean,
+    canScheduleExactAlarms: Boolean,
+    notificationPermissionDenied: Boolean,
+    onReminderEnabledChanged: (Boolean) -> Unit,
+    onReminderTimeChanged: (Int) -> Unit,
+    onOpenExactAlarmSettings: () -> Unit,
+    onOpenNotificationSettings: () -> Unit,
+    onDismissNotificationPermissionDenied: () -> Unit,
     modifier: Modifier = Modifier,
     /** Debug-only extra entry; `null` keeps the section clean in release builds. */
     onOpenDiagnostics: (() -> Unit)? = null,
@@ -133,6 +147,23 @@ fun SettingsScreen(
         )
         logActions()
 
+        if (notificationFeatureAvailable) {
+            HorizontalDivider(Modifier.padding(vertical = 8.dp))
+            SectionTitle(stringResource(R.string.settings_section_notifications))
+            ReminderSettingsSection(
+                enabled = settings.diaryReminderEnabled,
+                timeMinutes = settings.diaryReminderTimeMinutes,
+                notificationsAllowed = notificationsAllowed,
+                canScheduleExactAlarms = canScheduleExactAlarms,
+                permissionDenied = notificationPermissionDenied,
+                onEnabledChange = onReminderEnabledChanged,
+                onTimeChanged = onReminderTimeChanged,
+                onOpenExactAlarmSettings = onOpenExactAlarmSettings,
+                onOpenNotificationSettings = onOpenNotificationSettings,
+                onDismissPermissionDenied = onDismissNotificationPermissionDenied,
+            )
+        }
+
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
         SectionTitle(stringResource(R.string.settings_section_backup))
@@ -160,6 +191,12 @@ fun SettingsScreen(
             )
             Text(text = "›", style = MaterialTheme.typography.titleMedium)
         }
+        OutlinedButton(onClick = onOpenDonate, modifier = Modifier.fillMaxWidth()) {
+            Text(text = stringResource(R.string.settings_about_donate))
+        }
+        OutlinedButton(onClick = onOpenChangelog, modifier = Modifier.fillMaxWidth()) {
+            Text(text = stringResource(R.string.settings_about_changelog))
+        }
 
         // Debug builds only: the entry lives here now that the old home screen
         // (which owned it) is gone. ADR-016 needs the manual index rebuild.
@@ -168,6 +205,104 @@ fun SettingsScreen(
                 Text(text = stringResource(R.string.settings_open_diagnostics))
             }
         }
+    }
+}
+
+@Composable
+private fun ReminderSettingsSection(
+    enabled: Boolean,
+    timeMinutes: Int,
+    notificationsAllowed: Boolean,
+    canScheduleExactAlarms: Boolean,
+    permissionDenied: Boolean,
+    onEnabledChange: (Boolean) -> Unit,
+    onTimeChanged: (Int) -> Unit,
+    onOpenExactAlarmSettings: () -> Unit,
+    onOpenNotificationSettings: () -> Unit,
+    onDismissPermissionDenied: () -> Unit,
+) {
+    val context = LocalContext.current
+
+    ToggleRow(
+        title = stringResource(R.string.settings_diary_reminder),
+        subtitle = stringResource(R.string.settings_diary_reminder_desc),
+        checked = enabled,
+        onCheckedChange = onEnabledChange,
+    )
+
+    val hour = timeMinutes / 60
+    val minute = timeMinutes % 60
+    val time = java.util.Calendar.getInstance().apply {
+        set(java.util.Calendar.HOUR_OF_DAY, hour)
+        set(java.util.Calendar.MINUTE, minute)
+        set(java.util.Calendar.SECOND, 0)
+    }.time
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                TimePickerDialog(
+                    context,
+                    { _, selectedHour, selectedMinute ->
+                        onTimeChanged(selectedHour * 60 + selectedMinute)
+                    },
+                    hour,
+                    minute,
+                    DateFormat.is24HourFormat(context),
+                ).show()
+            }
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text = stringResource(R.string.settings_diary_reminder_time))
+        Text(
+            text = DateFormat.getTimeFormat(context).format(time),
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
+
+    if (enabled) {
+        if (!notificationsAllowed) {
+            Text(
+                text = stringResource(R.string.settings_notification_permission_unavailable),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            TextButton(onClick = onOpenNotificationSettings) {
+                Text(text = stringResource(R.string.settings_open_notification_settings))
+            }
+        } else if (!canScheduleExactAlarms) {
+            Text(
+                text = stringResource(R.string.settings_exact_alarm_unavailable),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            TextButton(onClick = onOpenExactAlarmSettings) {
+                Text(text = stringResource(R.string.settings_open_exact_alarm_settings))
+            }
+        }
+    }
+
+    if (permissionDenied) {
+        AlertDialog(
+            onDismissRequest = onDismissPermissionDenied,
+            title = { Text(text = stringResource(R.string.settings_notification_permission_denied_title)) },
+            text = { Text(text = stringResource(R.string.settings_notification_permission_denied_body)) },
+            confirmButton = {
+                TextButton(onClick = onDismissPermissionDenied) {
+                    Text(text = stringResource(R.string.settings_notification_permission_dismiss))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        onDismissPermissionDenied()
+                        onOpenNotificationSettings()
+                    },
+                ) {
+                    Text(text = stringResource(R.string.settings_open_notification_settings))
+                }
+            },
+        )
     }
 }
 

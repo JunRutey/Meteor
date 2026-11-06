@@ -18,6 +18,7 @@ app core-backup
 app core-storage
 app core-crypto
 app core-time
+app core-notify
 app core-log
 app core-index
 feature-settings core-crypto

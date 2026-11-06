@@ -14,12 +14,13 @@
     <string name="ai_suggestion_archive">最近的记录里有什么值得注意？</string>
     <string name="ai_suggestion_diary">帮我回顾近期的心情变化。</string>
     <string name="ai_suggestion_person">我经常提到哪些人和事情？</string>
+    <string name="ai_jump_latest">回到最新消息</string>
     <string name="ai_need_consent">先在设置里开启 AI，并阅读隐私提示。</string>
     <string name="ai_need_key">先在设置里填写 API Key 与模型。</string>
     <string name="ai_need_config">AI 尚未配置完整。</string>
     <string name="ai_need_disabled">AI 已关闭，可在设置里重新开启。</string>
     <string name="ai_skill_persona_chat">人格对话</string>
-    <string name="ai_skill_archive_qa">档案问答</string>
+    <string name="ai_skill_archive_qa">通用对话与档案</string>
     <string name="ai_skill_persona_distill">人格蒸馏</string>
     <string name="ai_skill">技能</string>
     <string name="ai_scope">对话对象</string>
@@ -38,7 +39,11 @@
     <string name="ai_tool_line">%1$s %2$s · %3$s</string>
     <string name="ai_tool_approval_title">确认 AI 修改</string>
     <string name="ai_tool_approval_message">AI 请求执行「%1$s」。以下是本次操作的完整参数。请核对内容；拒绝或关闭将不会执行。</string>
+    <string name="ai_tool_approval_batch_title">确认 AI 批量修改</string>
+    <string name="ai_tool_approval_batch_message">AI 请求执行以下 %1$d 项操作。请核对每项内容；拒绝或关闭将不会执行任何一项。</string>
+    <string name="ai_tool_approval_item">%1$d. %2$s</string>
     <string name="ai_tool_approval_confirm">确认操作</string>
+    <string name="ai_tool_approval_confirm_all">确认全部操作</string>
     <string name="ai_tool_approval_deny">拒绝</string>
     <string name="ai_tool_unknown">调用工具</string>
     <string name="ai_tool_list_people">查看人物列表</string>
