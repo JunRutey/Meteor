@@ -322,15 +322,15 @@ class AiViewModel @Inject constructor(
                 errorDetail = null,
             )
         }
+    }
 
-        fun decideToolApproval(approved: Boolean) {
-            toolApprovalDecision?.complete(approved)
-        }
+    fun decideToolApproval(approved: Boolean) {
+        toolApprovalDecision?.complete(approved)
+    }
 
-        override fun onCleared() {
-            decideToolApproval(approved = false)
-            super.onCleared()
-        }
+    override fun onCleared() {
+        decideToolApproval(approved = false)
+        super.onCleared()
     }
 
     private fun scopeKey(skill: String?, personId: String?) =
