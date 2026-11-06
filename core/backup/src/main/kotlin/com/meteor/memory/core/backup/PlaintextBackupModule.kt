@@ -2,6 +2,7 @@ package com.meteor.memory.core.backup
 
 import android.content.Context
 import android.net.Uri
+import com.meteor.memory.core.storage.StorageLayout
 import com.meteor.memory.core.storage.StorageRouter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -42,7 +43,12 @@ class PlaintextBackupModule(
             val (files, bytes) = countStoredFiles()
             router.exportTo(dest)
             BackupResult.Success(fileCount = files, bytes = bytes, at = clock()) as BackupResult
-        }.getOrElse { BackupResult.Failure("导出失败：${it.message}", it) }
+        }.getOrElse { failure ->
+            // The router aborts on the first bad file; the entry it had already
+            // written is not rolled back by the zip stream, so drop the file.
+            discardPartialArchive(dest)
+            BackupResult.Failure("导出失败：${failure.message}", failure)
+        }
     }
 
     override suspend fun importFrom(src: Uri): ImportResult = withContext(Dispatchers.IO) {
@@ -54,6 +60,7 @@ class PlaintextBackupModule(
     }
 
     override suspend fun autoBackup(): BackupResult = withContext(Dispatchers.IO) {
+        val target = File(backupDir, fileNameFor(clock()))
         runCatching {
             if (!backupDir.exists() && !backupDir.mkdirs()) {
                 return@runCatching BackupResult.Failure("无法创建备份目录") as BackupResult
@@ -64,7 +71,6 @@ class PlaintextBackupModule(
                 return@runCatching BackupResult.Failure("还没有可备份的内容") as BackupResult
             }
 
-            val target = File(backupDir, fileNameFor(clock()))
             router.exportTo(Uri.fromFile(target))
             prune()
 
@@ -73,7 +79,12 @@ class PlaintextBackupModule(
             runCatching { mirror.mirror(target) }
 
             BackupResult.Success(fileCount = files, bytes = bytes, at = clock()) as BackupResult
-        }.getOrElse { BackupResult.Failure("自动备份失败：${it.message}", it) }
+        }.getOrElse { failure ->
+            // A truncated zip must not stay in `bak/` where listBackups() would
+            // offer it as a restorable snapshot.
+            discardPartialArchive(Uri.fromFile(target))
+            BackupResult.Failure("自动备份失败：${failure.message}", failure)
+        }
     }
 
     override fun listBackups(): List<BackupMeta> {
@@ -99,11 +110,20 @@ class PlaintextBackupModule(
             .forEach { runCatching { it.delete() } }
     }
 
+    /** Aggregates while walking: a full archive can be tens of thousands of files. */
     private fun countStoredFiles(): Pair<Int, Long> {
-        val root = File(context.filesDir, STORAGE_ROOT_NAME)
+        val root = File(context.filesDir, StorageLayout.ROOT_NAME)
         if (!root.isDirectory) return 0 to 0L
-        val files = root.walkTopDown().filter { it.isFile }.toList()
-        return files.size to files.sumOf { it.length() }
+        return root.walkTopDown()
+            .filter { it.isFile }
+            .fold(0 to 0L) { (count, bytes), file -> (count + 1) to (bytes + file.length()) }
+    }
+
+    /** Deletes a half-written export; only plain files can be removed this way. */
+    private fun discardPartialArchive(dest: Uri) {
+        if (dest.scheme != "file") return
+        val path = dest.path ?: return
+        runCatching { File(path).delete() }
     }
 
     private fun countArchiveEntries(uri: Uri): Int {
@@ -129,9 +149,6 @@ class PlaintextBackupModule(
 
     private companion object {
         const val BACKUP_DIR_NAME = "bak"
-
-        /** Kept in sync with `:core-storage`'s StorageLayout.ROOT_NAME. */
-        const val STORAGE_ROOT_NAME = "我的人生"
 
         val FILE_STAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
     }
