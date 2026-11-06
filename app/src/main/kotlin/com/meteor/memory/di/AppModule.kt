@@ -45,6 +45,7 @@ import com.meteor.memory.feature.editor.EditorModule
 import com.meteor.memory.feature.editor.MarkdownEditorModule
 import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.SettingsRepository
+import com.meteor.memory.system.LauncherIconController
 import com.meteor.memory.ui.ai.AiGate
 import com.meteor.memory.ui.ai.AiSettingsReader
 import com.meteor.memory.ui.attachments.AttachmentRecordScanner
@@ -193,6 +194,8 @@ object AppModule {
         personQueries = personQueries,
         moodQueries = moodQueries,
         diaryQueries = diaryQueries,
+        // Read-only attachment tools reuse the same store the importer writes to.
+        attachments = attachmentStore,
         personaStore = FilePersonaStore(storageRouter),
         skillLoader = { path ->
             runCatching {
@@ -276,4 +279,15 @@ object AppModule {
     fun provideSettingsRepository(
         store: DataStore<Preferences>,
     ): SettingsRepository = SettingsRepository(store)
+
+    /**
+     * ADR-031: the launcher alias is declared in this module's manifest, so the
+     * component toggle is assembled here. `:feature-settings` only stores the
+     * preference; this controller makes the icon follow it.
+     */
+    @Provides
+    @Singleton
+    fun provideLauncherIconController(
+        @ApplicationContext context: Context,
+    ): LauncherIconController = LauncherIconController(context)
 }

@@ -61,9 +61,20 @@ data class AiConfig(
     val model: String = "",
     val apiKey: String? = null,
     val reasoning: String = "auto",
-    /** When true the model may use write tools (diary, mood, people). */
+    /** Master switch: when false every tool is read-only. */
     val writeEnabled: Boolean = false,
+    /** Sub-grant under [writeEnabled]: diary entries and moods (ADR-030). */
+    val writeDiary: Boolean = writeEnabled,
+    /** Sub-grant under [writeEnabled]: create/update person profiles (ADR-030). */
+    val writePeople: Boolean = writeEnabled,
 ) {
+
+    /** What the agent is allowed to do this run; never wider than [writeEnabled]. */
+    val toolPermissions: AiToolPermissions
+        get() = AiToolPermissions(
+            writeDiary = writeEnabled && writeDiary,
+            writePeople = writeEnabled && writePeople,
+        )
 
     private val resolved: Pair<String, String> = AiPresets.resolveProvider(provider, baseUrl, model)
 

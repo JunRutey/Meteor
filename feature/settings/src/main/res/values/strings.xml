@@ -26,6 +26,13 @@
     <string name="settings_app_lock">应用锁</string>
     <string name="settings_app_lock_desc">使用生物识别解锁 Meteor；离开前台后重新上锁</string>
 
+    <string name="settings_hide_launcher_icon">隐藏桌面图标</string>
+    <string name="settings_hide_launcher_icon_desc">通过 *#*#314159#*#* 来访问应用</string>
+    <string name="settings_hide_launcher_icon_confirm_title">隐藏桌面图标？</string>
+    <string name="settings_hide_launcher_icon_confirm_body">隐藏后，桌面与应用列表里都不再显示 Meteor。需要打开时，在系统拨号盘输入 *#*#314159#*#*。部分手机的拨号盘不会派发暗号，也不要在系统设置里对 Meteor 执行「强制停止」——这两种情况下暗号都无法唤醒应用，只能重装，本地数据会一并丢失。建议先导出备份。</string>
+    <string name="settings_hide_launcher_icon_confirm_ok">隐藏</string>
+    <string name="settings_hide_launcher_icon_confirm_cancel">取消</string>
+
     <string name="settings_about_version">Meteor %1$s</string>
     <string name="settings_open_diagnostics">存储诊断（调试）</string>
 </resources>

@@ -26,6 +26,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             fontScale = prefs[KEY_FONT_SCALE]?.let { runCatching { FontScale.valueOf(it) }.getOrNull() }
                 ?: FontScale.SYSTEM,
             appLockEnabled = prefs[KEY_APP_LOCK] ?: false,
+            hideLauncherIcon = prefs[KEY_HIDE_LAUNCHER_ICON] ?: false,
             verboseLogging = prefs[KEY_VERBOSE_LOGGING] ?: false,
             autoBackupEnabled = prefs[KEY_AUTO_BACKUP] ?: true,
             backupRetention = prefs[KEY_BACKUP_RETENTION] ?: AppSettings.DEFAULT_BACKUP_RETENTION,
@@ -36,6 +37,10 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             aiModel = prefs[KEY_AI_MODEL].orEmpty(),
             aiReasoning = prefs[KEY_AI_REASONING] ?: AppSettings.DEFAULT_AI_REASONING,
             aiWriteEnabled = prefs[KEY_AI_WRITE] ?: false,
+            // Defaults stay true so an existing "write enabled" install keeps
+            // exactly the same tool set after the upgrade (ADR-030).
+            aiWriteDiary = prefs[KEY_AI_WRITE_DIARY] ?: true,
+            aiWritePeople = prefs[KEY_AI_WRITE_PEOPLE] ?: true,
         )
     }
 
@@ -48,6 +53,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     suspend fun setFontScale(scale: FontScale) = store.edit { it[KEY_FONT_SCALE] = scale.name }
 
     suspend fun setAppLockEnabled(enabled: Boolean) = store.edit { it[KEY_APP_LOCK] = enabled }
+
+    suspend fun setHideLauncherIcon(hidden: Boolean) =
+        store.edit { it[KEY_HIDE_LAUNCHER_ICON] = hidden }
 
     suspend fun setVerboseLogging(enabled: Boolean) = store.edit { it[KEY_VERBOSE_LOGGING] = enabled }
 
@@ -76,6 +84,12 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     suspend fun setAiWriteEnabled(enabled: Boolean) =
         store.edit { it[KEY_AI_WRITE] = enabled }
 
+    suspend fun setAiWriteDiary(enabled: Boolean) =
+        store.edit { it[KEY_AI_WRITE_DIARY] = enabled }
+
+    suspend fun setAiWritePeople(enabled: Boolean) =
+        store.edit { it[KEY_AI_WRITE_PEOPLE] = enabled }
+
     /**
      * v0.7.1: the AI entry default flipped to off.
      *
@@ -96,6 +110,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val KEY_ANIMATIONS = booleanPreferencesKey("animations_enabled")
         val KEY_FONT_SCALE = stringPreferencesKey("font_scale")
         val KEY_APP_LOCK = booleanPreferencesKey("app_lock_enabled")
+        val KEY_HIDE_LAUNCHER_ICON = booleanPreferencesKey("hide_launcher_icon")
         val KEY_VERBOSE_LOGGING = booleanPreferencesKey("verbose_logging")
         val KEY_AUTO_BACKUP = booleanPreferencesKey("auto_backup_enabled")
         val KEY_BACKUP_RETENTION = intPreferencesKey("backup_retention")
@@ -106,5 +121,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val KEY_AI_MODEL = stringPreferencesKey("ai_model")
         val KEY_AI_REASONING = stringPreferencesKey("ai_reasoning")
         val KEY_AI_WRITE = booleanPreferencesKey("ai_write_enabled")
+        val KEY_AI_WRITE_DIARY = booleanPreferencesKey("ai_write_diary")
+        val KEY_AI_WRITE_PEOPLE = booleanPreferencesKey("ai_write_people")
     }
 }

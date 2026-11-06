@@ -15,12 +15,17 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -100,6 +105,7 @@ fun AiScreen(
     streaming: Boolean = false,
     liveContent: String = "",
     liveSteps: List<AiProcessStep> = emptyList(),
+    pendingToolApproval: Pair<String, String>? = null,
     animationsEnabled: Boolean = false,
     onSkillSelect: (String) -> Unit,
     onPersonSelect: (String?) -> Unit,
@@ -107,6 +113,7 @@ fun AiScreen(
     onOpenPersona: (String) -> Unit,
     onOpenSettings: () -> Unit,
     onClear: () -> Unit,
+    onToolApproval: (Boolean) -> Unit = {},
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -162,6 +169,34 @@ fun AiScreen(
                 index == 0 && offset == 0 -> pickersCollapsed = false
             }
         }
+    }
+
+    pendingToolApproval?.let { (name, arguments) ->
+        AlertDialog(
+            onDismissRequest = { onToolApproval(false) },
+            title = { Text(stringResource(R.string.ai_tool_approval_title)) },
+            text = {
+                Column(
+                    modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(stringResource(R.string.ai_tool_approval_message, toolLabel(name)))
+                    SelectionContainer {
+                        Text(arguments, style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { onToolApproval(true) }) {
+                    Text(stringResource(R.string.ai_tool_approval_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { onToolApproval(false) }) {
+                    Text(stringResource(R.string.ai_tool_approval_deny))
+                }
+            },
+        )
     }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -614,6 +649,9 @@ private fun LiveTurn(
 private fun toolLabel(name: String): String = stringResource(
     when (name) {
         "list_people" -> R.string.ai_tool_list_people
+        "archive_overview" -> R.string.ai_tool_archive_overview
+        "list_attachments" -> R.string.ai_tool_list_attachments
+        "read_attachment_text" -> R.string.ai_tool_read_attachment_text
         "read_person" -> R.string.ai_tool_read_person
         "list_records" -> R.string.ai_tool_list_records
         "read_record" -> R.string.ai_tool_read_record

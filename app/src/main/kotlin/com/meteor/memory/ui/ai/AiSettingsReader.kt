@@ -35,12 +35,20 @@ class AiSettingsReader(
                 apiKey = key,
                 reasoning = settings.aiReasoning,
                 writeEnabled = settings.aiWriteEnabled,
+                writeDiary = settings.aiWriteDiary,
+                writePeople = settings.aiWritePeople,
             ),
             hasApiKey = key != null,
         )
     }
 
     fun hasApiKey(): Boolean = secrets.get(AiCredentialKeys.API_KEY) != null
+
+    /**
+     * Plaintext key, only for the settings screen's reveal/copy actions. Callers
+     * must do this off the main thread and must never log the result.
+     */
+    fun apiKey(): String? = secrets.get(AiCredentialKeys.API_KEY)
 
     fun saveApiKey(key: String) {
         if (key.isNotBlank()) secrets.put(AiCredentialKeys.API_KEY, key.trim())
