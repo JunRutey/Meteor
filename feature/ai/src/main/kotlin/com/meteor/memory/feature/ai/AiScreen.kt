@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -37,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 
@@ -48,6 +50,16 @@ data class AiPersonChip(val personId: String, val label: String)
 
 /** Scroll distance after which the pickers fold away. */
 private const val PICKER_FOLD_THRESHOLD = 48
+
+/** Gap below the last bubble that still counts as "the reader is at the end". */
+private const val BOTTOM_SLACK_DP = 24
+
+/**
+ * Overshoot used to reach the end of the transcript: bigger than any chat, so
+ * the lazy layout clamps at the very bottom instead of pinning the top of the
+ * last bubble, which would hide the text still streaming in.
+ */
+private const val SCROLL_TO_END_OFFSET = Int.MAX_VALUE / 4
 
 /** Tool output shown under a call: first line only, capped at this length. */
 private const val MAX_RESULT_LINE_CHARS = 120
@@ -66,8 +78,10 @@ data class AiChatBubble(
  * The AI domain screen: pick a skill, optionally pick a person, chat.
  *
  * The title bar stays pinned; the pickers fold away once the transcript is
- * scrolled forward and unfold when it is scrolled back. The list follows the
- * newest content while the turn streams. The screen renders state only.
+ * scrolled forward and unfold again at the very top. Following the newest
+ * content pauses as soon as the reader scrolls away from the end, so a running
+ * answer never drags the transcript out from under their finger. The screen
+ * renders state only.
  */
 @Composable
 fun AiScreen(
@@ -99,32 +113,66 @@ fun AiScreen(
     var input by remember { mutableStateOf("") }
     var composerCollapsed by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val bottomSlackPx = with(LocalDensity.current) { BOTTOM_SLACK_DP.dp.roundToPx() }
 
-    // The title bar is pinned; only the skill/person pickers fold away while the
-    // transcript is being read, and unfold as soon as the list moves back.
-    var pickersCollapsed by remember { mutableStateOf(false) }
+    // Following the tail keeps a streaming answer visible, but only while the
+    // reader is at the end: scrolling up to re-read the past must never be undone
+    // by the next chunk. The forward scrolls this screen performs itself can be
+    // ignored, because only the finger ever moves the transcript backwards.
+    var followTail by remember { mutableStateOf(true) }
     LaunchedEffect(listState) {
         var lastIndex = listState.firstVisibleItemIndex
         var lastOffset = listState.firstVisibleItemScrollOffset
-        snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
-            .collect { (index, offset) ->
-                val forward = index > lastIndex || (index == lastIndex && offset > lastOffset)
-                val backward = index < lastIndex || (index == lastIndex && offset < lastOffset)
-                if (forward && (index > 0 || offset > PICKER_FOLD_THRESHOLD)) {
-                    pickersCollapsed = true
-                } else if (backward) {
-                    pickersCollapsed = false
-                }
-                lastIndex = index
-                lastOffset = offset
+        snapshotFlow {
+            Triple(
+                listState.firstVisibleItemIndex,
+                listState.firstVisibleItemScrollOffset,
+                listState.isScrollInProgress,
+            )
+        }.collect { (index, offset, scrolling) ->
+            val movedBack = index < lastIndex || (index == lastIndex && offset < lastOffset)
+            if (movedBack) followTail = false
+            // Landing back at the end (or having nothing left to read) resumes it.
+            if (!scrolling && listState.isAtBottom(bottomSlackPx)) followTail = true
+            lastIndex = index
+            lastOffset = offset
+        }
+    }
+    LaunchedEffect(selectedSkillId, selectedPersonId) {
+        // A different skill or subject shows different history: start at its end.
+        followTail = true
+    }
+
+    // The title bar is pinned; only the skill/person pickers fold away while the
+    // transcript is being read. Folding reacts to the finger alone, and unfolding
+    // needs the list back at the very top, so the header cannot flap open and
+    // shut (moving the transcript) when the reader nudges the list.
+    var pickersCollapsed by remember { mutableStateOf(false) }
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            Triple(
+                listState.isScrollInProgress,
+                listState.firstVisibleItemIndex,
+                listState.firstVisibleItemScrollOffset,
+            )
+        }.collect { (scrolling, index, offset) ->
+            if (!scrolling) return@collect
+            when {
+                index > 0 || offset > PICKER_FOLD_THRESHOLD -> pickersCollapsed = true
+                index == 0 && offset == 0 -> pickersCollapsed = false
             }
+        }
     }
 
     Column(modifier = modifier.fillMaxSize()) {
         val blocked = blockedMessage
         ScreenHeader(
             canClear = messages.isNotEmpty() || streaming,
-            onClear = onClear,
+            onClear = {
+                // An empty transcript always follows its end.
+                followTail = true
+                onClear()
+            },
             onBack = onBack,
         )
         HorizontalDivider()
@@ -179,8 +227,10 @@ fun AiScreen(
             (if (showLive) 1 else 0) +
             (if (busy && !showLive) 1 else 0) +
             (if (error != null) 1 else 0)
-        LaunchedEffect(itemCount, liveContent.length, liveSteps.size) {
-            if (itemCount > 0) listState.scrollToItem(itemCount - 1)
+        LaunchedEffect(itemCount, liveContent.length, liveSteps.size, followTail) {
+            if (followTail && itemCount > 0) {
+                listState.scrollToItem(itemCount - 1, SCROLL_TO_END_OFFSET)
+            }
         }
 
         LazyColumn(modifier = Modifier.weight(1f), state = listState) {
@@ -235,6 +285,8 @@ fun AiScreen(
                 val text = input.trim()
                 if (text.isNotEmpty()) {
                     input = ""
+                    // Sending always comes with a jump to the new turn.
+                    followTail = true
                     onSend(text)
                 }
             },
@@ -246,6 +298,14 @@ fun AiScreen(
             providerLabel = providerLabel,
         )
     }
+}
+
+/** True when the transcript has reached its end (within [slackPx]). */
+private fun LazyListState.isAtBottom(slackPx: Int): Boolean {
+    val info = layoutInfo
+    val last = info.visibleItemsInfo.lastOrNull() ?: return true
+    return last.index >= info.totalItemsCount - 1 &&
+        last.offset + last.size <= info.viewportEndOffset + slackPx
 }
 
 /** Input row. Collapsing it hands the space to the transcript. */
