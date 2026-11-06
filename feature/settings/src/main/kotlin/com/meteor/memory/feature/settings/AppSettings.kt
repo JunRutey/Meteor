@@ -26,6 +26,8 @@ data class AppSettings(
     val verboseLogging: Boolean = false,
     val autoBackupEnabled: Boolean = true,
     val backupRetention: Int = DEFAULT_BACKUP_RETENTION,
+    /** Check GitHub Releases on each app process launch; off can be selected in Settings. */
+    val autoCheckForUpdates: Boolean = true,
     /** Daily missing-diary reminder; opt-in on a fresh install. */
     val diaryReminderEnabled: Boolean = false,
     /** Minutes after local midnight; defaults to 20:00. */
@@ -53,6 +55,8 @@ data class AppSettings(
     val aiWriteDiary: Boolean = true,
     /** Sub-grant of [aiWriteEnabled]: create/update person profiles (ADR-030). */
     val aiWritePeople: Boolean = true,
+    /** Whether the first-launch introduction and birth-date setup were completed. */
+    val onboardingCompleted: Boolean = false,
 ) {
     companion object {
         const val DEFAULT_BACKUP_RETENTION = 7

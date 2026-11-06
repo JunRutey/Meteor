@@ -59,6 +59,13 @@ fun SettingsScreen(
     onOpenAbout: () -> Unit,
     onOpenDonate: () -> Unit,
     onOpenChangelog: () -> Unit,
+    onOpenBirthDate: () -> Unit,
+    onAutoCheckForUpdatesChanged: (Boolean) -> Unit,
+    updateStatusText: String,
+    updateBusy: Boolean,
+    updateCanInstall: Boolean,
+    onCheckUpdates: () -> Unit,
+    onInstallUpdate: () -> Unit,
     logSizeBytes: Long,
     notificationFeatureAvailable: Boolean,
     notificationsAllowed: Boolean,
@@ -113,6 +120,30 @@ fun SettingsScreen(
             checked = settings.animationsEnabled,
             onCheckedChange = onAnimationsChanged,
         )
+
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
+        SectionTitle(stringResource(R.string.settings_section_profile))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpenBirthDate)
+                .padding(vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                Text(
+                    text = stringResource(R.string.settings_birth_date),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Text(
+                    text = stringResource(R.string.settings_birth_date_desc),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Text(text = "›", style = MaterialTheme.typography.titleMedium)
+        }
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
@@ -173,6 +204,33 @@ fun SettingsScreen(
 
         SectionTitle(stringResource(R.string.settings_section_ai))
         aiActions()
+
+        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
+        SectionTitle(stringResource(R.string.settings_section_updates))
+        ToggleRow(
+            title = stringResource(R.string.settings_auto_check_updates),
+            subtitle = stringResource(R.string.settings_auto_check_updates_desc),
+            checked = settings.autoCheckForUpdates,
+            onCheckedChange = onAutoCheckForUpdatesChanged,
+        )
+        Text(text = updateStatusText, style = MaterialTheme.typography.bodySmall)
+        Text(
+            text = stringResource(R.string.settings_update_install_note),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        OutlinedButton(
+            onClick = onCheckUpdates,
+            enabled = !updateBusy,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(text = stringResource(R.string.settings_check_updates))
+        }
+        if (updateCanInstall) {
+            Button(onClick = onInstallUpdate, modifier = Modifier.fillMaxWidth()) {
+                Text(text = stringResource(R.string.settings_install_update))
+            }
+        }
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
