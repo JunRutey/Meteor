@@ -50,7 +50,6 @@ class CalendarViewModel @Inject constructor(
     val imageDates: StateFlow<Set<LocalDate>> = _imageDates.asStateFlow()
 
     init {
-        load()
         refresh()
     }
 
@@ -74,6 +73,10 @@ class CalendarViewModel @Inject constructor(
     /** 一次性刷新：已写日记的日期 + 当天有图的日期。 */
     fun refresh() {
         viewModelScope.launch {
+            val current = _month.value
+            val moods = withContext(Dispatchers.IO) {
+                moodQueries.range(current.atDay(1), current.atEndOfMonth())
+            }
             val diary = withContext(Dispatchers.IO) {
                 runCatching { diaryQueries.dates().toSet() }.getOrDefault(emptySet())
             }
@@ -84,6 +87,7 @@ class CalendarViewModel @Inject constructor(
                         .toSet()
                 }.getOrDefault(emptySet())
             }
+            _moods.value = moods
             _diaryDates.value = diary
             _imageDates.value = images
         }
@@ -115,10 +119,13 @@ class CalendarViewModel @Inject constructor(
 
     private fun load() {
         viewModelScope.launch {
-            val current = _month.value
-            _moods.value = withContext(Dispatchers.IO) {
-                moodQueries.range(current.atDay(1), current.atEndOfMonth())
-            }
+            loadMoods(_month.value)
+        }
+    }
+
+    private suspend fun loadMoods(current: YearMonth) {
+        _moods.value = withContext(Dispatchers.IO) {
+            moodQueries.range(current.atDay(1), current.atEndOfMonth())
         }
     }
 

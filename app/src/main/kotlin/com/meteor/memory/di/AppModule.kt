@@ -20,6 +20,7 @@ import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.log.FileAppLogger
 import com.meteor.memory.core.log.LogExporter
 import com.meteor.memory.core.storage.AiChatStore
+import com.meteor.memory.core.storage.ArchiveRecordDeleter
 import com.meteor.memory.core.storage.AttachmentStore
 import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.storage.EncryptedAiChatStore
@@ -28,6 +29,7 @@ import com.meteor.memory.core.storage.EncryptedImageStore
 import com.meteor.memory.core.storage.ImageStore
 import com.meteor.memory.core.storage.MoodQueries
 import com.meteor.memory.core.storage.PersonQueries
+import com.meteor.memory.core.storage.PrivateArchiveRecordDeleter
 import com.meteor.memory.core.storage.PrivateDiaryQueries
 import com.meteor.memory.core.storage.PrivateMoodQueries
 import com.meteor.memory.core.storage.PrivatePersonQueries
@@ -116,6 +118,12 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideArchiveRecordDeleter(
+        storageRouter: StorageRouter,
+    ): ArchiveRecordDeleter = PrivateArchiveRecordDeleter(storageRouter)
+
+    @Provides
+    @Singleton
     fun providePersonQueries(
         @ApplicationContext context: Context,
         storageRouter: StorageRouter,
@@ -169,7 +177,7 @@ object AppModule {
     fun provideAiGate(reader: AiSettingsReader): AiGate = AiGate(reader)
 
     /**
-     * The AI domain (ADR-027): skills, a bounded read-only agent and the user's
+     * The AI domain (ADR-027): skills, a bounded permissioned agent and the user's
      * own provider credentials. Records are read through [RecordScanner], the
      * persona snapshot is written through the frozen [StorageRouter], and the
      * skill assets are loaded from this APK.
@@ -183,6 +191,7 @@ object AppModule {
         personQueries: PersonQueries,
         moodQueries: MoodQueries,
         diaryQueries: DiaryQueries,
+        archiveRecordDeleter: ArchiveRecordDeleter,
         storageRouter: StorageRouter,
     ): AiModule = MeteorAiModule(
         rootDir = File(context.filesDir, StorageLayout.ROOT_NAME),
@@ -194,6 +203,7 @@ object AppModule {
         personQueries = personQueries,
         moodQueries = moodQueries,
         diaryQueries = diaryQueries,
+        archiveRecordDeleter = archiveRecordDeleter,
         // Read-only attachment tools reuse the same store the importer writes to.
         attachments = attachmentStore,
         personaStore = FilePersonaStore(storageRouter),
