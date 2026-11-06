@@ -77,6 +77,7 @@ class RootViewModel @Inject constructor(
 
         viewModelScope.launch {
             // Wait for the first persisted value, then keep AppLock in sync.
+            var startupValueApplied = false
             settingsRepository.settings
                 .map { it.appLockEnabled }
                 .distinctUntilChanged()
@@ -85,9 +86,23 @@ class RootViewModel @Inject constructor(
                         runCatching { appLock.setEnabled(enabled) }
                     }
                     appLog.info(TAG, "app lock enabled=$enabled")
-                    // Enabling locks straight away; disabling drops the gate.
-                    _locked.value = enabled
-                    if (!enabled) scheduleIndexRebuild()
+                    if (!startupValueApplied) {
+                        startupValueApplied = true
+                        // Cold start: a stored lock is honoured right away.
+                        _locked.value = enabled
+                        if (!enabled) scheduleIndexRebuild()
+                    } else if (enabled) {
+                        // Turned on from Settings by the person holding the phone.
+                        // Swapping the screen for the gate here would throw away
+                        // the open settings page and immediately demand a
+                        // fingerprint; instead the gate arms on the next cold
+                        // start or as soon as the app goes to the background.
+                        appLog.info(TAG, "app lock armed for next launch")
+                    } else {
+                        // Turning it off drops the gate immediately.
+                        _locked.value = false
+                        scheduleIndexRebuild()
+                    }
                 }
         }
     }
