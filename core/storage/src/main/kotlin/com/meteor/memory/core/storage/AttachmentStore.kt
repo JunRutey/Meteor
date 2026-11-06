@@ -78,9 +78,9 @@ class EncryptedAttachmentStore(
             ?.toByteArray(Charsets.UTF_8)
             ?.also { require(it.size <= MAX_INDEXED_TEXT_BYTES) { "indexed text is too large" } }
 
-        val id = UUID.randomUUID().toString().replace("-", "")
         val ownerDir = ownerDirectory(personId)
         check(ownerDir.isDirectory || ownerDir.mkdirs()) { "cannot create attachment directory" }
+        val id = availableAttachmentId(ownerDir)
 
         val dataFile = File(ownerDir, "$id$ATTACHMENT_DATA_SUFFIX")
         val metadataFile = File(ownerDir, "$id$METADATA_SUFFIX")
@@ -359,6 +359,22 @@ class EncryptedAttachmentStore(
             .orEmpty()
     }
 
+    /**
+     * A UUID collision is practically impossible, but a file left behind by an
+     * interrupted save would otherwise fail the whole import; try a few ids
+     * before giving up instead of throwing on the first clash.
+     */
+    private fun availableAttachmentId(dir: File): String {
+        repeat(MAX_ID_ATTEMPTS) {
+            val candidate = UUID.randomUUID().toString().replace("-", "")
+            val taken = File(dir, "$candidate$ATTACHMENT_DATA_SUFFIX").exists() ||
+                File(dir, "$candidate$METADATA_SUFFIX").exists() ||
+                File(dir, "$candidate$TEXT_SUFFIX").exists()
+            if (!taken) return candidate
+        }
+        throw IllegalStateException("attachment id collision after $MAX_ID_ATTEMPTS attempts")
+    }
+
     private fun ownerDirectory(personId: String?): File =
         File(attachmentsDir, personId ?: SELF_DIR_NAME)
 
@@ -378,6 +394,7 @@ class EncryptedAttachmentStore(
 
         const val SELF_DIR_NAME = "_self"
         const val ATTACHMENT_DATA_SUFFIX = ".data.enc"
+        private const val MAX_ID_ATTEMPTS = 3
         private const val DATA_MAGIC = 0x4D415454
         private const val METADATA_MAGIC = 0x4D414D44
         private const val FORMAT_VERSION = 1
