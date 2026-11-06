@@ -79,6 +79,45 @@ class EncryptedImageStoreTest {
     }
 
     @Test
+    fun `tokens outside the image tree cannot be read or deleted`() {
+        val record = File(tmp.root, "${StorageLayout.ARCHIVE}/${StorageLayout.SELF}/profile.md")
+        record.parentFile?.mkdirs()
+        record.writeBytes(byteArrayOf(1, 2, 3))
+        val token = "${StorageLayout.ARCHIVE}/${StorageLayout.SELF}/profile.md"
+
+        assertNull(store().load(token))
+        assertFalse(store().delete(token))
+        assertTrue(record.exists())
+    }
+
+    @Test
+    fun `tokens deeper than one owner folder are rejected`() {
+        val nested = File(
+            tmp.root,
+            "${StorageLayout.LEGACY}/${StorageLayout.IMAGES}/${EncryptedImageStore.SELF_DIR}/nested/deep.enc",
+        )
+        nested.parentFile?.mkdirs()
+        nested.writeBytes(byteArrayOf(1))
+        val token = nested.relativeTo(tmp.root).invariantSeparatorsPath
+
+        assertNull(store().load(token))
+        assertFalse(store().delete(token))
+        assertTrue(nested.exists())
+    }
+
+    @Test
+    fun `list only reports files at the owner level`() {
+        val stray = File(
+            tmp.root,
+            "${StorageLayout.LEGACY}/${StorageLayout.IMAGES}/${EncryptedImageStore.SELF_DIR}/deep/deep.enc",
+        )
+        stray.parentFile?.mkdirs()
+        stray.writeBytes(byteArrayOf(1))
+
+        assertTrue(store().list().isEmpty())
+    }
+
+    @Test
     fun `list is newest first`() {
         val store = store()
         val first = store.save(byteArrayOf(1), personId = null)

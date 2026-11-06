@@ -79,18 +79,36 @@ class EncryptedImageStore(
         return runCatching { file.delete() }.getOrDefault(false)
     }
 
-    /** Turns a stored token back into a file, refusing anything that escapes. */
+    /**
+     * Turns a stored token back into a file, refusing anything that escapes.
+     *
+     * A token is only ever produced by [save], so anything that is not exactly
+     * `数字遗产/图片/<person>/<file>.enc` is rejected: a crafted token pointing at
+     * a record or a profile file must not resolve to a readable path.
+     */
     private fun resolve(token: String): File? {
-        val relative = token.trim().removePrefix("/")
-        if (relative.isEmpty() || relative.contains("..")) return null
-        return File(rootDir, relative)
+        val parts = token.trim().removePrefix("/").replace('\\', '/').split('/')
+        if (parts.size != IMAGE_PATH_SEGMENTS) return null
+        if (parts[0] != StorageLayout.LEGACY || parts[1] != StorageLayout.IMAGES) return null
+        val owner = parts[2]
+        if (owner != SELF_DIR && !StorageLayout.PERSON_ID_PATTERN.matches(owner)) return null
+        val fileName = parts[3]
+        if (fileName.length <= EXTENSION.length || !fileName.endsWith(EXTENSION)) return null
+        return File(rootDir, parts.joinToString("/"))
     }
 
     override fun list(): List<StoredImage> {
         val imagesRoot = File(rootDir, "${StorageLayout.LEGACY}/${StorageLayout.IMAGES}")
         if (!imagesRoot.isDirectory) return emptyList()
 
-        return imagesRoot.walkTopDown()
+        // Exactly one owner level, mirroring [save] and [resolve], so the gallery
+        // never lists a file that could not be opened again.
+        return imagesRoot.listFiles().orEmpty()
+            .filter { dir ->
+                dir.isDirectory &&
+                    (dir.name == SELF_DIR || StorageLayout.PERSON_ID_PATTERN.matches(dir.name))
+            }
+            .flatMap { ownerDir -> ownerDir.listFiles().orEmpty().asList() }
             .filter { it.isFile && it.name.endsWith(EXTENSION) }
             .map { file ->
                 StoredImage(
@@ -100,11 +118,13 @@ class EncryptedImageStore(
                 )
             }
             .sortedByDescending { it.modifiedAt }
-            .toList()
     }
 
     companion object {
         const val SELF_DIR = "_self"
         const val EXTENSION = ".enc"
+
+        /** `数字遗产 / 图片 / <person> / <file>.enc` — nothing deeper, nothing else. */
+        private const val IMAGE_PATH_SEGMENTS = 4
     }
 }
