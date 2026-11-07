@@ -47,6 +47,8 @@ data class DiaryEditorState(
     val isInsertingImage: Boolean = false,
     val saved: Boolean = false,
     val error: String? = null,
+    /** 记录所属日期，用于页头「11 月 7 日 · 周六」标题。 */
+    val date: LocalDate = LocalDate.now(),
 )
 
 @HiltViewModel
@@ -64,7 +66,7 @@ class DiaryEditViewModel @Inject constructor(
     private val date: LocalDate = LocalDate.parse(checkNotNull(savedStateHandle.get<String>(ARG_DATE)))
 
     private val _state = MutableStateFlow(
-        DiaryEditorState(dateLabel = formatSavedAt(Instant.now()), text = ""),
+        DiaryEditorState(dateLabel = formatSavedAt(Instant.now()), text = "", date = date),
     )
     val state: StateFlow<DiaryEditorState> = _state.asStateFlow()
 

@@ -158,7 +158,9 @@ fun CalendarScreen(
                 onOpenPeople = onOpenPeople,
             )
 
-            Spacer(Modifier.height(24.dp))
+            // Leave room for the floating AI entry so it never covers the
+            // quick-action row when the page is scrolled to the bottom.
+            Spacer(Modifier.height(if (onOpenAi != null) 84.dp else 24.dp))
         }
 
         onOpenAi?.let { open ->

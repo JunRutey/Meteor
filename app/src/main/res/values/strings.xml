@@ -94,6 +94,7 @@
     <string name="diary_only_local">仅保存在本机</string>
     <string name="diary_char_count">%1$d 字</string>
     <string name="diary_signed_at">记录于 %1$s</string>
+    <string name="diary_day_label">%1$d 月 %2$d 日 · %3$s</string>
     <string name="diary_back">返回</string>
 
     <string name="lock_title">已锁定</string>
