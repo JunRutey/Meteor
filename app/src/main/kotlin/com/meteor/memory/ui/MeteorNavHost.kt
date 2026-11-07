@@ -170,10 +170,10 @@ fun MeteorNavHost(
 
     val enter: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
         if (animationsEnabled) {
-            fadeIn(tween(durationMillis = 180, easing = FastOutSlowInEasing)) +
+            fadeIn(tween(durationMillis = 160, easing = FastOutSlowInEasing)) +
                 slideIntoContainer(
                     towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+                    animationSpec = tween(durationMillis = 210, easing = FastOutSlowInEasing),
                 )
         } else {
             EnterTransition.None
@@ -181,10 +181,10 @@ fun MeteorNavHost(
     }
     val exit: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
         if (animationsEnabled) {
-            fadeOut(tween(durationMillis = 110, easing = FastOutLinearInEasing)) +
+            fadeOut(tween(durationMillis = 100, easing = FastOutLinearInEasing)) +
                 slideOutOfContainer(
                     towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                    animationSpec = tween(durationMillis = 170, easing = FastOutSlowInEasing),
+                    animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing),
                 )
         } else {
             ExitTransition.None
@@ -192,10 +192,10 @@ fun MeteorNavHost(
     }
     val popEnter: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
         if (animationsEnabled) {
-            fadeIn(tween(durationMillis = 180, easing = FastOutSlowInEasing)) +
+            fadeIn(tween(durationMillis = 160, easing = FastOutSlowInEasing)) +
                 slideIntoContainer(
                     towards = AnimatedContentTransitionScope.SlideDirection.End,
-                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+                    animationSpec = tween(durationMillis = 210, easing = FastOutSlowInEasing),
                 )
         } else {
             EnterTransition.None
@@ -203,10 +203,10 @@ fun MeteorNavHost(
     }
     val popExit: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
         if (animationsEnabled) {
-            fadeOut(tween(durationMillis = 110, easing = FastOutLinearInEasing)) +
+            fadeOut(tween(durationMillis = 100, easing = FastOutLinearInEasing)) +
                 slideOutOfContainer(
                     towards = AnimatedContentTransitionScope.SlideDirection.End,
-                    animationSpec = tween(durationMillis = 170, easing = FastOutSlowInEasing),
+                    animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing),
                 )
         } else {
             ExitTransition.None
@@ -672,6 +672,7 @@ fun MeteorNavHost(
                         onSaveApiKey = viewModel::saveApiKey,
                         onClearApiKey = viewModel::clearApiKey,
                         onTestConnection = viewModel::testAiConnection,
+                        animationsEnabled = animationsEnabled,
                     )
                 },
             )

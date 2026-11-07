@@ -3,7 +3,9 @@ package com.meteor.memory.ui.theme
 import android.app.Activity
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
@@ -18,6 +20,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 
 /**
@@ -29,17 +32,55 @@ import androidx.core.view.WindowCompat
 val LocalAnimationsEnabled = staticCompositionLocalOf { true }
 
 private val MeteorDark = darkColorScheme(
-    primary = Color(0xFF9CC7FF),
-    secondary = Color(0xFFB8C6DA),
-    background = Color(0xFF101418),
-    surface = Color(0xFF101418),
+    primary = Color(0xFFA8CDBD),
+    onPrimary = Color(0xFF19372D),
+    primaryContainer = Color(0xFF315347),
+    onPrimaryContainer = Color(0xFFD0E9DA),
+    secondary = Color(0xFFC6C8B9),
+    onSecondary = Color(0xFF30332B),
+    secondaryContainer = Color(0xFF46493F),
+    onSecondaryContainer = Color(0xFFE2E3D4),
+    tertiary = Color(0xFFE2B98C),
+    onTertiary = Color(0xFF402C17),
+    tertiaryContainer = Color(0xFF5A432B),
+    onTertiaryContainer = Color(0xFFFFDDB8),
+    background = Color(0xFF111A17),
+    onBackground = Color(0xFFDFE5DF),
+    surface = Color(0xFF18211D),
+    onSurface = Color(0xFFDFE5DF),
+    surfaceVariant = Color(0xFF293630),
+    onSurfaceVariant = Color(0xFFC0CBC2),
+    outline = Color(0xFF89968C),
+    outlineVariant = Color(0xFF414D45),
 )
 
 private val MeteorLight = lightColorScheme(
-    primary = Color(0xFF2F6DAE),
-    secondary = Color(0xFF52606E),
-    background = Color(0xFFF8F9FB),
-    surface = Color(0xFFF8F9FB),
+    primary = Color(0xFF42675C),
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = Color(0xFFD5E7D9),
+    onPrimaryContainer = Color(0xFF132F27),
+    secondary = Color(0xFF625F53),
+    onSecondary = Color(0xFFFFFFFF),
+    secondaryContainer = Color(0xFFE8E3D3),
+    onSecondaryContainer = Color(0xFF201F17),
+    tertiary = Color(0xFF815C37),
+    onTertiary = Color(0xFFFFFFFF),
+    tertiaryContainer = Color(0xFFFFDDB8),
+    onTertiaryContainer = Color(0xFF2D1600),
+    background = Color(0xFFF6F6F0),
+    onBackground = Color(0xFF191D1A),
+    surface = Color(0xFFFFFEF9),
+    onSurface = Color(0xFF191D1A),
+    surfaceVariant = Color(0xFFE9EAE2),
+    onSurfaceVariant = Color(0xFF454A44),
+    outline = Color(0xFF747A73),
+    outlineVariant = Color(0xFFC5CBC2),
+)
+
+private val MeteorShapes = Shapes(
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(18.dp),
+    large = RoundedCornerShape(26.dp),
 )
 
 @Composable
@@ -47,7 +88,7 @@ fun MeteorTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     animationsEnabled: Boolean = true,
     /** Material You wallpaper colours; ignored below Android 12. */
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false,
     /** Multiplier on top of the system font scale. 1f = follow the system. */
     fontScale: Float = 1f,
     content: @Composable () -> Unit,
@@ -57,13 +98,15 @@ fun MeteorTheme(
         Density(density = density.density, fontScale = density.fontScale * fontScale)
     }
 
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+    val context = LocalContext.current
+    val colorScheme = remember(context, darkTheme, dynamicColor) {
+        when {
+            dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+                if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            }
+            darkTheme -> MeteorDark
+            else -> MeteorLight
         }
-        darkTheme -> MeteorDark
-        else -> MeteorLight
     }
 
     CompositionLocalProvider(
@@ -87,6 +130,7 @@ fun MeteorTheme(
 
         MaterialTheme(
             colorScheme = colorScheme,
+            shapes = MeteorShapes,
             content = content,
         )
     }

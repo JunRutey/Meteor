@@ -21,7 +21,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         AppSettings(
             darkMode = prefs[KEY_DARK_MODE]?.let { runCatching { DarkMode.valueOf(it) }.getOrNull() }
                 ?: DarkMode.FOLLOW_SYSTEM,
-            dynamicColor = prefs[KEY_DYNAMIC_COLOR] ?: true,
+            dynamicColor = prefs[KEY_DYNAMIC_COLOR] ?: false,
             animationsEnabled = prefs[KEY_ANIMATIONS] ?: true,
             fontScale = prefs[KEY_FONT_SCALE]?.let { runCatching { FontScale.valueOf(it) }.getOrNull() }
                 ?: FontScale.SYSTEM,

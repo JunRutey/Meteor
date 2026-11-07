@@ -29,6 +29,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -97,7 +98,9 @@ fun CalendarScreen(
     modifier: Modifier = Modifier,
 ) {
     val locale = Locale.getDefault()
-    val monthLabel = DateTimeFormatter.ofPattern("LLLL yyyy", locale).format(month.atDay(1))
+    val monthLabel = remember(month, locale) {
+        DateTimeFormatter.ofPattern("LLLL yyyy", locale).format(month.atDay(1))
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
@@ -258,8 +261,9 @@ private fun MonthGrid(
     onSelectDate: (LocalDate) -> Unit,
 ) {
     val leading = month.atDay(1).dayOfWeek.value - 1
-    val cells: List<LocalDate?> =
+    val cells: List<LocalDate?> = remember(month) {
         List(leading) { null } + (1..month.lengthOfMonth()).map { month.atDay(it) }
+    }
 
     Column {
         cells.chunked(7).forEach { week ->
@@ -332,6 +336,10 @@ private fun DayCard(
     onRightClick: () -> Unit,
     onLeftClick: () -> Unit,
 ) {
+    val locale = Locale.getDefault()
+    val dateLabel = remember(date, locale) {
+        DateTimeFormatter.ofPattern("yyyy-MM-dd", locale).format(date)
+    }
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -346,7 +354,7 @@ private fun DayCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    text = DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.getDefault()).format(date),
+                    text = dateLabel,
                     style = MaterialTheme.typography.titleMedium,
                 )
                 if (hasDiary) DoubleCheckMark()
@@ -447,7 +455,7 @@ private fun GearIcon(label: String) {
 
 @Composable
 private fun MagnifierIcon(label: String) {
-    val tint = Color.Black
+    val tint = LocalContentColor.current
     Canvas(Modifier.size(22.dp).semantics { contentDescription = label }) {
         val stroke = size.minDimension * 0.11f
         val radius = size.minDimension * 0.30f

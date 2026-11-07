@@ -8,17 +8,21 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.meteor.memory.R
 import com.meteor.memory.feature.settings.DarkMode
 import com.meteor.memory.feature.settings.FontScale
 import com.meteor.memory.ui.life.OnboardingFlowScreen
@@ -82,9 +86,8 @@ fun MeteorRoot(versionName: String) {
                     .windowInsetsPadding(WindowInsets.safeDrawing),
             ) {
                 when (locked) {
-                    // Preference not read yet: show nothing rather than a frame
-                    // of decrypted content on cold start.
-                    null -> Unit
+                    // Show only the app name, never a frame of decrypted content.
+                    null -> StartupPlaceholder()
 
                     true -> {
                         val activity = LocalContext.current as? FragmentActivity
@@ -95,7 +98,7 @@ fun MeteorRoot(versionName: String) {
                     }
 
                     false -> when (onboardingGate) {
-                        OnboardingGate.LOADING -> Unit
+                        OnboardingGate.LOADING -> StartupPlaceholder()
                         OnboardingGate.REQUIRED -> OnboardingFlowScreen()
                         OnboardingGate.COMPLETE -> MeteorNavHost(
                             versionName = versionName,
@@ -110,5 +113,19 @@ fun MeteorRoot(versionName: String) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun StartupPlaceholder() {
+    Box(
+        modifier = Modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = stringResource(R.string.app_name),
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.primary,
+        )
     }
 }

@@ -1,6 +1,7 @@
 package com.meteor.memory.ui.home
 
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -130,10 +131,10 @@ private fun HomeTabItem(
     val animationsEnabled = LocalAnimationsEnabled.current
     val iconOffset by animateDpAsState(
         targetValue = if (selected) (-4).dp else 0.dp,
-        animationSpec = tween(durationMillis = 180),
+        animationSpec = if (animationsEnabled) tween(durationMillis = 180) else snap(),
         label = "tabIconOffset",
     )
-    val appliedOffset = if (animationsEnabled) iconOffset else if (selected) (-4).dp else 0.dp
+    val appliedOffset = iconOffset
     val tint = if (selected) MaterialTheme.colorScheme.onSurface else
         MaterialTheme.colorScheme.onSurfaceVariant
     Column(

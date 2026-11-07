@@ -6,6 +6,18 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.os.Build
 import android.os.PersistableBundle
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -81,6 +93,7 @@ fun AiSettingsSection(
     onRequestApiKey: suspend () -> String? = { null },
     onTestConnection: () -> Unit,
     modifier: Modifier = Modifier,
+    animationsEnabled: Boolean = true,
 ) {
     var showConsent by remember { mutableStateOf(false) }
     var showModels by remember { mutableStateOf(false) }
@@ -108,9 +121,26 @@ fun AiSettingsSection(
         }
     }
 
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .animateContentSize(
+                animationSpec = if (animationsEnabled) {
+                    tween(durationMillis = 180, easing = FastOutSlowInEasing)
+                } else {
+                    snap()
+                },
+            ),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
+                    shape = MaterialTheme.shapes.medium,
+                )
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
@@ -257,7 +287,13 @@ fun AiSettingsSection(
             )
 
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
+                        shape = MaterialTheme.shapes.medium,
+                    )
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
@@ -276,7 +312,27 @@ fun AiSettingsSection(
 
             // Granular grants (ADR-030): the master switch alone no longer means
             // "the model may rewrite everything".
-            if (writeEnabled) {
+            AnimatedVisibility(
+                visible = writeEnabled,
+                enter = if (animationsEnabled) {
+                    fadeIn(tween(140, easing = FastOutSlowInEasing)) +
+                        slideInVertically(
+                            initialOffsetY = { it / 24 },
+                            animationSpec = tween(170, easing = FastOutSlowInEasing),
+                        )
+                } else {
+                    EnterTransition.None
+                },
+                exit = if (animationsEnabled) {
+                    fadeOut(tween(90, easing = FastOutSlowInEasing)) +
+                        slideOutVertically(
+                            targetOffsetY = { it / 24 },
+                            animationSpec = tween(120, easing = FastOutSlowInEasing),
+                        )
+                } else {
+                    ExitTransition.None
+                },
+            ) {
                 Column(
                     modifier = Modifier.padding(start = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -469,7 +525,13 @@ private fun ToggleRow(
     onCheckedChange: (Boolean) -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
+                shape = MaterialTheme.shapes.medium,
+            )
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {

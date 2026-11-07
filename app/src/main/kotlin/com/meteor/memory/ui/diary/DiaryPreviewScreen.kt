@@ -1,8 +1,9 @@
 package com.meteor.memory.ui.diary
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -10,8 +11,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.meteor.memory.R
@@ -33,13 +34,9 @@ fun DiaryPreviewScreen(
         modifier = modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column {
-                Text(text = state.dateLabel, style = MaterialTheme.typography.titleLarge)
+        DiaryScreenHeader(
+            dateLabel = state.dateLabel,
+            supportingContent = {
                 state.signedAtLabel?.let { stamped ->
                     Text(
                         text = stringResource(R.string.diary_signed_at, stamped),
@@ -47,23 +44,31 @@ fun DiaryPreviewScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            },
+        ) {
+            if (state.exists) {
+                TextButton(onClick = onEdit) {
+                    Text(text = stringResource(R.string.diary_preview_edit))
+                }
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (state.exists) {
-                    TextButton(onClick = onEdit) {
-                        Text(text = stringResource(R.string.diary_preview_edit))
-                    }
-                }
-                TextButton(onClick = onBack) {
-                    Text(text = stringResource(R.string.diary_preview_back))
-                }
+            TextButton(onClick = onBack) {
+                Text(text = stringResource(R.string.diary_preview_back))
             }
         }
 
         if (state.exists) {
             MarkdownPreview(
                 body = state.body,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .clip(MaterialTheme.shapes.medium)
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant,
+                        shape = MaterialTheme.shapes.medium,
+                    ),
                 resolveImage = { token -> state.images[token] },
                 onActivate = onActivate,
             )
