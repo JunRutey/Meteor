@@ -40,6 +40,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -357,62 +358,73 @@ private fun DayCard(
                     text = dateLabel,
                     style = MaterialTheme.typography.titleMedium,
                 )
-                if (hasDiary) DoubleCheckMark()
+                if (hasDiary && !date.isAfter(today)) DoubleCheckMark()
             }
-            Text(
-                text = mood?.let { "${it.emoji()} ${it.label()}" }
-                    ?: stringResource(R.string.calendar_no_mood),
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            if (date.isAfter(today)) {
+                val encouragements = stringArrayResource(R.array.calendar_future_encouragements)
+                Text(
+                    text = remember(date) { encouragements.random() },
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.Center,
+                )
+            } else {
+                Text(
+                    text = mood?.let { "${it.emoji()} ${it.label()}" }
+                        ?: stringResource(R.string.calendar_no_mood),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Mood.entries.forEach { candidate ->
-                    val label = candidate.label()
-                    Box(
-                        modifier = Modifier
-                            // 七个心情平铺，宽度自适应：窄屏也不换行、不溢出。
-                            .weight(1f)
-                            .aspectRatio(1f)
-                            .clip(CircleShape)
-                            .background(
-                                if (candidate == mood) {
-                                    MaterialTheme.colorScheme.primaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.surface
-                                },
-                            )
-                            .clickable { onPickMood(candidate) }
-                            .semantics { contentDescription = label },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(text = candidate.emoji(), fontSize = 18.sp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Mood.entries.forEach { candidate ->
+                        val label = candidate.label()
+                        Box(
+                            modifier = Modifier
+                                // 七个心情平铺，宽度自适应：窄屏也不换行、不溢出。
+                                .weight(1f)
+                                .aspectRatio(1f)
+                                .clip(CircleShape)
+                                .background(
+                                    if (candidate == mood) {
+                                        MaterialTheme.colorScheme.primaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.surface
+                                    },
+                                )
+                                .clickable { onPickMood(candidate) }
+                                .semantics { contentDescription = label },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(text = candidate.emoji(), fontSize = 18.sp)
+                        }
                     }
                 }
-            }
 
-            val leftLabel = if (hasImages) {
-                R.string.calendar_view_images
-            } else {
-                R.string.calendar_save_image
-            }
-            val rightLabel = when {
-                hasDiary -> R.string.calendar_view_diary
-                date == today -> R.string.calendar_record_now
-                else -> R.string.calendar_backfill_diary
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                OutlinedButton(onClick = onLeftClick, modifier = Modifier.weight(1f)) {
-                    Text(text = stringResource(leftLabel))
+                val leftLabel = if (hasImages) {
+                    R.string.calendar_view_images
+                } else {
+                    R.string.calendar_save_image
                 }
-                Button(onClick = onRightClick, modifier = Modifier.weight(1f)) {
-                    Text(text = stringResource(rightLabel))
+                val rightLabel = when {
+                    hasDiary -> R.string.calendar_view_diary
+                    date == today -> R.string.calendar_record_now
+                    else -> R.string.calendar_backfill_diary
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    OutlinedButton(onClick = onLeftClick, modifier = Modifier.weight(1f)) {
+                        Text(text = stringResource(leftLabel))
+                    }
+                    Button(onClick = onRightClick, modifier = Modifier.weight(1f)) {
+                        Text(text = stringResource(rightLabel))
+                    }
                 }
             }
         }

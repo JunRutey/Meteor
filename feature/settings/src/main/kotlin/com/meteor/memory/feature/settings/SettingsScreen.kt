@@ -347,13 +347,29 @@ private fun ReminderSettingsSection(
             TextButton(onClick = onOpenNotificationSettings) {
                 Text(text = stringResource(R.string.settings_open_notification_settings))
             }
-        } else if (!canScheduleExactAlarms) {
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             Text(
-                text = stringResource(R.string.settings_exact_alarm_unavailable),
+                text = stringResource(
+                    if (canScheduleExactAlarms) {
+                        R.string.settings_exact_alarm_available
+                    } else {
+                        R.string.settings_exact_alarm_unavailable
+                    },
+                ),
                 style = MaterialTheme.typography.bodySmall,
             )
             TextButton(onClick = onOpenExactAlarmSettings) {
-                Text(text = stringResource(R.string.settings_open_exact_alarm_settings))
+                Text(
+                    text = stringResource(
+                        if (canScheduleExactAlarms) {
+                            R.string.settings_open_exact_alarm_settings
+                        } else {
+                            R.string.settings_request_exact_alarm_settings
+                        },
+                    ),
+                )
             }
         }
     }

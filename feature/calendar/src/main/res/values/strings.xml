@@ -14,6 +14,19 @@
     <string name="calendar_open_chats">记录</string>
     <string name="calendar_open_people">人际关系</string>
 
+    <string-array name="calendar_future_encouragements">
+        <item>时间正沿着星河向前，愿每一个此刻都有迹可循。</item>
+        <item>未来可期，永远相信美好的事情即将发生。</item>
+        <item>前方有光，慢慢走也会抵达想去的地方。</item>
+        <item>愿未来的每一天，都有新的惊喜悄然发生。</item>
+        <item>把期待交给明天，今天也值得好好生活。</item>
+        <item>星光不问赶路人，未来正等待你的故事。</item>
+        <item>心怀热爱，日子总会朝着明亮的方向前进。</item>
+        <item>还没到来的日子，藏着许多值得期待的事。</item>
+        <item>愿你带着希望出发，遇见更好的明天。</item>
+        <item>每个未来的此刻，都有机会成为闪闪发光的回忆。</item>
+    </string-array>
+
     <string name="mood_happy">开心</string>
     <string name="mood_calm">平静</string>
     <string name="mood_excited">兴奋</string>

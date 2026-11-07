@@ -35,7 +35,9 @@
     <string name="settings_diary_reminder_notification_unavailable">通知权限或日记提醒通知渠道未开启，提醒暂时无法显示。</string>
     <string name="settings_open_notification_settings">打开通知设置</string>
     <string name="settings_exact_alarm_unavailable">精确闹钟未授权，提醒会以非精确方式触发。</string>
-    <string name="settings_open_exact_alarm_settings">授权精确闹钟</string>
+    <string name="settings_exact_alarm_available">系统允许精确闹钟；实际触发仍可能受系统及厂商调度策略影响。</string>
+    <string name="settings_request_exact_alarm_settings">授权精确闹钟</string>
+    <string name="settings_open_exact_alarm_settings">检查闹钟和提醒权限</string>
     <string name="settings_notification_permission_denied_title">通知权限未开启</string>
     <string name="settings_notification_permission_denied_body">开启每日提醒需要通知权限。你可以稍后在系统设置中允许 Meteor 发送通知，再回来开启提醒。</string>
     <string name="settings_notification_permission_dismiss">知道了</string>

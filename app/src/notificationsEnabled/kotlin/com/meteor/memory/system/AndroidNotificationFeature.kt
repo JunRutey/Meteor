@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -15,9 +16,11 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.meteor.memory.MainActivity
 import com.meteor.memory.R
+import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.notify.DailyReminderPolicy
 import com.meteor.memory.core.notify.DailyReminderScheduler
 import com.meteor.memory.core.notify.NotificationChannels
+import com.meteor.memory.core.notify.ReminderSchedulePrecision
 import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.feature.settings.SettingsRepository
 import dagger.Binds
@@ -27,6 +30,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
@@ -39,11 +43,16 @@ import javax.inject.Singleton
 @Singleton
 class AndroidNotificationFeature @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val appLog: AppLog,
     private val settingsRepository: SettingsRepository,
     private val diaryQueries: DiaryQueries,
     private val scheduler: DailyReminderScheduler,
 ) : NotificationFeature {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, failure ->
+            appLog.error(TAG, "Notification background operation failed", failure)
+        },
+    )
 
     override val available: Boolean = true
 
@@ -61,12 +70,7 @@ class AndroidNotificationFeature @Inject constructor(
                 ) == PackageManager.PERMISSION_GRANTED)
 
     override fun canPostDailyReminder(): Boolean {
-        if (!canPostNotifications()) return false
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
-
-        val channel = context.getSystemService(NotificationManager::class.java)
-            .getNotificationChannel(NotificationChannels.DAILY_REMINDER)
-        return channel != null && channel.importance != NotificationManager.IMPORTANCE_NONE
+        return canPostNotifications() && isDailyReminderChannelEnabled()
     }
 
     override fun canScheduleExactAlarms(): Boolean = scheduler.canScheduleExactAlarms()
@@ -80,33 +84,80 @@ class AndroidNotificationFeature @Inject constructor(
             Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                 .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
         }
-        context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        try {
+            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (failure: ActivityNotFoundException) {
+            appLog.warn(TAG, "Channel notification settings are unavailable", failure)
+            context.startActivity(
+                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
     }
 
     override fun openExactAlarmSettings() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
-        context.startActivity(
-            Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
-                .setData(Uri.fromParts("package", context.packageName, null))
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-        )
+        val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+            .setData(Uri.fromParts("package", context.packageName, null))
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(intent)
+        } catch (failure: ActivityNotFoundException) {
+            appLog.warn(TAG, "Exact-alarm settings are unavailable; opening app settings", failure)
+            context.startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    .setData(Uri.fromParts("package", context.packageName, null))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
     }
 
     override suspend fun syncReminder() {
         val settings = settingsRepository.settings.first()
-        if (!settings.diaryReminderEnabled || !canPostDailyReminder()) {
+        if (!settings.diaryReminderEnabled) {
             scheduler.cancel()
+            appLog.info(TAG, "Reminder is disabled; pending alarm cancelled")
+            return
+        }
+
+        val notificationsAllowed = canPostNotifications()
+        val reminderChannelAllowed = isDailyReminderChannelEnabled()
+        if (!notificationsAllowed || !reminderChannelAllowed) {
+            scheduler.cancel()
+            appLog.warn(
+                TAG,
+                "Reminder scheduling skipped: notificationsAllowed=$notificationsAllowed, " +
+                    "channelAllowed=$reminderChannelAllowed",
+            )
             return
         }
         val hour = settings.diaryReminderTimeMinutes / 60
         val minute = settings.diaryReminderTimeMinutes % 60
-        scheduler.scheduleDaily(hour, minute)
+        val now = ZonedDateTime.now()
+        val reminderTime = LocalTime.of(hour, minute)
+        val nextTrigger = DailyReminderPolicy.nextTrigger(now, reminderTime)
+        val precision = scheduler.scheduleDaily(hour, minute, now)
+        logReminderScheduled(nextTrigger, precision)
     }
 
     override suspend fun handleReminderAlarm() {
         val settings = settingsRepository.settings.first()
-        if (!settings.diaryReminderEnabled || !canPostDailyReminder()) {
+        if (!settings.diaryReminderEnabled) {
             scheduler.cancel()
+            appLog.info(TAG, "Stale reminder alarm ignored because reminders are disabled")
+            return
+        }
+
+        val notificationsAllowed = canPostNotifications()
+        val reminderChannelAllowed = isDailyReminderChannelEnabled()
+        if (!notificationsAllowed || !reminderChannelAllowed) {
+            scheduler.cancel()
+            appLog.warn(
+                TAG,
+                "Reminder alarm ignored: notificationsAllowed=$notificationsAllowed, " +
+                    "channelAllowed=$reminderChannelAllowed",
+            )
             return
         }
 
@@ -115,10 +166,43 @@ class AndroidNotificationFeature @Inject constructor(
             settings.diaryReminderTimeMinutes / 60,
             settings.diaryReminderTimeMinutes % 60,
         )
-        scheduler.scheduleDaily(reminderTime.hour, reminderTime.minute, now)
+        val nextTrigger = DailyReminderPolicy.nextTrigger(now, reminderTime)
+        val precision = scheduler.scheduleDaily(reminderTime.hour, reminderTime.minute, now)
+        logReminderScheduled(nextTrigger, precision)
+
         val hasDiaryToday = now.toLocalDate() in diaryQueries.dates()
-        if (DailyReminderPolicy.shouldRemind(hasDiaryToday, now.toLocalTime(), reminderTime)) {
-            postDailyReminder()
+        val shouldRemind = DailyReminderPolicy.shouldRemind(
+            hasDiaryToday,
+            now.toLocalTime(),
+            reminderTime,
+        )
+        if (!shouldRemind && hasDiaryToday) {
+            appLog.info(TAG, "Reminder skipped because today's diary already exists")
+            return
+        }
+        if (!shouldRemind) {
+            appLog.warn(TAG, "Reminder alarm arrived before configured time: now=$now, reminderTime=$reminderTime")
+            return
+        }
+        postDailyReminder()
+    }
+
+    private fun isDailyReminderChannelEnabled(): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
+        val channel = context.getSystemService(NotificationManager::class.java)
+            .getNotificationChannel(NotificationChannels.DAILY_REMINDER)
+        return channel != null && channel.importance != NotificationManager.IMPORTANCE_NONE
+    }
+
+    private fun logReminderScheduled(
+        nextTrigger: ZonedDateTime,
+        precision: ReminderSchedulePrecision,
+    ) {
+        val message = "Reminder scheduled for $nextTrigger with $precision precision"
+        if (precision == ReminderSchedulePrecision.INEXACT) {
+            appLog.warn(TAG, message)
+        } else {
+            appLog.info(TAG, message)
         }
     }
 
@@ -133,6 +217,7 @@ class AndroidNotificationFeature @Inject constructor(
             .build()
 
         NotificationManagerCompat.from(context).notify(DAILY_REMINDER_NOTIFICATION_ID, notification)
+        appLog.info(TAG, "Daily reminder notification posted")
     }
 
     @SuppressLint("MissingPermission")
@@ -196,6 +281,7 @@ class AndroidNotificationFeature @Inject constructor(
         )
 
     private companion object {
+        const val TAG = "AndroidNotification"
         const val DAILY_REMINDER_NOTIFICATION_ID = 2020
         const val DAILY_REMINDER_REQUEST_CODE = 2020
         const val UPDATE_NOTIFICATION_ID = 2021
