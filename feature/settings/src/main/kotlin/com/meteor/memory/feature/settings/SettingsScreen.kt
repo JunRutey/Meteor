@@ -3,26 +3,32 @@ package com.meteor.memory.feature.settings
 import android.app.TimePickerDialog
 import android.os.Build
 import android.text.format.DateFormat
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -30,18 +36,31 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /**
- * Settings screen: appearance / security / logs / notifications / backup / AI / about.
+ * Settings screen: appearance / profile / security / AI / notifications /
+ * backup / updates / diagnostics / about.
  *
  * Holds no business logic — it renders [AppSettings] and emits intents upward.
  * Sections that need a service (backup, log export) are injected as slots so
  * this module never depends on Hilt or on `:app`.
+ *
+ * Visual language follows the settings design sheet: 13sp slate-blue section
+ * captions on the paper background, white 20dp cards, 14×16 rows separated by
+ * a single hairline, and 48dp pill buttons.
  */
 @Composable
 fun SettingsScreen(
@@ -95,188 +114,227 @@ fun SettingsScreen(
     onOpenNotificationSettings: () -> Unit,
     onDismissNotificationPermissionDenied: () -> Unit,
     modifier: Modifier = Modifier,
+    onBack: () -> Unit = {},
     /** Debug-only extra entry; `null` keeps the section clean in release builds. */
     onOpenDiagnostics: (() -> Unit)? = null,
     backupActions: @Composable () -> Unit = {},
     logActions: @Composable () -> Unit = {},
     aiActions: @Composable () -> Unit = {},
 ) {
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
-    ) {
-        SettingsSection(title = stringResource(R.string.settings_section_appearance)) {
-            ChoiceRow(
-                title = stringResource(R.string.settings_dark_mode),
-                options = listOf(
-                    DarkMode.FOLLOW_SYSTEM to stringResource(R.string.settings_dark_follow_system),
-                    DarkMode.DARK to stringResource(R.string.settings_dark_dark),
-                    DarkMode.LIGHT to stringResource(R.string.settings_dark_light),
-                ),
-                selected = settings.darkMode,
-                onSelect = onDarkModeChanged,
-            )
+    Column(modifier = modifier.fillMaxSize()) {
+        SettingsHeader(onBack = onBack)
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 28.dp),
+        ) {
+            SettingsSection(title = stringResource(R.string.settings_section_appearance)) {
+                SettingsRow {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        RowLabel(text = stringResource(R.string.settings_dark_mode))
+                        SegmentedChoice(
+                            options = listOf(
+                                DarkMode.FOLLOW_SYSTEM to stringResource(R.string.settings_dark_follow_system),
+                                DarkMode.DARK to stringResource(R.string.settings_dark_dark),
+                                DarkMode.LIGHT to stringResource(R.string.settings_dark_light),
+                            ),
+                            selected = settings.darkMode,
+                            onSelect = onDarkModeChanged,
+                        )
+                    }
+                }
+                Hairline()
 
-            // Dynamic colour is an Android 12+ capability; older releases fall back
-            // to the built-in palette, so the switch would be a lie there.
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // Dynamic colour is an Android 12+ capability; older releases fall back
+                // to the built-in palette, so the switch would be a lie there.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    ToggleRow(
+                        title = stringResource(R.string.settings_dynamic_color),
+                        subtitle = stringResource(R.string.settings_dynamic_color_desc),
+                        checked = settings.dynamicColor,
+                        onCheckedChange = onDynamicColorChanged,
+                    )
+                    Hairline()
+                }
+
                 ToggleRow(
-                    title = stringResource(R.string.settings_dynamic_color),
-                    subtitle = stringResource(R.string.settings_dynamic_color_desc),
-                    checked = settings.dynamicColor,
-                    onCheckedChange = onDynamicColorChanged,
+                    title = stringResource(R.string.settings_animations),
+                    subtitle = stringResource(R.string.settings_animations_desc),
+                    checked = settings.animationsEnabled,
+                    onCheckedChange = onAnimationsChanged,
                 )
             }
 
-            ToggleRow(
-                title = stringResource(R.string.settings_animations),
-                subtitle = stringResource(R.string.settings_animations_desc),
-                checked = settings.animationsEnabled,
-                onCheckedChange = onAnimationsChanged,
-            )
-        }
+            SettingsSection(title = stringResource(R.string.settings_section_profile)) {
+                ChevronRow(
+                    title = stringResource(R.string.settings_birth_date),
+                    subtitle = stringResource(R.string.settings_birth_date_desc),
+                    onClick = onOpenBirthDate,
+                )
+            }
 
-        SettingsSection(title = stringResource(R.string.settings_section_profile)) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onOpenBirthDate)
-                    .padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                    Text(
-                        text = stringResource(R.string.settings_birth_date),
-                        style = MaterialTheme.typography.bodyLarge,
+            SettingsSection(title = stringResource(R.string.settings_section_security)) {
+                ToggleRow(
+                    title = stringResource(R.string.settings_app_lock),
+                    subtitle = stringResource(R.string.settings_app_lock_desc),
+                    checked = settings.appLockEnabled,
+                    onCheckedChange = onAppLockChanged,
+                )
+                Hairline()
+                HideLauncherIconRow(
+                    hidden = settings.hideLauncherIcon,
+                    needsSystemGrants = launcherIconNeedsSystemGrants,
+                    recovery = launcherRecovery,
+                    dialCodeVerified = dialCodeVerified,
+                    onHiddenChange = onHideLauncherIconChanged,
+                    onOpenPermissions = onOpenLauncherPermissions,
+                    onOpenAutoStart = onOpenAutoStartSettings,
+                    onOpenRecovery = onOpenLauncherRecoverySettings,
+                )
+            }
+
+            SettingsSection(title = stringResource(R.string.settings_section_ai)) {
+                Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        aiActions()
+                    }
+                }
+            }
+
+            if (notificationFeatureAvailable) {
+                SettingsSection(title = stringResource(R.string.settings_section_notifications)) {
+                    ReminderSettingsSection(
+                        enabled = settings.diaryReminderEnabled,
+                        timeMinutes = settings.diaryReminderTimeMinutes,
+                        reminderNotificationsAllowed = reminderNotificationsAllowed,
+                        canScheduleExactAlarms = canScheduleExactAlarms,
+                        permissionDenied = notificationPermissionDenied,
+                        onEnabledChange = onReminderEnabledChanged,
+                        onTimeChanged = onReminderTimeChanged,
+                        onOpenExactAlarmSettings = onOpenExactAlarmSettings,
+                        onOpenNotificationSettings = onOpenNotificationSettings,
+                        onDismissPermissionDenied = onDismissNotificationPermissionDenied,
                     )
-                    Text(
-                        text = stringResource(R.string.settings_birth_date_desc),
-                        style = MaterialTheme.typography.bodySmall,
+                }
+            }
+
+            SettingsSection(title = stringResource(R.string.settings_section_backup)) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                ) {
+                    backupActions()
+                }
+            }
+
+            SettingsSection(title = stringResource(R.string.settings_section_updates)) {
+                ToggleRow(
+                    title = stringResource(R.string.settings_auto_check_updates),
+                    subtitle = stringResource(R.string.settings_update_note_short),
+                    checked = settings.autoCheckForUpdates,
+                    onCheckedChange = onAutoCheckForUpdatesChanged,
+                )
+                Hairline()
+                SettingsRow {
+                    TitleBlock(
+                        title = updateStatusText,
+                        subtitle = stringResource(R.string.settings_update_install_note),
+                    )
+                    PillButton(
+                        text = stringResource(R.string.settings_check_updates),
+                        onClick = onCheckUpdates,
+                        enabled = !updateBusy,
                     )
                 }
-                Text(text = "›", style = MaterialTheme.typography.titleMedium)
+                if (updateCanInstall) {
+                    Hairline()
+                    SettingsRow {
+                        TitleBlock(
+                            title = stringResource(R.string.settings_update_ready_title),
+                            subtitle = stringResource(R.string.settings_update_ready_body, versionName),
+                        )
+                        Button(
+                            onClick = onInstallUpdate,
+                            modifier = Modifier.height(48.dp),
+                            shape = RoundedCornerShape(24.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                        ) {
+                            Text(text = stringResource(R.string.settings_install_update), fontSize = 15.sp)
+                        }
+                    }
+                }
             }
-        }
 
-        SettingsSection(title = stringResource(R.string.settings_section_security)) {
-            ToggleRow(
-                title = stringResource(R.string.settings_app_lock),
-                subtitle = stringResource(R.string.settings_app_lock_desc),
-                checked = settings.appLockEnabled,
-                onCheckedChange = onAppLockChanged,
-            )
+            SettingsSection(title = stringResource(R.string.settings_section_diagnostics)) {
+                ToggleRow(
+                    title = stringResource(R.string.settings_verbose_logging),
+                    subtitle = stringResource(R.string.settings_verbose_logging_desc_short),
+                    checked = settings.verboseLogging,
+                    onCheckedChange = onVerboseLoggingChanged,
+                )
+                Hairline()
+                SettingsRow {
+                    Text(
+                        text = stringResource(R.string.settings_log_size, formatBytes(logSizeBytes)),
+                        modifier = Modifier.weight(1f).padding(end = 12.dp),
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    logActions()
+                }
+                // Debug builds only: the entry lives here now that the old home screen
+                // (which owned it) is gone. ADR-016 needs the manual index rebuild.
+                onOpenDiagnostics?.let { open ->
+                    Hairline()
+                    ChevronRow(
+                        title = stringResource(R.string.settings_open_diagnostics),
+                        onClick = open,
+                    )
+                }
+            }
 
-            HideLauncherIconRow(
-                hidden = settings.hideLauncherIcon,
-                needsSystemGrants = launcherIconNeedsSystemGrants,
-                recovery = launcherRecovery,
-                dialCodeVerified = dialCodeVerified,
-                onHiddenChange = onHideLauncherIconChanged,
-                onOpenPermissions = onOpenLauncherPermissions,
-                onOpenAutoStart = onOpenAutoStartSettings,
-                onOpenRecovery = onOpenLauncherRecoverySettings,
-            )
-        }
-
-        SettingsSection(title = stringResource(R.string.settings_section_logs)) {
-            ToggleRow(
-                title = stringResource(R.string.settings_verbose_logging),
-                subtitle = stringResource(R.string.settings_verbose_logging_desc),
-                checked = settings.verboseLogging,
-                onCheckedChange = onVerboseLoggingChanged,
-            )
-            Text(
-                text = stringResource(R.string.settings_log_size, formatBytes(logSizeBytes)),
-                style = MaterialTheme.typography.bodySmall,
-            )
-            logActions()
-        }
-
-        if (notificationFeatureAvailable) {
-            SettingsSection(title = stringResource(R.string.settings_section_notifications)) {
-                ReminderSettingsSection(
-                    enabled = settings.diaryReminderEnabled,
-                    timeMinutes = settings.diaryReminderTimeMinutes,
-                    reminderNotificationsAllowed = reminderNotificationsAllowed,
-                    canScheduleExactAlarms = canScheduleExactAlarms,
-                    permissionDenied = notificationPermissionDenied,
-                    onEnabledChange = onReminderEnabledChanged,
-                    onTimeChanged = onReminderTimeChanged,
-                    onOpenExactAlarmSettings = onOpenExactAlarmSettings,
-                    onOpenNotificationSettings = onOpenNotificationSettings,
-                    onDismissPermissionDenied = onDismissNotificationPermissionDenied,
+            SettingsSection(title = stringResource(R.string.settings_section_about)) {
+                ChevronRow(
+                    title = stringResource(R.string.settings_about_version, versionName),
+                    onClick = onOpenAbout,
+                )
+                Hairline()
+                ChevronRow(
+                    title = stringResource(R.string.settings_about_donate),
+                    onClick = onOpenDonate,
+                )
+                Hairline()
+                ChevronRow(
+                    title = stringResource(R.string.settings_about_changelog),
+                    onClick = onOpenChangelog,
                 )
             }
         }
+    }
+}
 
-        SettingsSection(title = stringResource(R.string.settings_section_backup)) {
-            backupActions()
+@Composable
+private fun SettingsHeader(onBack: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().height(56.dp).padding(end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clickable(onClick = onBack),
+            contentAlignment = Alignment.Center,
+        ) {
+            ChevronIcon(previous = true, tint = MaterialTheme.colorScheme.onSurface)
         }
-
-        SettingsSection(title = stringResource(R.string.settings_section_ai)) {
-            aiActions()
-        }
-
-        SettingsSection(title = stringResource(R.string.settings_section_updates)) {
-            ToggleRow(
-                title = stringResource(R.string.settings_auto_check_updates),
-                subtitle = stringResource(R.string.settings_auto_check_updates_desc),
-                checked = settings.autoCheckForUpdates,
-                onCheckedChange = onAutoCheckForUpdatesChanged,
-            )
-            Text(text = updateStatusText, style = MaterialTheme.typography.bodySmall)
-            Text(
-                text = stringResource(R.string.settings_update_install_note),
-                style = MaterialTheme.typography.bodySmall,
-            )
-            OutlinedButton(
-                onClick = onCheckUpdates,
-                enabled = !updateBusy,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(text = stringResource(R.string.settings_check_updates))
-            }
-            if (updateCanInstall) {
-                Button(onClick = onInstallUpdate, modifier = Modifier.fillMaxWidth()) {
-                    Text(text = stringResource(R.string.settings_install_update))
-                }
-            }
-        }
-
-        SettingsSection(title = stringResource(R.string.settings_section_about)) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(onClick = onOpenAbout)
-                    .padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    text = stringResource(R.string.settings_about_version, versionName),
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-                Text(text = "›", style = MaterialTheme.typography.titleMedium)
-            }
-            OutlinedButton(onClick = onOpenDonate, modifier = Modifier.fillMaxWidth()) {
-                Text(text = stringResource(R.string.settings_about_donate))
-            }
-            OutlinedButton(onClick = onOpenChangelog, modifier = Modifier.fillMaxWidth()) {
-                Text(text = stringResource(R.string.settings_about_changelog))
-            }
-
-            // Debug builds only: the entry lives here now that the old home screen
-            // (which owned it) is gone. ADR-016 needs the manual index rebuild.
-            onOpenDiagnostics?.let { open ->
-                OutlinedButton(onClick = open, modifier = Modifier.fillMaxWidth()) {
-                    Text(text = stringResource(R.string.settings_open_diagnostics))
-                }
-            }
-        }
+        Text(
+            text = stringResource(R.string.settings_title),
+            fontSize = 20.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
 
@@ -285,20 +343,214 @@ private fun SettingsSection(
     title: String,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        SectionTitle(title)
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(22.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-                content = content,
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text(
+            text = title,
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 8.dp),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(20.dp))
+                .border(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant,
+                    RoundedCornerShape(20.dp),
+                ),
+            content = content,
+        )
+    }
+}
+
+@Composable
+private fun Hairline() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest),
+    )
+}
+
+@Composable
+private fun SettingsRow(
+    onClick: (() -> Unit)? = null,
+    content: @Composable RowScope.() -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+        content = content,
+    )
+}
+
+@Composable
+private fun RowScope.TitleBlock(
+    title: String,
+    subtitle: String? = null,
+) {
+    Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+        RowLabel(text = title)
+        subtitle?.let {
+            Text(
+                text = it,
+                modifier = Modifier.padding(top = 2.dp),
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+}
+
+@Composable
+private fun RowLabel(text: String) {
+    Text(
+        text = text,
+        fontSize = 16.sp,
+        fontWeight = FontWeight.Medium,
+        color = MaterialTheme.colorScheme.onSurface,
+    )
+}
+
+@Composable
+private fun ToggleRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    SettingsRow {
+        TitleBlock(title = title, subtitle = subtitle)
+        MeteorSwitch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+private fun ChevronRow(
+    title: String,
+    subtitle: String? = null,
+    onClick: () -> Unit,
+) {
+    SettingsRow(onClick = onClick) {
+        TitleBlock(title = title, subtitle = subtitle)
+        Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) {
+            ChevronIcon(previous = false, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun MeteorSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        colors = SwitchDefaults.colors(
+            checkedThumbColor = Color.White,
+            checkedTrackColor = MaterialTheme.colorScheme.primary,
+            checkedBorderColor = MaterialTheme.colorScheme.primary,
+            uncheckedThumbColor = MaterialTheme.colorScheme.outline,
+            uncheckedTrackColor = Color.Transparent,
+            uncheckedBorderColor = MaterialTheme.colorScheme.outline,
+        ),
+    )
+}
+
+@Composable
+private fun <T> SegmentedChoice(
+    options: List<Pair<T, String>>,
+    selected: T,
+    onSelect: (T) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        options.forEach { (value, label) ->
+            val isSelected = value == selected
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(40.dp)
+                    .background(
+                        color = if (isSelected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.surfaceVariant
+                        },
+                        shape = RoundedCornerShape(20.dp),
+                    )
+                    .clickable { onSelect(value) },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = label,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = if (isSelected) {
+                        MaterialTheme.colorScheme.onPrimary
+                    } else {
+                        MaterialTheme.colorScheme.secondary
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PillButton(
+    text: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.height(48.dp),
+        shape = RoundedCornerShape(24.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+    ) {
+        Text(
+            text = text,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.secondary,
+        )
+    }
+}
+
+@Composable
+private fun ChevronIcon(previous: Boolean, tint: Color) {
+    Canvas(Modifier.size(22.dp)) {
+        val stroke = 1.8.dp.toPx()
+        val unit = size.width / 24f
+        val path = Path().apply {
+            if (previous) {
+                moveTo(15f * unit, 6f * unit)
+                lineTo(9f * unit, 12f * unit)
+                lineTo(15f * unit, 18f * unit)
+            } else {
+                moveTo(9f * unit, 6f * unit)
+                lineTo(15f * unit, 12f * unit)
+                lineTo(9f * unit, 18f * unit)
+            }
+        }
+        drawPath(
+            path = path,
+            color = tint,
+            style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
     }
 }
 
@@ -331,63 +583,79 @@ private fun ReminderSettingsSection(
         set(java.util.Calendar.MINUTE, minute)
         set(java.util.Calendar.SECOND, 0)
     }.time
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable {
-                TimePickerDialog(
-                    context,
-                    { _, selectedHour, selectedMinute ->
-                        onTimeChanged(selectedHour * 60 + selectedMinute)
-                    },
-                    hour,
-                    minute,
-                    DateFormat.is24HourFormat(context),
-                ).show()
-            }
-            .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
+
+    Hairline()
+    SettingsRow(
+        onClick = {
+            TimePickerDialog(
+                context,
+                { _, selectedHour, selectedMinute ->
+                    onTimeChanged(selectedHour * 60 + selectedMinute)
+                },
+                hour,
+                minute,
+                DateFormat.is24HourFormat(context),
+            ).show()
+        },
     ) {
-        Text(text = stringResource(R.string.settings_diary_reminder_time))
+        TitleBlock(
+            title = stringResource(R.string.settings_diary_reminder_time),
+            subtitle = stringResource(R.string.settings_diary_reminder_time_desc),
+        )
         Text(
             text = DateFormat.getTimeFormat(context).format(time),
+            fontSize = 17.sp,
+            fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.primary,
         )
     }
 
     if (enabled) {
         if (!reminderNotificationsAllowed) {
-            Text(
-                text = stringResource(R.string.settings_diary_reminder_notification_unavailable),
-                style = MaterialTheme.typography.bodySmall,
-            )
-            TextButton(onClick = onOpenNotificationSettings) {
-                Text(text = stringResource(R.string.settings_open_notification_settings))
+            Hairline()
+            SettingsRow {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.settings_diary_reminder_notification_unavailable),
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    TextButton(onClick = onOpenNotificationSettings) {
+                        Text(text = stringResource(R.string.settings_open_notification_settings))
+                    }
+                }
             }
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            Text(
-                text = stringResource(
-                    if (canScheduleExactAlarms) {
-                        R.string.settings_exact_alarm_available
-                    } else {
-                        R.string.settings_exact_alarm_unavailable
-                    },
-                ),
-                style = MaterialTheme.typography.bodySmall,
-            )
-            TextButton(onClick = onOpenExactAlarmSettings) {
-                Text(
-                    text = stringResource(
-                        if (canScheduleExactAlarms) {
-                            R.string.settings_open_exact_alarm_settings
-                        } else {
-                            R.string.settings_request_exact_alarm_settings
-                        },
-                    ),
-                )
+            Hairline()
+            SettingsRow {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(
+                            if (canScheduleExactAlarms) {
+                                R.string.settings_exact_alarm_available
+                            } else {
+                                R.string.settings_exact_alarm_unavailable
+                            },
+                        ),
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    TextButton(onClick = onOpenExactAlarmSettings) {
+                        Text(
+                            text = stringResource(
+                                if (canScheduleExactAlarms) {
+                                    R.string.settings_open_exact_alarm_settings
+                                } else {
+                                    R.string.settings_request_exact_alarm_settings
+                                },
+                            ),
+                        )
+                    }
+                }
             }
         }
     }
@@ -423,70 +691,6 @@ private fun formatBytes(bytes: Long): String {
         bytes >= 1024L * 1024L -> String.format(locale, "%.1f MB", bytes / (1024.0 * 1024.0))
         bytes >= 1024L -> String.format(locale, "%.1f KB", bytes / 1024.0)
         else -> String.format(locale, "%d B", bytes)
-    }
-}
-
-@Composable
-private fun SectionTitle(text: String) {
-    Text(
-        text = text,
-        modifier = Modifier.padding(top = 6.dp),
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.primary,
-    )
-}
-
-@Composable
-private fun <T> ChoiceRow(
-    title: String,
-    options: List<Pair<T, String>>,
-    selected: T,
-    onSelect: (T) -> Unit,
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Text(text = title, style = MaterialTheme.typography.bodyLarge)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            options.forEach { (value, label) ->
-                if (value == selected) {
-                    Button(
-                        onClick = { onSelect(value) },
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text(text = label)
-                    }
-                } else {
-                    OutlinedButton(
-                        onClick = { onSelect(value) },
-                        modifier = Modifier.weight(1f),
-                    ) {
-                        Text(text = label)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ToggleRow(
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 64.dp)
-            .padding(horizontal = 4.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-            Text(text = title, style = MaterialTheme.typography.bodyLarge)
-            Text(text = subtitle, style = MaterialTheme.typography.bodySmall)
-        }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 

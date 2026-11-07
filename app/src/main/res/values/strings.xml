@@ -29,6 +29,8 @@
     <string name="life_age_suffix">岁了</string>
     <string name="life_age_caption">时间正沿着星河向前</string>
     <string name="life_next_birthday">距下次生日</string>
+    <string name="life_next_birthday_label">距下次生日 · %1$s</string>
+    <string name="life_year_progress">这一岁已走过 %1$d%%</string>
     <string name="life_countdown">%1$d天 %2$d时 %3$d分 %4$d秒</string>
     <string name="life_countdown_days">天</string>
     <string name="life_countdown_hours">时</string>
@@ -89,6 +91,8 @@
     <string name="diary_saving">保存中…</string>
     <string name="diary_adding_image">正在处理图片…</string>
     <string name="diary_saved">已保存并加密</string>
+    <string name="diary_only_local">仅保存在本机</string>
+    <string name="diary_char_count">%1$d 字</string>
     <string name="diary_signed_at">记录于 %1$s</string>
     <string name="diary_back">返回</string>
 
@@ -128,7 +132,14 @@
     <string name="search_back">返回</string>
     <string name="search_hint">搜索记忆…</string>
     <string name="search_idle">输入关键词开始搜索</string>
+    <string name="search_idle_hint">支持日记、心情、档案与聊天记录</string>
     <string name="search_empty">没有找到相关记录</string>
+    <string name="search_empty_hint">换个关键词，或试试更短的词</string>
+    <string name="search_empty_filter_hint">当前筛选下没有结果，试试「全部」</string>
+    <string name="search_filter_all">全部</string>
+    <string name="search_filter_diary">日记</string>
+    <string name="search_filter_mood">心情</string>
+    <string name="search_filter_profile">档案</string>
     <string name="search_failed">搜索失败：%1$s</string>
 
     <string name="type_diary">日记</string>

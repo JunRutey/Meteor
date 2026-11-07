@@ -17,6 +17,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,6 +35,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /**
  * The whole Markdown editing surface: toolbar, plain text field, preview, and the
@@ -59,6 +61,8 @@ fun MarkdownField(
     missingImages: Set<String> = emptySet(),
     resolveImage: (String) -> ImageBitmap? = { null },
     onActivate: (String) -> Unit = {},
+    /** 日记页把「预览」放进页头胶囊时传 false，工具栏只留插入类动作。 */
+    showPreviewAction: Boolean = true,
 ) {
     var showLinkDialog by remember { mutableStateOf(false) }
     var pendingRemoval by remember { mutableStateOf<String?>(null) }
@@ -71,12 +75,13 @@ fun MarkdownField(
         if (text != draft) draft = text
     }
 
-    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         EditorToolbar(
             isPreviewing = previewing,
             onLink = { showLinkDialog = true },
             onImage = onPickImage,
             onTogglePreview = onPreviewToggle,
+            showPreviewAction = showPreviewAction,
         )
 
         val images = remember(text) { MarkdownEditing.imagesOf(text) }
@@ -106,9 +111,20 @@ fun MarkdownField(
                 },
                 modifier = Modifier.fillMaxWidth().weight(1f),
                 enabled = enabled,
-                textStyle = MaterialTheme.typography.bodyLarge,
+                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                    fontSize = 17.sp,
+                    lineHeight = 26.sp,
+                ),
                 placeholder = placeholder,
-                shape = RoundedCornerShape(24.dp),
+                shape = RoundedCornerShape(20.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surface,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                    disabledContainerColor = MaterialTheme.colorScheme.surface,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.primary,
+                    cursorColor = MaterialTheme.colorScheme.primary,
+                ),
             )
         }
     }

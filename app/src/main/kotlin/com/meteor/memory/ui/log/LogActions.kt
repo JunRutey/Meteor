@@ -4,12 +4,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.meteor.memory.R
@@ -29,8 +34,16 @@ fun LogActions(
         OutlinedButton(
             onClick = viewModel::export,
             enabled = state != LogUiState.Working,
+            modifier = Modifier.height(48.dp),
+            shape = RoundedCornerShape(24.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            contentPadding = PaddingValues(horizontal = 16.dp),
         ) {
-            Text(text = stringResource(R.string.log_export))
+            Text(
+                text = stringResource(R.string.log_export),
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+            )
         }
 
         when (val current = state) {

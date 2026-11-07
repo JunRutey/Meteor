@@ -304,6 +304,7 @@ fun MeteorNavHost(
                         imageDates = imageDates,
                         onPreviousMonth = viewModel::previousMonth,
                         onNextMonth = viewModel::nextMonth,
+                        onToday = viewModel::goToToday,
                         onSelectDate = viewModel::selectDate,
                         onPickMood = viewModel::setMood,
                         onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
@@ -679,6 +680,7 @@ fun MeteorNavHost(
                 onOpenExactAlarmSettings = viewModel::openExactAlarmSettings,
                 onOpenNotificationSettings = viewModel::openNotificationSettings,
                 onDismissNotificationPermissionDenied = { notificationPermissionDenied = false },
+                onBack = { navController.popBackStack() },
                 onOpenDiagnostics = if (BuildConfig.DEBUG) {
                     { navController.navigate(ROUTE_DIAGNOSTICS) }
                 } else {

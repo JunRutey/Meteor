@@ -1,8 +1,5 @@
 package com.meteor.memory.ui.home
 
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -16,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -27,7 +25,6 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -36,11 +33,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meteor.memory.R
 import com.meteor.memory.feature.calendar.CalendarHeader
-import com.meteor.memory.ui.theme.LocalAnimationsEnabled
 
 @Composable
 fun HomeTabsScreen(
@@ -81,21 +78,26 @@ private fun HomeHeader(
         appName = appName,
         onOpenSearch = onOpenSearch,
         onOpenSettings = onOpenSettings,
-        modifier = Modifier.padding(horizontal = 16.dp).padding(top = 16.dp),
+        modifier = Modifier.padding(start = 20.dp, end = 8.dp),
     )
 }
 
+/**
+ * Bottom navigation, 72dp tall: a 56×28 pill carries the icon, the label sits
+ * below it. The selected tab tints both with the slate-blue accent and a soft
+ * blue pill, matching the design sheet.
+ */
 @Composable
 private fun HomeTabBar(
     selectedTab: Int,
     onSelect: (Int) -> Unit,
 ) {
     Column {
-        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(68.dp)
+                .height(72.dp)
                 .background(MaterialTheme.colorScheme.surface),
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically,
@@ -128,15 +130,11 @@ private fun HomeTabItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val animationsEnabled = LocalAnimationsEnabled.current
-    val iconOffset by animateDpAsState(
-        targetValue = if (selected) (-4).dp else 0.dp,
-        animationSpec = if (animationsEnabled) tween(durationMillis = 180) else snap(),
-        label = "tabIconOffset",
-    )
-    val appliedOffset = iconOffset
-    val tint = if (selected) MaterialTheme.colorScheme.primary else
+    val tint = if (selected) {
+        MaterialTheme.colorScheme.secondary
+    } else {
         MaterialTheme.colorScheme.onSurfaceVariant
+    }
     Column(
         modifier = modifier
             .selectable(
@@ -150,43 +148,49 @@ private fun HomeTabItem(
     ) {
         Box(
             Modifier
-                .padding(bottom = 2.dp)
-                .size(width = 64.dp, height = 30.dp)
+                .padding(bottom = 4.dp)
+                .size(width = 56.dp, height = 28.dp)
                 .background(
-                    color = if (selected) MaterialTheme.colorScheme.primaryContainer else
-                        MaterialTheme.colorScheme.surface,
-                    shape = androidx.compose.foundation.shape.CircleShape,
+                    color = if (selected) {
+                        MaterialTheme.colorScheme.primaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surface
+                    },
+                    shape = RoundedCornerShape(14.dp),
                 ),
             contentAlignment = Alignment.Center,
         ) {
-            Canvas(Modifier.size(24.dp)) {
-                val offset = appliedOffset.toPx()
-                val path = if (star) starPath(size.width, size.height, offset) else notebookPath(
-                    size.width,
-                    size.height,
-                    offset,
-                )
+            Canvas(Modifier.size(22.dp)) {
+                val path = if (star) {
+                    starPath(size.width, size.height)
+                } else {
+                    notebookPath(size.width, size.height)
+                }
                 drawPath(
                     path = path,
                     color = tint,
-                    style = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+                    style = Stroke(
+                        width = 1.8.dp.toPx(),
+                        cap = StrokeCap.Round,
+                        join = StrokeJoin.Round,
+                    ),
                 )
             }
         }
         Text(
             text = label,
             color = tint,
-            fontSize = 11.sp,
-            style = MaterialTheme.typography.labelSmall,
+            fontSize = 12.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
         )
     }
 }
 
-private fun starPath(width: Float, height: Float, offsetY: Float): Path {
+private fun starPath(width: Float, height: Float): Path {
     val centerX = width / 2
-    val centerY = height / 2 + offsetY
-    val outer = width * 0.43f
-    val inner = outer * 0.43f
+    val centerY = height / 2
+    val outer = width * 0.47f
+    val inner = outer * 0.42f
     return Path().apply {
         for (index in 0 until 10) {
             val radius = if (index % 2 == 0) outer else inner
@@ -199,22 +203,35 @@ private fun starPath(width: Float, height: Float, offsetY: Float): Path {
     }
 }
 
-private fun notebookPath(width: Float, height: Float, offsetY: Float): Path {
-    val top = height * 0.13f + offsetY
-    val bottom = height * 0.87f + offsetY
+private fun notebookPath(width: Float, height: Float): Path {
+    val top = height * 0.16f
+    val bottom = height * 0.84f
     return Path().apply {
-        moveTo(width * 0.14f, top)
-        lineTo(width * 0.5f, top + height * 0.1f)
-        lineTo(width * 0.86f, top)
-        lineTo(width * 0.86f, bottom)
-        lineTo(width * 0.5f, bottom - height * 0.1f)
-        lineTo(width * 0.14f, bottom)
+        moveTo(width * 0.5f, top + height * 0.08f)
+        cubicTo(
+            width * 0.34f, top,
+            width * 0.16f, top - height * 0.02f,
+            width * 0.08f, top,
+        )
+        lineTo(width * 0.08f, bottom)
+        cubicTo(
+            width * 0.16f, bottom - height * 0.02f,
+            width * 0.34f, bottom,
+            width * 0.5f, bottom + height * 0.08f,
+        )
+        cubicTo(
+            width * 0.66f, bottom,
+            width * 0.84f, bottom - height * 0.02f,
+            width * 0.92f, bottom,
+        )
+        lineTo(width * 0.92f, top)
+        cubicTo(
+            width * 0.84f, top - height * 0.02f,
+            width * 0.66f, top,
+            width * 0.5f, top + height * 0.08f,
+        )
         close()
-        moveTo(width * 0.5f, top + height * 0.1f)
-        lineTo(width * 0.5f, bottom - height * 0.1f)
-        moveTo(width * 0.23f, height * 0.4f + offsetY)
-        lineTo(width * 0.4f, height * 0.44f + offsetY)
-        moveTo(width * 0.6f, height * 0.44f + offsetY)
-        lineTo(width * 0.77f, height * 0.4f + offsetY)
+        moveTo(width * 0.5f, top + height * 0.08f)
+        lineTo(width * 0.5f, bottom + height * 0.08f)
     }
 }

@@ -2,6 +2,13 @@
 <resources>
     <string name="calendar_no_mood">这天还没有记录心情</string>
     <string name="calendar_has_diary">这天已写日记</string>
+    <string name="calendar_month_label">%1$d 年 %2$d 月</string>
+    <string name="calendar_today">今天</string>
+    <string name="calendar_previous_month">上个月</string>
+    <string name="calendar_next_month">下个月</string>
+    <string name="calendar_month_summary">本月已记录 %1$d 天 · 已连续 %2$d 天</string>
+    <string name="calendar_date_label">%1$d 月 %2$d 日 · %3$s</string>
+    <string name="calendar_mood_today">今日心情 · %1$s</string>
     <string name="calendar_open_settings">设置</string>
     <string name="calendar_view_diary">查看当天日记</string>
     <string name="calendar_backfill_diary">补写日记</string>

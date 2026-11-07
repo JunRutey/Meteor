@@ -57,6 +57,17 @@ class CalendarViewModel @Inject constructor(
 
     fun nextMonth() = shiftMonth(1)
 
+    /** 回到今天：必要时切回本月，再选中今天。 */
+    fun goToToday() {
+        val today = LocalDate.now()
+        _selectedDate.value = today
+        val current = YearMonth.from(today)
+        if (_month.value != current) {
+            _month.value = current
+            load()
+        }
+    }
+
     fun selectDate(date: LocalDate) {
         _selectedDate.value = date
     }
