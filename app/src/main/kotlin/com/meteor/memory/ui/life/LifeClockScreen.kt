@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -37,6 +38,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -188,6 +190,12 @@ private fun LifeClockContent(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Start,
         ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(palette.badgeBackground, CircleShape),
+            )
+            Spacer(Modifier.size(8.dp))
             Text(
                 text = stringResource(R.string.life_online_status),
                 color = palette.primaryText,
@@ -207,36 +215,51 @@ private fun LifeClockContent(
             }
         }
 
-        Spacer(Modifier.height(32.dp))
+        Text(
+            text = stringResource(R.string.life_age_prefix),
+            modifier = Modifier.padding(top = 42.dp),
+            color = palette.secondaryText,
+            style = MaterialTheme.typography.titleMedium,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            text = age,
+            modifier = Modifier.padding(top = 8.dp),
+            color = palette.primaryText,
+            style = MaterialTheme.typography.headlineLarge,
+            fontSize = 42.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+        )
+        Text(
+            text = stringResource(R.string.life_age_suffix),
+            modifier = Modifier.padding(top = 2.dp),
+            color = palette.secondaryText,
+            style = MaterialTheme.typography.titleMedium,
+            textAlign = TextAlign.Center,
+        )
+        Text(
+            text = stringResource(R.string.life_age_caption),
+            modifier = Modifier.padding(top = 12.dp),
+            color = palette.secondaryText,
+            style = MaterialTheme.typography.bodySmall,
+        )
         Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = palette.card,
-            shape = RoundedCornerShape(22.dp),
-            border = BorderStroke(width = 1.dp, color = palette.cardBorder),
+            modifier = Modifier.padding(top = 22.dp),
+            color = palette.badgeBackground.copy(alpha = 0.16f),
+            shape = CircleShape,
         ) {
             Text(
                 text = birthday,
-                modifier = Modifier.padding(horizontal = 18.dp, vertical = 15.dp),
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp),
                 color = palette.primaryText,
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
             )
         }
 
-        Spacer(Modifier.height(38.dp))
-        Text(
-            text = stringResource(R.string.life_age_text, age),
-            color = palette.primaryText,
-            style = MaterialTheme.typography.headlineSmall,
-            textAlign = TextAlign.Center,
-        )
-        Spacer(Modifier.height(8.dp))
-        Text(
-            text = stringResource(R.string.life_age_caption),
-            color = palette.secondaryText,
-            style = MaterialTheme.typography.bodySmall,
-        )
-        Spacer(Modifier.height(34.dp))
+        Spacer(Modifier.height(30.dp))
         Surface(
             modifier = Modifier.fillMaxWidth(),
             color = palette.countdownCard,
@@ -260,18 +283,35 @@ private fun LifeClockContent(
                     textAlign = TextAlign.Center,
                 )
                 Spacer(Modifier.height(16.dp))
-                Text(
-                    text = stringResource(
-                        R.string.life_countdown,
-                        days,
-                        hours,
-                        minutes,
-                        seconds,
-                    ),
-                    color = palette.primaryText,
-                    style = MaterialTheme.typography.titleLarge,
-                    textAlign = TextAlign.Center,
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    CountdownUnit(
+                        value = days,
+                        label = stringResource(R.string.life_countdown_days),
+                        palette = palette,
+                        modifier = Modifier.weight(1f),
+                    )
+                    CountdownUnit(
+                        value = hours,
+                        label = stringResource(R.string.life_countdown_hours),
+                        palette = palette,
+                        modifier = Modifier.weight(1f),
+                    )
+                    CountdownUnit(
+                        value = minutes,
+                        label = stringResource(R.string.life_countdown_minutes),
+                        palette = palette,
+                        modifier = Modifier.weight(1f),
+                    )
+                    CountdownUnit(
+                        value = seconds,
+                        label = stringResource(R.string.life_countdown_seconds),
+                        palette = palette,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
         }
         Spacer(Modifier.height(26.dp))
@@ -281,6 +321,37 @@ private fun LifeClockContent(
             fontSize = 12.sp,
             textAlign = TextAlign.Center,
         )
+    }
+}
+
+@Composable
+private fun CountdownUnit(
+    value: Long,
+    label: String,
+    palette: LifePalette,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        color = palette.card,
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, palette.cardBorder),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Text(
+                text = value.toString(),
+                color = palette.primaryText,
+                style = MaterialTheme.typography.titleLarge,
+            )
+            Text(
+                text = label,
+                color = palette.secondaryText,
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
     }
 }
 
@@ -367,7 +438,7 @@ private fun lifePalette(): LifePalette {
             horizon = Color.White,
             primaryText = Color(0xFFF3F7FF),
             secondaryText = Color(0xFFA8B8CF),
-            badgeBackground = Color(0xFF168A5B),
+            badgeBackground = Color(0xFF426989),
             badgeText = Color.White,
             card = Color.White.copy(alpha = 0.075f),
             cardBorder = Color.White.copy(alpha = 0.14f),

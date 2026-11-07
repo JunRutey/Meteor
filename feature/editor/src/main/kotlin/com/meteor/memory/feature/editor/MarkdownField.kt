@@ -108,6 +108,7 @@ fun MarkdownField(
                 enabled = enabled,
                 textStyle = MaterialTheme.typography.bodyLarge,
                 placeholder = placeholder,
+                shape = RoundedCornerShape(24.dp),
             )
         }
     }

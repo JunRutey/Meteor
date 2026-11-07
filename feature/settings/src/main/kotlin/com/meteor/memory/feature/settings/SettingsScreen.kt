@@ -3,20 +3,23 @@ package com.meteor.memory.feature.settings
 import android.app.TimePickerDialog
 import android.os.Build
 import android.text.format.DateFormat
-import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
@@ -102,184 +105,199 @@ fun SettingsScreen(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(horizontal = 16.dp, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(18.dp),
     ) {
-        SectionTitle(stringResource(R.string.settings_section_appearance))
+        SettingsSection(title = stringResource(R.string.settings_section_appearance)) {
+            ChoiceRow(
+                title = stringResource(R.string.settings_dark_mode),
+                options = listOf(
+                    DarkMode.FOLLOW_SYSTEM to stringResource(R.string.settings_dark_follow_system),
+                    DarkMode.DARK to stringResource(R.string.settings_dark_dark),
+                    DarkMode.LIGHT to stringResource(R.string.settings_dark_light),
+                ),
+                selected = settings.darkMode,
+                onSelect = onDarkModeChanged,
+            )
 
-        ChoiceRow(
-            title = stringResource(R.string.settings_dark_mode),
-            options = listOf(
-                DarkMode.FOLLOW_SYSTEM to stringResource(R.string.settings_dark_follow_system),
-                DarkMode.DARK to stringResource(R.string.settings_dark_dark),
-                DarkMode.LIGHT to stringResource(R.string.settings_dark_light),
-            ),
-            selected = settings.darkMode,
-            onSelect = onDarkModeChanged,
-        )
+            // Dynamic colour is an Android 12+ capability; older releases fall back
+            // to the built-in palette, so the switch would be a lie there.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                ToggleRow(
+                    title = stringResource(R.string.settings_dynamic_color),
+                    subtitle = stringResource(R.string.settings_dynamic_color_desc),
+                    checked = settings.dynamicColor,
+                    onCheckedChange = onDynamicColorChanged,
+                )
+            }
 
-        // Dynamic colour is an Android 12+ capability; older releases fall back
-        // to the built-in palette, so the switch would be a lie there.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             ToggleRow(
-                title = stringResource(R.string.settings_dynamic_color),
-                subtitle = stringResource(R.string.settings_dynamic_color_desc),
-                checked = settings.dynamicColor,
-                onCheckedChange = onDynamicColorChanged,
+                title = stringResource(R.string.settings_animations),
+                subtitle = stringResource(R.string.settings_animations_desc),
+                checked = settings.animationsEnabled,
+                onCheckedChange = onAnimationsChanged,
             )
         }
 
-        ToggleRow(
-            title = stringResource(R.string.settings_animations),
-            subtitle = stringResource(R.string.settings_animations_desc),
-            checked = settings.animationsEnabled,
-            onCheckedChange = onAnimationsChanged,
-        )
-
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
-
-        SectionTitle(stringResource(R.string.settings_section_profile))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onOpenBirthDate)
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                Text(
-                    text = stringResource(R.string.settings_birth_date),
-                    style = MaterialTheme.typography.bodyLarge,
-                )
-                Text(
-                    text = stringResource(R.string.settings_birth_date_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                )
+        SettingsSection(title = stringResource(R.string.settings_section_profile)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onOpenBirthDate)
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                    Text(
+                        text = stringResource(R.string.settings_birth_date),
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Text(
+                        text = stringResource(R.string.settings_birth_date_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Text(text = "›", style = MaterialTheme.typography.titleMedium)
             }
-            Text(text = "›", style = MaterialTheme.typography.titleMedium)
         }
 
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        SettingsSection(title = stringResource(R.string.settings_section_security)) {
+            ToggleRow(
+                title = stringResource(R.string.settings_app_lock),
+                subtitle = stringResource(R.string.settings_app_lock_desc),
+                checked = settings.appLockEnabled,
+                onCheckedChange = onAppLockChanged,
+            )
 
-        SectionTitle(stringResource(R.string.settings_section_security))
-        ToggleRow(
-            title = stringResource(R.string.settings_app_lock),
-            subtitle = stringResource(R.string.settings_app_lock_desc),
-            checked = settings.appLockEnabled,
-            onCheckedChange = onAppLockChanged,
-        )
+            HideLauncherIconRow(
+                hidden = settings.hideLauncherIcon,
+                needsSystemGrants = launcherIconNeedsSystemGrants,
+                recovery = launcherRecovery,
+                dialCodeVerified = dialCodeVerified,
+                onHiddenChange = onHideLauncherIconChanged,
+                onOpenPermissions = onOpenLauncherPermissions,
+                onOpenAutoStart = onOpenAutoStartSettings,
+                onOpenRecovery = onOpenLauncherRecoverySettings,
+            )
+        }
 
-        HideLauncherIconRow(
-            hidden = settings.hideLauncherIcon,
-            needsSystemGrants = launcherIconNeedsSystemGrants,
-            recovery = launcherRecovery,
-            dialCodeVerified = dialCodeVerified,
-            onHiddenChange = onHideLauncherIconChanged,
-            onOpenPermissions = onOpenLauncherPermissions,
-            onOpenAutoStart = onOpenAutoStartSettings,
-            onOpenRecovery = onOpenLauncherRecoverySettings,
-        )
-
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
-
-        SectionTitle(stringResource(R.string.settings_section_logs))
-        ToggleRow(
-            title = stringResource(R.string.settings_verbose_logging),
-            subtitle = stringResource(R.string.settings_verbose_logging_desc),
-            checked = settings.verboseLogging,
-            onCheckedChange = onVerboseLoggingChanged,
-        )
-        Text(
-            text = stringResource(R.string.settings_log_size, formatBytes(logSizeBytes)),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        logActions()
+        SettingsSection(title = stringResource(R.string.settings_section_logs)) {
+            ToggleRow(
+                title = stringResource(R.string.settings_verbose_logging),
+                subtitle = stringResource(R.string.settings_verbose_logging_desc),
+                checked = settings.verboseLogging,
+                onCheckedChange = onVerboseLoggingChanged,
+            )
+            Text(
+                text = stringResource(R.string.settings_log_size, formatBytes(logSizeBytes)),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            logActions()
+        }
 
         if (notificationFeatureAvailable) {
-            HorizontalDivider(Modifier.padding(vertical = 8.dp))
-            SectionTitle(stringResource(R.string.settings_section_notifications))
-            ReminderSettingsSection(
-                enabled = settings.diaryReminderEnabled,
-                timeMinutes = settings.diaryReminderTimeMinutes,
-                reminderNotificationsAllowed = reminderNotificationsAllowed,
-                canScheduleExactAlarms = canScheduleExactAlarms,
-                permissionDenied = notificationPermissionDenied,
-                onEnabledChange = onReminderEnabledChanged,
-                onTimeChanged = onReminderTimeChanged,
-                onOpenExactAlarmSettings = onOpenExactAlarmSettings,
-                onOpenNotificationSettings = onOpenNotificationSettings,
-                onDismissPermissionDenied = onDismissNotificationPermissionDenied,
-            )
-        }
-
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
-
-        SectionTitle(stringResource(R.string.settings_section_backup))
-        backupActions()
-
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
-
-        SectionTitle(stringResource(R.string.settings_section_ai))
-        aiActions()
-
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
-
-        SectionTitle(stringResource(R.string.settings_section_updates))
-        ToggleRow(
-            title = stringResource(R.string.settings_auto_check_updates),
-            subtitle = stringResource(R.string.settings_auto_check_updates_desc),
-            checked = settings.autoCheckForUpdates,
-            onCheckedChange = onAutoCheckForUpdatesChanged,
-        )
-        Text(text = updateStatusText, style = MaterialTheme.typography.bodySmall)
-        Text(
-            text = stringResource(R.string.settings_update_install_note),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        OutlinedButton(
-            onClick = onCheckUpdates,
-            enabled = !updateBusy,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(text = stringResource(R.string.settings_check_updates))
-        }
-        if (updateCanInstall) {
-            Button(onClick = onInstallUpdate, modifier = Modifier.fillMaxWidth()) {
-                Text(text = stringResource(R.string.settings_install_update))
+            SettingsSection(title = stringResource(R.string.settings_section_notifications)) {
+                ReminderSettingsSection(
+                    enabled = settings.diaryReminderEnabled,
+                    timeMinutes = settings.diaryReminderTimeMinutes,
+                    reminderNotificationsAllowed = reminderNotificationsAllowed,
+                    canScheduleExactAlarms = canScheduleExactAlarms,
+                    permissionDenied = notificationPermissionDenied,
+                    onEnabledChange = onReminderEnabledChanged,
+                    onTimeChanged = onReminderTimeChanged,
+                    onOpenExactAlarmSettings = onOpenExactAlarmSettings,
+                    onOpenNotificationSettings = onOpenNotificationSettings,
+                    onDismissPermissionDenied = onDismissNotificationPermissionDenied,
+                )
             }
         }
 
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        SettingsSection(title = stringResource(R.string.settings_section_backup)) {
+            backupActions()
+        }
 
-        SectionTitle(stringResource(R.string.settings_section_about))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onOpenAbout)
-                .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
+        SettingsSection(title = stringResource(R.string.settings_section_ai)) {
+            aiActions()
+        }
+
+        SettingsSection(title = stringResource(R.string.settings_section_updates)) {
+            ToggleRow(
+                title = stringResource(R.string.settings_auto_check_updates),
+                subtitle = stringResource(R.string.settings_auto_check_updates_desc),
+                checked = settings.autoCheckForUpdates,
+                onCheckedChange = onAutoCheckForUpdatesChanged,
+            )
+            Text(text = updateStatusText, style = MaterialTheme.typography.bodySmall)
             Text(
-                text = stringResource(R.string.settings_about_version, versionName),
-                style = MaterialTheme.typography.bodyLarge,
+                text = stringResource(R.string.settings_update_install_note),
+                style = MaterialTheme.typography.bodySmall,
             )
-            Text(text = "›", style = MaterialTheme.typography.titleMedium)
-        }
-        OutlinedButton(onClick = onOpenDonate, modifier = Modifier.fillMaxWidth()) {
-            Text(text = stringResource(R.string.settings_about_donate))
-        }
-        OutlinedButton(onClick = onOpenChangelog, modifier = Modifier.fillMaxWidth()) {
-            Text(text = stringResource(R.string.settings_about_changelog))
+            OutlinedButton(
+                onClick = onCheckUpdates,
+                enabled = !updateBusy,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(text = stringResource(R.string.settings_check_updates))
+            }
+            if (updateCanInstall) {
+                Button(onClick = onInstallUpdate, modifier = Modifier.fillMaxWidth()) {
+                    Text(text = stringResource(R.string.settings_install_update))
+                }
+            }
         }
 
-        // Debug builds only: the entry lives here now that the old home screen
-        // (which owned it) is gone. ADR-016 needs the manual index rebuild.
-        onOpenDiagnostics?.let { open ->
-            OutlinedButton(onClick = open, modifier = Modifier.fillMaxWidth()) {
-                Text(text = stringResource(R.string.settings_open_diagnostics))
+        SettingsSection(title = stringResource(R.string.settings_section_about)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onOpenAbout)
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_about_version, versionName),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Text(text = "›", style = MaterialTheme.typography.titleMedium)
             }
+            OutlinedButton(onClick = onOpenDonate, modifier = Modifier.fillMaxWidth()) {
+                Text(text = stringResource(R.string.settings_about_donate))
+            }
+            OutlinedButton(onClick = onOpenChangelog, modifier = Modifier.fillMaxWidth()) {
+                Text(text = stringResource(R.string.settings_about_changelog))
+            }
+
+            // Debug builds only: the entry lives here now that the old home screen
+            // (which owned it) is gone. ADR-016 needs the manual index rebuild.
+            onOpenDiagnostics?.let { open ->
+                OutlinedButton(onClick = open, modifier = Modifier.fillMaxWidth()) {
+                    Text(text = stringResource(R.string.settings_open_diagnostics))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsSection(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SectionTitle(title)
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                content = content,
+            )
         }
     }
 }
@@ -430,9 +448,19 @@ private fun <T> ChoiceRow(
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             options.forEach { (value, label) ->
                 if (value == selected) {
-                    Button(onClick = { onSelect(value) }) { Text(text = label) }
+                    Button(
+                        onClick = { onSelect(value) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(text = label)
+                    }
                 } else {
-                    OutlinedButton(onClick = { onSelect(value) }) { Text(text = label) }
+                    OutlinedButton(
+                        onClick = { onSelect(value) },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(text = label)
+                    }
                 }
             }
         }
@@ -449,11 +477,8 @@ private fun ToggleRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
-                shape = MaterialTheme.shapes.medium,
-            )
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .heightIn(min = 64.dp)
+            .padding(horizontal = 4.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {

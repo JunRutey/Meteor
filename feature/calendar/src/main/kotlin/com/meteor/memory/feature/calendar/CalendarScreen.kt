@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -119,13 +120,17 @@ fun CalendarScreen(
             }
 
             Row(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                TextButton(onClick = onPreviousMonth) { Text("‹") }
-                Text(text = monthLabel, style = MaterialTheme.typography.titleMedium)
-                TextButton(onClick = onNextMonth) { Text("›") }
+                TextButton(onClick = onPreviousMonth) {
+                    Text("‹", style = MaterialTheme.typography.headlineSmall)
+                }
+                Text(text = monthLabel, style = MaterialTheme.typography.titleLarge)
+                TextButton(onClick = onNextMonth) {
+                    Text("›", style = MaterialTheme.typography.headlineSmall)
+                }
             }
 
             WeekdayHeader(locale)
@@ -241,11 +246,12 @@ fun CalendarHeader(
 
 @Composable
 private fun WeekdayHeader(locale: Locale) {
-    Row(modifier = Modifier.fillMaxWidth()) {
+    Row(modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp)) {
         DayOfWeek.entries.forEach { day ->
             Text(
                 text = day.getDisplayName(TextStyle.NARROW, locale),
                 style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.weight(1f),
             )
@@ -299,17 +305,23 @@ private fun DayCell(
     isSelected: Boolean,
     onClick: () -> Unit,
 ) {
+    val selected = isSelected
     val background = when {
-        isSelected -> MaterialTheme.colorScheme.primaryContainer
-        isToday -> MaterialTheme.colorScheme.surfaceVariant
+        selected -> MaterialTheme.colorScheme.primary
+        isToday -> MaterialTheme.colorScheme.primaryContainer
         else -> MaterialTheme.colorScheme.surface
+    }
+    val foreground = when {
+        selected -> MaterialTheme.colorScheme.onPrimary
+        isToday -> MaterialTheme.colorScheme.onPrimaryContainer
+        else -> MaterialTheme.colorScheme.onSurface
     }
 
     Column(
         modifier = Modifier
-            .padding(2.dp)
+            .padding(horizontal = 2.dp, vertical = 3.dp)
             .aspectRatio(1f)
-            .clip(CircleShape)
+            .clip(RoundedCornerShape(16.dp))
             .background(background)
             .clickable(onClick = onClick),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -319,6 +331,7 @@ private fun DayCell(
             text = date.dayOfMonth.toString(),
             style = MaterialTheme.typography.bodyMedium,
             fontSize = 13.sp,
+            color = foreground,
         )
         mood?.let {
             Text(text = it.emoji(), fontSize = 12.sp)
@@ -343,12 +356,13 @@ private fun DayCard(
     }
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -356,7 +370,7 @@ private fun DayCard(
             ) {
                 Text(
                     text = dateLabel,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleLarge,
                 )
                 if (hasDiary && !date.isAfter(today)) DoubleCheckMark()
             }
@@ -392,7 +406,7 @@ private fun DayCard(
                                     if (candidate == mood) {
                                         MaterialTheme.colorScheme.primaryContainer
                                     } else {
-                                        MaterialTheme.colorScheme.surface
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
                                     },
                                 )
                                 .clickable { onPickMood(candidate) }

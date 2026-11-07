@@ -25,9 +25,15 @@
     <string name="life_birthday_lunar">生日 · 农历 %1$d年%2$d月%3$d日（公历 %4$s）</string>
     <string name="life_birthday_lunar_leap">生日 · 农历 %1$d年闰%2$d月%3$d日（公历 %4$s）</string>
     <string name="life_age_text">你已经 %1$s 岁了</string>
+    <string name="life_age_prefix">你已经</string>
+    <string name="life_age_suffix">岁了</string>
     <string name="life_age_caption">时间正沿着星河向前</string>
     <string name="life_next_birthday">距下次生日</string>
     <string name="life_countdown">%1$d天 %2$d时 %3$d分 %4$d秒</string>
+    <string name="life_countdown_days">天</string>
+    <string name="life_countdown_hours">时</string>
+    <string name="life_countdown_minutes">分</string>
+    <string name="life_countdown_seconds">秒</string>
     <string name="life_footer">愿每一个此刻，都有迹可循。</string>
     <string name="life_load_failed">生辰资料暂时无法读取，请重试。</string>
     <string name="life_retry">重试</string>

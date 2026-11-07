@@ -2,9 +2,11 @@ package com.meteor.memory.ui.diary
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -41,8 +43,8 @@ fun DiaryEditScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         DiaryScreenHeader(
             dateLabel = state.dateLabel,
@@ -101,7 +103,8 @@ fun DiaryEditScreen(
         Button(
             onClick = onSave,
             enabled = !state.isSaving && !state.isInsertingImage,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxWidth().heightIn(min = 60.dp),
+            shape = RoundedCornerShape(28.dp),
         ) {
             Text(
                 text = stringResource(

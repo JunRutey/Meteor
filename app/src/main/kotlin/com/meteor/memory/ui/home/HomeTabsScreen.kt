@@ -135,7 +135,7 @@ private fun HomeTabItem(
         label = "tabIconOffset",
     )
     val appliedOffset = iconOffset
-    val tint = if (selected) MaterialTheme.colorScheme.onSurface else
+    val tint = if (selected) MaterialTheme.colorScheme.primary else
         MaterialTheme.colorScheme.onSurfaceVariant
     Column(
         modifier = modifier
@@ -148,22 +148,30 @@ private fun HomeTabItem(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Canvas(
+        Box(
             Modifier
                 .padding(bottom = 2.dp)
-                .size(27.dp),
+                .size(width = 64.dp, height = 30.dp)
+                .background(
+                    color = if (selected) MaterialTheme.colorScheme.primaryContainer else
+                        MaterialTheme.colorScheme.surface,
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                ),
+            contentAlignment = Alignment.Center,
         ) {
-            val offset = appliedOffset.toPx()
-            val path = if (star) starPath(size.width, size.height, offset) else notebookPath(
-                size.width,
-                size.height,
-                offset,
-            )
-            drawPath(
-                path = path,
-                color = tint,
-                style = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
-            )
+            Canvas(Modifier.size(24.dp)) {
+                val offset = appliedOffset.toPx()
+                val path = if (star) starPath(size.width, size.height, offset) else notebookPath(
+                    size.width,
+                    size.height,
+                    offset,
+                )
+                drawPath(
+                    path = path,
+                    color = tint,
+                    style = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+                )
+            }
         }
         Text(
             text = label,
