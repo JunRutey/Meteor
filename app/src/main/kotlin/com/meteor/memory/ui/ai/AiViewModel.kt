@@ -17,11 +17,13 @@ import com.meteor.memory.feature.ai.AiSkill
 import com.meteor.memory.feature.ai.AiProcessStep
 import com.meteor.memory.feature.ai.AiToolApproval
 import com.meteor.memory.feature.ai.AiUsage
+import com.meteor.memory.feature.ai.ArchiveTools
 import com.meteor.memory.feature.ai.ChatRequest
 import com.meteor.memory.feature.ai.ChatTurn
 import com.meteor.memory.feature.ai.SkillStage
 import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.SettingsRepository
+import com.meteor.memory.ui.search.SearchService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -31,8 +33,26 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONException
+import org.json.JSONObject
 import java.time.Instant
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
+
+internal fun isSuccessfulSearchableWrite(name: String, result: String): Boolean {
+    if (
+        name != ArchiveTools.TOOL_SAVE_DIARY &&
+        name != ArchiveTools.TOOL_APPEND_DIARY &&
+        name != ArchiveTools.TOOL_SET_MOOD
+    ) {
+        return false
+    }
+    return try {
+        JSONObject(result).optBoolean("saved")
+    } catch (_: JSONException) {
+        false
+    }
+}
 
 /** Why the chat is unavailable. Mapped to user copy by the UI layer. */
 enum class AiBlocked { DISABLED, NEEDS_CONSENT, NEEDS_KEY, NEEDS_CONFIG }
@@ -66,6 +86,7 @@ class AiViewModel @Inject constructor(
     private val reader: AiSettingsReader,
     private val appLog: AppLog,
     private val chatStore: AiChatStore,
+    private val searchService: SearchService,
 ) : ViewModel() {
 
     private val initialPersonId: String? = savedStateHandle.get<String>(ARG_PERSON_ID)
@@ -170,6 +191,7 @@ class AiViewModel @Inject constructor(
         }
         persistHistory()
 
+        val searchableRecordChanged = AtomicBoolean(false)
         val listener = object : AiChatListener {
             override fun onContent(delta: String) {
                 _state.update { it.copy(liveContent = it.liveContent + delta) }
@@ -202,6 +224,9 @@ class AiViewModel @Inject constructor(
             }
 
             override fun onToolResult(name: String, result: String) {
+                if (isSuccessfulSearchableWrite(name, result)) {
+                    searchableRecordChanged.set(true)
+                }
                 _state.update { state ->
                     val index = state.liveSteps.indexOfLast {
                         it is AiProcessStep.Tool && it.name == name && !it.done
@@ -256,7 +281,7 @@ class AiViewModel @Inject constructor(
                 }
                 return@launch
             }
-            runCatching {
+            val chatResult = runCatching {
                 aiModule.chatStreaming(
                     ChatRequest(
                         skillName = skillName,
@@ -267,7 +292,12 @@ class AiViewModel @Inject constructor(
                     ),
                     listener,
                 )
-            }.onSuccess { reply ->
+            }
+            if (searchableRecordChanged.get()) {
+                runCatching { searchService.rebuild() }
+                    .onFailure { appLog.warn(TAG, "search index refresh after AI write failed", it) }
+            }
+            chatResult.onSuccess { reply ->
                 val usage = reply.usage
                 _state.update { state ->
                     state.copy(
