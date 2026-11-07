@@ -8,6 +8,8 @@ import android.os.Build
 object NotificationChannels {
     const val DAILY_REMINDER = "meteor.daily_reminder"
     const val AI_MESSAGES = "meteor.ai_messages"
+    /** Low importance: download progress must never ring or vibrate. */
+    const val UPDATES = "meteor.updates"
 
     fun create(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
@@ -26,6 +28,14 @@ object NotificationChannels {
                 NotificationManager.IMPORTANCE_DEFAULT,
             ).apply {
                 description = context.getString(R.string.notification_channel_ai_messages_description)
+            },
+            NotificationChannel(
+                UPDATES,
+                context.getString(R.string.notification_channel_update_name),
+                NotificationManager.IMPORTANCE_LOW,
+            ).apply {
+                description = context.getString(R.string.notification_channel_update_description)
+                setShowBadge(false)
             },
         )
         context.getSystemService(NotificationManager::class.java).createNotificationChannels(channels)

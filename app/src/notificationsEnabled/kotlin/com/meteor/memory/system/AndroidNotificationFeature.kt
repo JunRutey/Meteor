@@ -110,28 +110,82 @@ class AndroidNotificationFeature @Inject constructor(
 
     @SuppressLint("MissingPermission")
     private fun postDailyReminder() {
-        val openApp = PendingIntent.getActivity(
-            context,
-            DAILY_REMINDER_REQUEST_CODE,
-            Intent(context, MainActivity::class.java).addFlags(
-                Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP,
-            ),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
         val notification = NotificationCompat.Builder(context, NotificationChannels.DAILY_REMINDER)
             .setSmallIcon(android.R.drawable.ic_menu_edit)
             .setContentTitle(context.getString(R.string.diary_reminder_notification_title))
             .setContentText(context.getString(R.string.diary_reminder_notification_body))
-            .setContentIntent(openApp)
+            .setContentIntent(openAppPendingIntent(DAILY_REMINDER_REQUEST_CODE))
             .setAutoCancel(true)
             .build()
 
         NotificationManagerCompat.from(context).notify(DAILY_REMINDER_NOTIFICATION_ID, notification)
     }
 
+    @SuppressLint("MissingPermission")
+    override fun showUpdateDownload(progress: UpdateNotificationProgress) {
+        if (!canPostNotifications()) return
+
+        val notification = NotificationCompat.Builder(context, NotificationChannels.UPDATES)
+            .setSmallIcon(android.R.drawable.stat_sys_download)
+            .setContentTitle(
+                context.getString(
+                    R.string.update_notification_downloading_title,
+                    progress.versionName,
+                ),
+            )
+            .setContentText(
+                if (progress.totalBytes > 0) {
+                    context.getString(R.string.update_notification_progress, progress.percent)
+                } else {
+                    context.getString(R.string.update_notification_downloading_body)
+                },
+            )
+            .setContentIntent(openAppPendingIntent(UPDATE_REQUEST_CODE))
+            .setProgress(100, progress.percent, progress.totalBytes <= 0)
+            .setOnlyAlertOnce(true)
+            // Not ongoing: if the process dies mid-download, a stuck
+            // "downloading" notification must still be swipeable.
+            .setSilent(true)
+            .build()
+
+        NotificationManagerCompat.from(context).notify(UPDATE_NOTIFICATION_ID, notification)
+    }
+
+    @SuppressLint("MissingPermission")
+    override fun showUpdateReady(versionName: String) {
+        if (!canPostNotifications()) return
+
+        val notification = NotificationCompat.Builder(context, NotificationChannels.UPDATES)
+            .setSmallIcon(android.R.drawable.stat_sys_download_done)
+            .setContentTitle(context.getString(R.string.update_notification_ready_title, versionName))
+            .setContentText(context.getString(R.string.update_notification_ready_body))
+            .setContentIntent(openAppPendingIntent(UPDATE_REQUEST_CODE))
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .build()
+
+        NotificationManagerCompat.from(context).notify(UPDATE_NOTIFICATION_ID, notification)
+    }
+
+    override fun hideUpdateNotification() {
+        NotificationManagerCompat.from(context).cancel(UPDATE_NOTIFICATION_ID)
+    }
+
+    private fun openAppPendingIntent(requestCode: Int): PendingIntent =
+        PendingIntent.getActivity(
+            context,
+            requestCode,
+            Intent(context, MainActivity::class.java).addFlags(
+                Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP,
+            ),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
     private companion object {
         const val DAILY_REMINDER_NOTIFICATION_ID = 2020
         const val DAILY_REMINDER_REQUEST_CODE = 2020
+        const val UPDATE_NOTIFICATION_ID = 2021
+        const val UPDATE_REQUEST_CODE = 2021
     }
 }
 

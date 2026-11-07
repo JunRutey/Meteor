@@ -3,24 +3,30 @@ package com.meteor.memory.ui
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.meteor.memory.BuildConfig
 import com.meteor.memory.core.crypto.AppLock
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.SettingsRepository
 import com.meteor.memory.system.LauncherIconController
+import com.meteor.memory.system.LegacyInstallDetector
+import com.meteor.memory.update.UpdateService
 import com.meteor.memory.ui.search.SearchService
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.IOException
 import javax.inject.Inject
 
 /**
@@ -43,7 +49,12 @@ class RootViewModel @Inject constructor(
     private val settingsRepository: SettingsRepository,
     private val appLog: AppLog,
     private val searchService: SearchService,
+    private val updateService: UpdateService,
+    private val legacyInstallDetector: LegacyInstallDetector,
 ) : ViewModel() {
+
+    private val _onboardingGate = MutableStateFlow(OnboardingGate.LOADING)
+    val onboardingGate: StateFlow<OnboardingGate> = _onboardingGate.asStateFlow()
 
     private val _locked = MutableStateFlow<Boolean?>(null)
     val locked: StateFlow<Boolean?> = _locked.asStateFlow()
@@ -62,6 +73,45 @@ class RootViewModel @Inject constructor(
     )
 
     init {
+        // The gate must not resolve before the upgrade migration has run, so
+        // both steps share one coroutine and keep LOADING until both are done.
+        viewModelScope.launch {
+            markLegacyInstallAsOnboarded()
+            settingsRepository.settings
+                .map { it.onboardingCompleted }
+                .distinctUntilChanged()
+                .catch { failure ->
+                    appLog.error(TAG, "onboarding state unavailable", failure)
+                    _onboardingGate.value = OnboardingGate.FAILED
+                }
+                .collect { completed ->
+                    _onboardingGate.value =
+                        if (completed) OnboardingGate.COMPLETE else OnboardingGate.REQUIRED
+                }
+        }
+
+        viewModelScope.launch {
+            // Debug builds use a different signing key, so a release APK could
+            // never be installed over them; the automatic check is pointless.
+            if (BuildConfig.DEBUG) return@launch
+            val autoCheckEnabled = try {
+                settingsRepository.settings.first().autoCheckForUpdates
+            } catch (failure: IOException) {
+                appLog.warn(UPDATE_TAG, "could not read update preference", failure)
+                false
+            }
+            if (autoCheckEnabled) {
+                try {
+                    settingsRepository.settings.first { it.onboardingCompleted }
+                    if (settingsRepository.settings.first().autoCheckForUpdates) {
+                        updateService.checkOnLaunch()
+                    }
+                } catch (failure: IOException) {
+                    appLog.warn(UPDATE_TAG, "could not wait for onboarding before update check", failure)
+                }
+            }
+        }
+
         viewModelScope.launch {
             // v0.7.1: the AI entry now defaults to off. Users who already
             // accepted the consent warning keep it; the settings flow re-emits
@@ -177,9 +227,57 @@ class RootViewModel @Inject constructor(
         }
     }
 
+    fun retryOnboardingState() {
+        _onboardingGate.value = OnboardingGate.LOADING
+        viewModelScope.launch {
+            try {
+                val completed = settingsRepository.settings
+                    .map { it.onboardingCompleted }
+                    .first()
+                _onboardingGate.value =
+                    if (completed) OnboardingGate.COMPLETE else OnboardingGate.REQUIRED
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                appLog.error(TAG, "onboarding state retry failed", failure)
+                _onboardingGate.value = OnboardingGate.FAILED
+            }
+        }
+    }
+
+    /**
+     * v0.9.0 added the first-launch gate. Installs that already hold archive
+     * records predate it, so they skip the introduction instead of being asked
+     * for a birth date before they can reach their diary.
+     */
+    private suspend fun markLegacyInstallAsOnboarded() {
+        val hasArchive = withContext(Dispatchers.IO) {
+            runCatching { legacyInstallDetector.hasArchiveRecords() }.getOrDefault(false)
+        }
+        if (!hasArchive) return
+        val alreadyCompleted = try {
+            settingsRepository.settings.first().onboardingCompleted
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            appLog.warn(ONBOARDING_TAG, "could not read onboarding state", failure)
+            false
+        }
+        if (alreadyCompleted) return
+        try {
+            settingsRepository.setOnboardingCompleted(true)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            appLog.warn(ONBOARDING_TAG, "could not migrate onboarding state", failure)
+        }
+    }
+
     private companion object {
         const val TAG = "AppLock"
         const val LAUNCHER_TAG = "LauncherIcon"
+        const val UPDATE_TAG = "AppUpdate"
+        const val ONBOARDING_TAG = "Onboarding"
     }
 
     /**
@@ -195,3 +293,5 @@ class RootViewModel @Inject constructor(
     @Volatile
     private var indexRebuildStarted: Boolean = false
 }
+
+enum class OnboardingGate { LOADING, REQUIRED, COMPLETE, FAILED }

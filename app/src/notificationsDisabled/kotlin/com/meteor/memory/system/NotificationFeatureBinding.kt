@@ -17,6 +17,9 @@ class UnavailableNotificationFeature @Inject constructor() : NotificationFeature
     override fun openExactAlarmSettings() = Unit
     override suspend fun syncReminder() = Unit
     override suspend fun handleReminderAlarm() = Unit
+    override fun showUpdateDownload(progress: UpdateNotificationProgress) = Unit
+    override fun showUpdateReady(versionName: String) = Unit
+    override fun hideUpdateNotification() = Unit
 }
 
 @Module

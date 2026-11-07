@@ -21,6 +21,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.meteor.memory.feature.settings.DarkMode
 import com.meteor.memory.feature.settings.FontScale
+import com.meteor.memory.ui.life.OnboardingFlowScreen
+import com.meteor.memory.ui.life.OnboardingLoadFailureScreen
 import com.meteor.memory.ui.theme.MeteorTheme
 
 /**
@@ -38,6 +40,7 @@ fun MeteorRoot(versionName: String) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val locked by viewModel.locked.collectAsStateWithLifecycle()
     val unlockFailed by viewModel.unlockFailed.collectAsStateWithLifecycle()
+    val onboardingGate by viewModel.onboardingGate.collectAsStateWithLifecycle()
 
     val darkTheme = when (settings.darkMode) {
         DarkMode.FOLLOW_SYSTEM -> isSystemInDarkTheme()
@@ -91,11 +94,19 @@ fun MeteorRoot(versionName: String) {
                         )
                     }
 
-                    false -> MeteorNavHost(
-                        versionName = versionName,
-                        animationsEnabled = settings.animationsEnabled,
-                        aiEnabled = settings.aiEnabled,
-                    )
+                    false -> when (onboardingGate) {
+                        OnboardingGate.LOADING -> Unit
+                        OnboardingGate.REQUIRED -> OnboardingFlowScreen()
+                        OnboardingGate.COMPLETE -> MeteorNavHost(
+                            versionName = versionName,
+                            animationsEnabled = settings.animationsEnabled,
+                            aiEnabled = settings.aiEnabled,
+                        )
+
+                        OnboardingGate.FAILED -> OnboardingLoadFailureScreen(
+                            onRetry = viewModel::retryOnboardingState,
+                        )
+                    }
                 }
             }
         }

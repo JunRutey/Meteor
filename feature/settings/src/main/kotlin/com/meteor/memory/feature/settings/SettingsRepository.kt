@@ -30,6 +30,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             verboseLogging = prefs[KEY_VERBOSE_LOGGING] ?: false,
             autoBackupEnabled = prefs[KEY_AUTO_BACKUP] ?: true,
             backupRetention = prefs[KEY_BACKUP_RETENTION] ?: AppSettings.DEFAULT_BACKUP_RETENTION,
+            autoCheckForUpdates = prefs[KEY_AUTO_CHECK_FOR_UPDATES] ?: true,
             diaryReminderEnabled = prefs[KEY_DIARY_REMINDER_ENABLED] ?: false,
             diaryReminderTimeMinutes = (prefs[KEY_DIARY_REMINDER_TIME] ?: AppSettings.DEFAULT_DIARY_REMINDER_TIME_MINUTES)
                 .coerceIn(0, 1439),
@@ -44,6 +45,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             // exactly the same tool set after the upgrade (ADR-030).
             aiWriteDiary = prefs[KEY_AI_WRITE_DIARY] ?: true,
             aiWritePeople = prefs[KEY_AI_WRITE_PEOPLE] ?: true,
+            onboardingCompleted = prefs[KEY_ONBOARDING_COMPLETED] ?: false,
         )
     }
 
@@ -66,6 +68,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
 
     suspend fun setBackupRetention(count: Int) =
         store.edit { it[KEY_BACKUP_RETENTION] = count.coerceIn(1, 30) }
+
+    suspend fun setAutoCheckForUpdates(enabled: Boolean) =
+        store.edit { it[KEY_AUTO_CHECK_FOR_UPDATES] = enabled }
 
     suspend fun setDiaryReminderEnabled(enabled: Boolean) =
         store.edit { it[KEY_DIARY_REMINDER_ENABLED] = enabled }
@@ -99,6 +104,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     suspend fun setAiWritePeople(enabled: Boolean) =
         store.edit { it[KEY_AI_WRITE_PEOPLE] = enabled }
 
+    suspend fun setOnboardingCompleted(completed: Boolean) =
+        store.edit { it[KEY_ONBOARDING_COMPLETED] = completed }
+
     /**
      * v0.7.1: the AI entry default flipped to off.
      *
@@ -123,6 +131,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val KEY_VERBOSE_LOGGING = booleanPreferencesKey("verbose_logging")
         val KEY_AUTO_BACKUP = booleanPreferencesKey("auto_backup_enabled")
         val KEY_BACKUP_RETENTION = intPreferencesKey("backup_retention")
+        val KEY_AUTO_CHECK_FOR_UPDATES = booleanPreferencesKey("auto_check_for_updates")
         val KEY_DIARY_REMINDER_ENABLED = booleanPreferencesKey("diary_reminder_enabled")
         val KEY_DIARY_REMINDER_TIME = intPreferencesKey("diary_reminder_time_minutes")
         val KEY_AI_ENABLED = booleanPreferencesKey("ai_enabled")
@@ -134,5 +143,6 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val KEY_AI_WRITE = booleanPreferencesKey("ai_write_enabled")
         val KEY_AI_WRITE_DIARY = booleanPreferencesKey("ai_write_diary")
         val KEY_AI_WRITE_PEOPLE = booleanPreferencesKey("ai_write_people")
+        val KEY_ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
     }
 }

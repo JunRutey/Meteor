@@ -93,6 +93,7 @@ fun CalendarScreen(
     onOpenGallery: () -> Unit,
     onOpenChats: () -> Unit,
     onOpenPeople: () -> Unit,
+    showHeader: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val locale = Locale.getDefault()
@@ -103,39 +104,14 @@ fun CalendarScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                .padding(horizontal = 16.dp, vertical = if (showHeader) 16.dp else 0.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(text = appName, style = MaterialTheme.typography.headlineSmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    val searchLabel = stringResource(R.string.calendar_open_search)
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .clickable(onClick = onOpenSearch)
-                            .semantics { contentDescription = searchLabel },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        MagnifierIcon(label = searchLabel)
-                    }
-
-                    val settingsLabel = stringResource(R.string.calendar_open_settings)
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .clickable(onClick = onOpenSettings)
-                            .semantics { contentDescription = settingsLabel },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        GearIcon(label = settingsLabel)
-                    }
-                }
+            if (showHeader) {
+                CalendarHeader(
+                    appName = appName,
+                    onOpenSearch = onOpenSearch,
+                    onOpenSettings = onOpenSettings,
+                )
             }
 
             Row(
@@ -213,6 +189,47 @@ fun CalendarScreen(
                 ) {
                     AiSparkIcon(label = aiLabel)
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun CalendarHeader(
+    appName: String,
+    onOpenSearch: () -> Unit,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(text = appName, style = MaterialTheme.typography.headlineSmall)
+        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            val searchLabel = stringResource(R.string.calendar_open_search)
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onOpenSearch)
+                    .semantics { contentDescription = searchLabel },
+                contentAlignment = Alignment.Center,
+            ) {
+                MagnifierIcon(label = searchLabel)
+            }
+
+            val settingsLabel = stringResource(R.string.calendar_open_settings)
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .clickable(onClick = onOpenSettings)
+                    .semantics { contentDescription = settingsLabel },
+                contentAlignment = Alignment.Center,
+            ) {
+                GearIcon(label = settingsLabel)
             }
         }
     }

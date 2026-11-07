@@ -12,6 +12,8 @@ import com.meteor.memory.feature.settings.SettingsRepository
 import com.meteor.memory.system.LauncherPermissionGuide
 import com.meteor.memory.system.NotificationFeature
 import com.meteor.memory.ui.ai.AiSettingsReader
+import com.meteor.memory.update.UpdateService
+import com.meteor.memory.update.UpdateState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,6 +48,7 @@ class SettingsViewModel @Inject constructor(
     private val aiModule: AiModule,
     private val launcherPermissionGuide: LauncherPermissionGuide,
     private val notificationFeature: NotificationFeature,
+    private val updateService: UpdateService,
 ) : ViewModel() {
 
     /**
@@ -79,6 +82,7 @@ class SettingsViewModel @Inject constructor(
 
     private val _aiModels = MutableStateFlow(AiModelsState())
     val aiModels: StateFlow<AiModelsState> = _aiModels.asStateFlow()
+    internal val updateState: StateFlow<UpdateState> = updateService.state
 
     init {
         refreshLogSize()
@@ -157,6 +161,22 @@ class SettingsViewModel @Inject constructor(
             repository.setVerboseLogging(enabled)
             withContext(Dispatchers.IO) { appLog.setVerbose(enabled) }
         }
+    }
+
+    fun setAutoCheckForUpdates(enabled: Boolean) {
+        viewModelScope.launch { repository.setAutoCheckForUpdates(enabled) }
+    }
+
+    fun checkForUpdates() {
+        updateService.checkAndDownload()
+    }
+
+    fun installUpdate() {
+        updateService.installDownloadedUpdate()
+    }
+
+    fun refreshUpdateInstallPermission() {
+        updateService.refreshInstallPermission()
     }
 
     /** Hides the entry and stops every request; never touches archive data. */

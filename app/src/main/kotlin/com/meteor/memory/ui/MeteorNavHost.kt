@@ -57,6 +57,7 @@ import com.meteor.memory.feature.people.PersonDetailScreen
 import com.meteor.memory.feature.people.PersonEditScreen
 import com.meteor.memory.feature.people.PersonRecordRow
 import com.meteor.memory.feature.settings.SettingsScreen
+import com.meteor.memory.feature.settings.R as SettingsR
 import com.meteor.memory.ui.about.AboutScreen
 import com.meteor.memory.ui.about.ChangelogScreen
 import com.meteor.memory.ui.about.DonateScreen
@@ -74,6 +75,10 @@ import com.meteor.memory.ui.diary.DiaryPreviewScreen
 import com.meteor.memory.ui.diary.DiaryPreviewViewModel
 import com.meteor.memory.ui.gallery.GalleryViewModel
 import com.meteor.memory.ui.gallery.ImageViewerViewModel
+import com.meteor.memory.ui.home.HomeTabsScreen
+import com.meteor.memory.ui.life.BirthDateSettingsScreen
+import com.meteor.memory.ui.life.LifeClockScreen
+import com.meteor.memory.ui.life.LifeViewModel
 import com.meteor.memory.ui.log.LogActions
 import com.meteor.memory.ui.people.PeopleViewModel
 import com.meteor.memory.ui.people.PersonDetailViewModel
@@ -83,12 +88,15 @@ import com.meteor.memory.ui.search.SearchScreen
 import com.meteor.memory.ui.search.SearchViewModel
 import com.meteor.memory.ui.settings.AiTestState
 import com.meteor.memory.ui.settings.SettingsViewModel
+import com.meteor.memory.update.UpdateError
+import com.meteor.memory.update.UpdateState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
 private const val ROUTE_SETTINGS = "settings"
+private const val ROUTE_BIRTH_DATE = "settings/birth-date"
 private const val ROUTE_DIARY_EDIT = "diary/edit"
 private const val ROUTE_DIARY_VIEW = "diary/view/{date}"
 private const val ROUTE_ABOUT = "about"
@@ -113,6 +121,43 @@ private fun Context.openInBrowser(url: String) {
     runCatching {
         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
+}
+
+@Composable
+private fun updateStatusText(state: UpdateState): String = when (state) {
+    UpdateState.Idle -> stringResource(SettingsR.string.settings_update_idle)
+    UpdateState.Checking -> stringResource(SettingsR.string.settings_update_checking)
+    UpdateState.UpToDate -> stringResource(SettingsR.string.settings_update_current)
+    is UpdateState.Downloading ->
+        stringResource(SettingsR.string.settings_update_downloading, state.versionName)
+    is UpdateState.ReadyToInstall ->
+        stringResource(SettingsR.string.settings_update_ready, state.versionName)
+    is UpdateState.InstallPermissionRequired ->
+        stringResource(SettingsR.string.settings_update_install_permission)
+    is UpdateState.Failed -> when (state.reason) {
+        UpdateError.NETWORK -> stringResource(SettingsR.string.settings_update_error_network)
+        UpdateError.INVALID_RELEASE -> stringResource(SettingsR.string.settings_update_error_release)
+        UpdateError.NO_APK -> stringResource(SettingsR.string.settings_update_error_asset)
+        UpdateError.DOWNLOAD -> stringResource(SettingsR.string.settings_update_error_download)
+        UpdateError.INSTALL -> stringResource(SettingsR.string.settings_update_error_install)
+    }
+}
+
+@Composable
+private fun LifeTab(
+    viewModel: LifeViewModel,
+    onOpenBirthDate: () -> Unit,
+) {
+    // Collected here, not at the route level: the once-per-second tick otherwise
+    // recomposes the header, the tab bar and the diary tab as well.
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    LifeClockScreen(
+        state = state,
+        onRetry = viewModel::refresh,
+        onStart = viewModel::refresh,
+        onStop = viewModel::stop,
+        onOpenBirthDate = onOpenBirthDate,
+    )
 }
 
 @Composable
@@ -178,6 +223,7 @@ fun MeteorNavHost(
     ) {
         composable(ROUTE_CALENDAR) {
             val viewModel: CalendarViewModel = hiltViewModel()
+            val lifeViewModel: LifeViewModel = hiltViewModel()
             val month by viewModel.month.collectAsStateWithLifecycle()
             val moods by viewModel.moods.collectAsStateWithLifecycle()
             val selectedDate by viewModel.selectedDate.collectAsStateWithLifecycle()
@@ -192,35 +238,49 @@ fun MeteorNavHost(
 
             RefreshOnResume { viewModel.refresh() }
 
-            CalendarScreen(
+            HomeTabsScreen(
                 appName = stringResource(R.string.app_name),
-                month = month,
-                today = LocalDate.now(),
-                moods = moods,
-                selectedDate = selectedDate,
-                diaryDates = diaryDates,
-                imageDates = imageDates,
-                onPreviousMonth = viewModel::previousMonth,
-                onNextMonth = viewModel::nextMonth,
-                onSelectDate = viewModel::selectDate,
-                onPickMood = viewModel::setMood,
-                onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
-                onOpenDiary = { date -> navController.navigate("diary/view/$date") },
-                onEditDiary = { date -> navController.navigate("$ROUTE_DIARY_EDIT/$date") },
-                onOpenImages = { date -> navController.navigate("gallery?date=$date") },
-                onPickImage = { date ->
-                    pendingImageDate = date
-                    pickImage()
-                },
                 onOpenSearch = { navController.navigate(ROUTE_SEARCH) },
-                onOpenAi = if (aiEnabled) {
-                    { navController.navigate("ai") }
-                } else {
-                    null
+                onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
+                lifeContent = {
+                    LifeTab(
+                        viewModel = lifeViewModel,
+                        onOpenBirthDate = { navController.navigate(ROUTE_BIRTH_DATE) },
+                    )
                 },
-                onOpenGallery = { navController.navigate("gallery") },
-                onOpenChats = { navController.navigate(ROUTE_CHATS) },
-                onOpenPeople = { navController.navigate(ROUTE_PEOPLE) },
+                diaryContent = {
+                    CalendarScreen(
+                        appName = stringResource(R.string.app_name),
+                        month = month,
+                        today = LocalDate.now(),
+                        moods = moods,
+                        selectedDate = selectedDate,
+                        diaryDates = diaryDates,
+                        imageDates = imageDates,
+                        onPreviousMonth = viewModel::previousMonth,
+                        onNextMonth = viewModel::nextMonth,
+                        onSelectDate = viewModel::selectDate,
+                        onPickMood = viewModel::setMood,
+                        onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
+                        onOpenDiary = { date -> navController.navigate("diary/view/$date") },
+                        onEditDiary = { date -> navController.navigate("$ROUTE_DIARY_EDIT/$date") },
+                        onOpenImages = { date -> navController.navigate("gallery?date=$date") },
+                        onPickImage = { date ->
+                            pendingImageDate = date
+                            pickImage()
+                        },
+                        onOpenSearch = { navController.navigate(ROUTE_SEARCH) },
+                        onOpenAi = if (aiEnabled) {
+                            { navController.navigate("ai") }
+                        } else {
+                            null
+                        },
+                        onOpenGallery = { navController.navigate("gallery") },
+                        onOpenChats = { navController.navigate(ROUTE_CHATS) },
+                        onOpenPeople = { navController.navigate(ROUTE_PEOPLE) },
+                        showHeader = false,
+                    )
+                },
             )
         }
 
@@ -483,6 +543,13 @@ fun MeteorNavHost(
             StorageDiagnosticsScreen(onBack = { navController.popBackStack() })
         }
 
+        composable(ROUTE_BIRTH_DATE) {
+            BirthDateSettingsScreen(
+                onBack = { navController.popBackStack() },
+                onSaved = { navController.popBackStack() },
+            )
+        }
+
         composable(ROUTE_SETTINGS) {
             val viewModel: SettingsViewModel = hiltViewModel()
             val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -492,6 +559,7 @@ fun MeteorNavHost(
             val aiModels by viewModel.aiModels.collectAsStateWithLifecycle()
             val notificationsAllowed by viewModel.notificationsAllowed.collectAsStateWithLifecycle()
             val canScheduleExactAlarms by viewModel.canScheduleExactAlarms.collectAsStateWithLifecycle()
+            val updateState by viewModel.updateState.collectAsStateWithLifecycle()
             val context = LocalContext.current
             var notificationPermissionDenied by rememberSaveable { mutableStateOf(false) }
             val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -508,6 +576,7 @@ fun MeteorNavHost(
             RefreshOnResume {
                 viewModel.refreshLogSize()
                 viewModel.refreshNotificationPermissions()
+                viewModel.refreshUpdateInstallPermission()
             }
 
             SettingsScreen(
@@ -525,6 +594,14 @@ fun MeteorNavHost(
                 onOpenAbout = { navController.navigate(ROUTE_ABOUT) },
                 onOpenDonate = { navController.navigate(ROUTE_ABOUT_DONATE) },
                 onOpenChangelog = { navController.navigate(ROUTE_ABOUT_CHANGELOG) },
+                onOpenBirthDate = { navController.navigate(ROUTE_BIRTH_DATE) },
+                onAutoCheckForUpdatesChanged = viewModel::setAutoCheckForUpdates,
+                updateStatusText = updateStatusText(updateState),
+                updateBusy = updateState is UpdateState.Checking || updateState is UpdateState.Downloading,
+                updateCanInstall = updateState is UpdateState.ReadyToInstall ||
+                    updateState is UpdateState.InstallPermissionRequired,
+                onCheckUpdates = viewModel::checkForUpdates,
+                onInstallUpdate = viewModel::installUpdate,
                 logSizeBytes = logSizeBytes,
                 notificationFeatureAvailable = viewModel.notificationFeatureAvailable,
                 notificationsAllowed = notificationsAllowed,

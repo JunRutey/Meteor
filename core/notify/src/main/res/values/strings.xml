@@ -3,4 +3,6 @@
     <string name="notification_channel_daily_reminder_description">提醒你记录今天的日记</string>
     <string name="notification_channel_ai_messages_name">AI 消息</string>
     <string name="notification_channel_ai_messages_description">应用内置 AI 发送的消息通知</string>
+    <string name="notification_channel_update_name">应用更新</string>
+    <string name="notification_channel_update_description">下载应用更新时在通知栏显示进度</string>
 </resources>

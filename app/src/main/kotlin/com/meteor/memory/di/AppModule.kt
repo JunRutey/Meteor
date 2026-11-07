@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
+import com.meteor.memory.BuildConfig
 import com.meteor.memory.core.backup.BackupModule
 import com.meteor.memory.core.backup.BackupRetentionProvider
 import com.meteor.memory.core.backup.ExternalBackupMirror
@@ -49,9 +50,12 @@ import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.SettingsRepository
 import com.meteor.memory.system.LauncherIconController
 import com.meteor.memory.system.LauncherPermissionGuide
+import com.meteor.memory.system.NotificationFeature
 import com.meteor.memory.ui.ai.AiGate
 import com.meteor.memory.ui.ai.AiSettingsReader
 import com.meteor.memory.ui.attachments.AttachmentRecordScanner
+import com.meteor.memory.update.UpdateService
+import com.meteor.memory.ui.life.BirthdayProfileStore
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -157,6 +161,14 @@ object AppModule {
         @ApplicationContext context: Context,
         fileCrypto: FileCrypto,
     ): SecretStore = androidKeystoreSecretStore(context, fileCrypto)
+
+    @Provides
+    @Singleton
+    fun provideBirthdayProfileStore(
+        @ApplicationContext context: Context,
+        fileCrypto: FileCrypto,
+    ): BirthdayProfileStore =
+        BirthdayProfileStore(File(context.filesDir, "meteor_birth_profile"), fileCrypto)
 
     /** Chat history is encrypted with the same key and never scanned as records. */
     @Provides
@@ -290,6 +302,13 @@ object AppModule {
     fun provideSettingsRepository(
         store: DataStore<Preferences>,
     ): SettingsRepository = SettingsRepository(store)
+
+    @Provides
+    @Singleton
+    fun provideUpdateService(
+        @ApplicationContext context: Context,
+        notificationFeature: NotificationFeature,
+    ): UpdateService = UpdateService(context, BuildConfig.VERSION_NAME, notificationFeature)
 
     /**
      * ADR-031: the launcher alias is declared in this module's manifest, so the
