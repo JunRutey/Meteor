@@ -2,6 +2,7 @@ package com.meteor.memory.system
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -59,14 +60,27 @@ class AndroidNotificationFeature @Inject constructor(
                     Manifest.permission.POST_NOTIFICATIONS,
                 ) == PackageManager.PERMISSION_GRANTED)
 
+    override fun canPostDailyReminder(): Boolean {
+        if (!canPostNotifications()) return false
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
+
+        val channel = context.getSystemService(NotificationManager::class.java)
+            .getNotificationChannel(NotificationChannels.DAILY_REMINDER)
+        return channel != null && channel.importance != NotificationManager.IMPORTANCE_NONE
+    }
+
     override fun canScheduleExactAlarms(): Boolean = scheduler.canScheduleExactAlarms()
 
     override fun openNotificationSettings() {
-        context.startActivity(
+        val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                .putExtra(Settings.EXTRA_CHANNEL_ID, NotificationChannels.DAILY_REMINDER)
+        } else {
             Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
                 .putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-        )
+        }
+        context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
     override fun openExactAlarmSettings() {
@@ -80,7 +94,7 @@ class AndroidNotificationFeature @Inject constructor(
 
     override suspend fun syncReminder() {
         val settings = settingsRepository.settings.first()
-        if (!settings.diaryReminderEnabled || !canPostNotifications()) {
+        if (!settings.diaryReminderEnabled || !canPostDailyReminder()) {
             scheduler.cancel()
             return
         }
@@ -91,7 +105,7 @@ class AndroidNotificationFeature @Inject constructor(
 
     override suspend fun handleReminderAlarm() {
         val settings = settingsRepository.settings.first()
-        if (!settings.diaryReminderEnabled || !canPostNotifications()) {
+        if (!settings.diaryReminderEnabled || !canPostDailyReminder()) {
             scheduler.cancel()
             return
         }

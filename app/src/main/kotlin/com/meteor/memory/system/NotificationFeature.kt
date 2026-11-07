@@ -5,6 +5,7 @@ interface NotificationFeature {
 
     fun initialize()
     fun canPostNotifications(): Boolean
+    fun canPostDailyReminder(): Boolean
     fun canScheduleExactAlarms(): Boolean
     fun openNotificationSettings()
     fun openExactAlarmSettings()
