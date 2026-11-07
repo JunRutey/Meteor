@@ -71,9 +71,13 @@ jobs:
 
       # :app depends on every module (see app/build.gradle.kts), so this one
       # task compiles all Kotlin/Java sources that CodeQL needs to see.
+      #
+      # --no-build-cache is mandatory: gradle.properties enables the Gradle
+      # build cache, and a cache hit means the Kotlin compiler never runs, so
+      # the CodeQL tracer extracts nothing ("could not process any code").
       - name: Build debug variant for CodeQL tracing
         if: matrix.language == 'java-kotlin'
-        run: gradle :app:assembleDebug --no-daemon --stacktrace
+        run: gradle clean :app:assembleDebug --no-daemon --no-build-cache --stacktrace
 
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v4
