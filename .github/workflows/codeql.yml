@@ -1,0 +1,85 @@
+name: CodeQL
+
+# Advanced setup. The repository intentionally ships no Gradle wrapper
+# (see AGENTS.md and ci.yml), so CodeQL's default-setup autobuild used to
+# download its own Gradle 8.6 wrapper and fail: AGP 8.7.x requires Gradle
+# >= 8.9. Here the build is driven explicitly with the same Gradle version
+# ci.yml pins, so the Kotlin/Java sources are actually analyzed.
+#
+# Default setup must stay disabled in repository settings: CodeQL refuses to
+# process advanced-setup SARIF while default setup is enabled for a language.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '23 3 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  actions: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ actions, java-kotlin ]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up JDK 17
+        if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Initialize CodeQL (java-kotlin)
+        if: matrix.language == 'java-kotlin'
+        uses: github/codeql-action/init@v4
+        with:
+          languages: java-kotlin
+          # Manual build mode: the Gradle build below is the traced build.
+          build-mode: manual
+
+      - name: Initialize CodeQL (actions)
+        if: matrix.language == 'actions'
+        uses: github/codeql-action/init@v4
+        with:
+          languages: actions
+
+      # Same Gradle version as ci.yml. No wrapper in this repo by design.
+      - name: Set up Gradle 8.11.1
+        if: matrix.language == 'java-kotlin'
+        uses: gradle/actions/setup-gradle@v5
+        with:
+          gradle-version: '8.11.1'
+
+      # :app depends on every module (see app/build.gradle.kts), so this one
+      # task compiles all Kotlin/Java sources that CodeQL needs to see.
+      #
+      # --no-build-cache is mandatory: gradle.properties enables the Gradle
+      # build cache, and a cache hit means the Kotlin compiler never runs, so
+      # the CodeQL tracer extracts nothing ("could not process any code").
+      - name: Build debug variant for CodeQL tracing
+        if: matrix.language == 'java-kotlin'
+        run: gradle clean :app:assembleDebug --no-daemon --no-build-cache --stacktrace
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}
