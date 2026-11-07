@@ -12,6 +12,7 @@ class UnavailableNotificationFeature @Inject constructor() : NotificationFeature
     override val available: Boolean = false
     override fun initialize() = Unit
     override fun canPostNotifications(): Boolean = false
+    override fun canPostDailyReminder(): Boolean = false
     override fun canScheduleExactAlarms(): Boolean = false
     override fun openNotificationSettings() = Unit
     override fun openExactAlarmSettings() = Unit

@@ -79,8 +79,10 @@ class SettingsViewModel @Inject constructor(
         MutableStateFlow(DialCodeLaunchRecorder.succeededRecently())
     val dialCodeVerified: StateFlow<Boolean> = _dialCodeVerified.asStateFlow()
 
-    private val _notificationsAllowed = MutableStateFlow(notificationFeature.canPostNotifications())
-    val notificationsAllowed: StateFlow<Boolean> = _notificationsAllowed.asStateFlow()
+    private val _reminderNotificationsAllowed =
+        MutableStateFlow(notificationFeature.canPostDailyReminder())
+    val reminderNotificationsAllowed: StateFlow<Boolean> =
+        _reminderNotificationsAllowed.asStateFlow()
 
     private val _canScheduleExactAlarms = MutableStateFlow(notificationFeature.canScheduleExactAlarms())
     val canScheduleExactAlarms: StateFlow<Boolean> = _canScheduleExactAlarms.asStateFlow()
@@ -174,7 +176,7 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun refreshNotificationPermissions() {
-        _notificationsAllowed.value = notificationFeature.canPostNotifications()
+        _reminderNotificationsAllowed.value = notificationFeature.canPostDailyReminder()
         _canScheduleExactAlarms.value = notificationFeature.canScheduleExactAlarms()
         viewModelScope.launch { notificationFeature.syncReminder() }
     }

@@ -557,7 +557,8 @@ fun MeteorNavHost(
             val apiKeyPresent by viewModel.apiKeyPresent.collectAsStateWithLifecycle()
             val aiTest by viewModel.aiTest.collectAsStateWithLifecycle()
             val aiModels by viewModel.aiModels.collectAsStateWithLifecycle()
-            val notificationsAllowed by viewModel.notificationsAllowed.collectAsStateWithLifecycle()
+            val reminderNotificationsAllowed by viewModel.reminderNotificationsAllowed
+                .collectAsStateWithLifecycle()
             val canScheduleExactAlarms by viewModel.canScheduleExactAlarms.collectAsStateWithLifecycle()
             val launcherRecovery by viewModel.launcherRecovery.collectAsStateWithLifecycle()
             val dialCodeVerified by viewModel.dialCodeVerified.collectAsStateWithLifecycle()
@@ -610,7 +611,7 @@ fun MeteorNavHost(
                 onInstallUpdate = viewModel::installUpdate,
                 logSizeBytes = logSizeBytes,
                 notificationFeatureAvailable = viewModel.notificationFeatureAvailable,
-                notificationsAllowed = notificationsAllowed,
+                reminderNotificationsAllowed = reminderNotificationsAllowed,
                 canScheduleExactAlarms = canScheduleExactAlarms,
                 notificationPermissionDenied = notificationPermissionDenied,
                 onReminderEnabledChanged = { enabled ->

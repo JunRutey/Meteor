@@ -82,7 +82,7 @@ fun SettingsScreen(
     onInstallUpdate: () -> Unit,
     logSizeBytes: Long,
     notificationFeatureAvailable: Boolean,
-    notificationsAllowed: Boolean,
+    reminderNotificationsAllowed: Boolean,
     canScheduleExactAlarms: Boolean,
     notificationPermissionDenied: Boolean,
     onReminderEnabledChanged: (Boolean) -> Unit,
@@ -201,7 +201,7 @@ fun SettingsScreen(
             ReminderSettingsSection(
                 enabled = settings.diaryReminderEnabled,
                 timeMinutes = settings.diaryReminderTimeMinutes,
-                notificationsAllowed = notificationsAllowed,
+                reminderNotificationsAllowed = reminderNotificationsAllowed,
                 canScheduleExactAlarms = canScheduleExactAlarms,
                 permissionDenied = notificationPermissionDenied,
                 onEnabledChange = onReminderEnabledChanged,
@@ -287,7 +287,7 @@ fun SettingsScreen(
 private fun ReminderSettingsSection(
     enabled: Boolean,
     timeMinutes: Int,
-    notificationsAllowed: Boolean,
+    reminderNotificationsAllowed: Boolean,
     canScheduleExactAlarms: Boolean,
     permissionDenied: Boolean,
     onEnabledChange: (Boolean) -> Unit,
@@ -338,9 +338,9 @@ private fun ReminderSettingsSection(
     }
 
     if (enabled) {
-        if (!notificationsAllowed) {
+        if (!reminderNotificationsAllowed) {
             Text(
-                text = stringResource(R.string.settings_notification_permission_unavailable),
+                text = stringResource(R.string.settings_diary_reminder_notification_unavailable),
                 style = MaterialTheme.typography.bodySmall,
             )
             TextButton(onClick = onOpenNotificationSettings) {
