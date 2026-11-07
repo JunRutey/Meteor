@@ -8,6 +8,16 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!--
+        Android 10+ silently drops an activity start made from the background
+        unless the app holds a background-activity-start exemption. The dial
+        code comes in as a broadcast, so without one "隐藏桌面图标" has no way
+        back on AOSP. "显示在其他应用上层" is the public exemption; MIUI /
+        HyperOS adds its own 「后台弹出界面」 gate on top (ADR-031). The app
+        never draws an overlay.
+    -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!--
         The app lock asks for a biometric or device-credential check. This is a
         normal, install-time permission: it never raises a runtime dialog.
         androidx.biometric pulls it in transitively, but declaring it here keeps
@@ -96,6 +106,19 @@
                 <data
                     android:scheme="android_secret_code"
                     android:host="314159" />
+            </intent-filter>
+        </receiver>
+
+        <!--
+            ADR-031: an update can reset the vendor background-start gate. If the
+            icon is hidden at that point the user cannot get back in, so this
+            receiver restores the icon whenever the way back is not provable.
+        -->
+        <receiver
+            android:name=".system.LauncherRecoveryGuard"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
 

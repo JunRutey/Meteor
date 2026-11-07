@@ -119,3 +119,89 @@ v0.8.0 上线后在小米澎湃 3（HyperOS，Android 16）复核：打开开关
 4. 移除该模块后？删除 `:app` 的 guide 与两个回调，弹窗退化为纯确认框，仍可编译。
 5. 数据格式变更？没有，偏好键不变。
 
+
+## 八、修订 · v0.9.0 之后（隐藏后暗号仍唤不起）
+
+v0.9.0 发布后再次复现：用户已授权「自启动」等权限，隐藏图标后拨号仍无反应。
+复核后确认，v0.8.1 的修复解决了「广播收不到」，但没有解决「收到了也起不来」。
+
+### 8.1 根因：后台启动（BAL）被静默丢弃
+
+`SecretCodeReceiver` 是后台广播接收器。Android 10 起，后台进程调用
+`startActivity` 需要 BAL（background activity start）豁免；没有豁免时系统
+**静默丢弃**这次启动——`startActivity` 不抛异常，接收器日志也只有
+「launch requested」。所以「广播到了」不等于「界面起来了」。
+
+AOSP 的公开豁免之一是 `SYSTEM_ALERT_WINDOW`（「显示在其他应用上层」）：
+Android 15 / 16 的 `BackgroundActivityStartController` 仍以
+`BAL_ALLOW_SAW_PERMISSION` 放行。v0.8.x / v0.9.0 从未声明它，因此在原生 /
+类原生系统上暗号本来就是死路；在 MIUI / 澎湃上则由厂商的「后台弹出界面」
+单独决定。
+
+MIUI 的闸门是它自己的 AppOp（`10021`，即「后台弹出界面」），AOSP 没有这个
+编号。v0.8.1 的结论「查不到、不要碰」过于悲观：AutoJs6、LinkSheet、Oolong
+都用 `checkOpNoThrow` 读取这个 op 并深链到权限页。它仍然是私有实现，因此
+本版**读取失败一律返回 `UNKNOWN`**，交给用户测试兜底，绝不猜。
+
+InstallerX-Revived 与 Amarok-Hider 使用与本项目相同的
+`activity-alias` + `SecretCodeReceiver` 方案，也都只能提示用户先确认能回来，
+无法从代码上保证；Amarok 的 issue #264 中同款失败日志正是
+`MIUILOG- Permission Denied Activity` + `Abort background activity starts`。
+
+### 8.2 改动
+
+- manifest 声明 `SYSTEM_ALERT_WINDOW`。它只用于取得 BAL 豁免，应用不绘制
+  任何悬浮窗。
+- `LauncherPermissionGuide`：
+  - `backgroundStartState()`：非 MIUI 用 `Settings.canDrawOverlays()`；MIUI 读
+    AppOp `10021`；读取异常返回 `UNKNOWN`（不误报）。
+  - `openBackgroundStartSettings()`：MIUI 优先用显式组件
+    `PermissionsEditorActivity` / `AppPermissionsEditorActivity`（带
+    `extra_pkgname` / `extra_package_name` / `extra_package_uid`），失败再回退
+    到「显示在其他应用上层」与应用详情。
+  - 自启动入口补 `package_name` 与显式组件，减少落到安全中心首页的概率。
+- 设置页确认框：
+  - 显示 `READY` / `BLOCKED` / `UNKNOWN`，`BLOCKED` 时给出对应授权入口；
+  - **必须真的成功过一次**：`SecretCodeReceiver` 的启动 Intent 带
+    `EXTRA_DIAL_CODE`，`MainActivity` 真正起来时调用
+    `DialCodeLaunchRecorder.recordSuccess()`；设置页只有在本进程内 10 分钟内
+    有成功记录时才允许隐藏。被系统丢弃的启动根本到不了 Activity，所以这条
+    记录同时验证了「拨号盘派发」与「后台启动」；勾选框做不到这一点。
+  - 设置页 `ON_RESUME` 重新读取状态，从系统页或拨号盘返回后立即生效。
+- 暗号启动改用 `NEW_TASK | CLEAR_TOP | SINGLE_TOP`。应用只有一个 Activity，
+  `CLEAR_TOP` 不会销毁正在看的界面，但能让已有任务收到 `onNewIntent`——否则
+  系统只是把任务提到前台，`MainActivity` 根本不会收到 Intent，也就没有「成功」
+  的可观测信号。
+- `MainActivity` 收到暗号 Intent 时写一条「opened by dial code」日志。配合
+  接收器的「launch requested」，日志能区分「广播没来」「广播来了但启动被丢弃」
+  「启动成功」。
+- `LauncherRecoveryGuard`（`MY_PACKAGE_REPLACED`）：更新可能重置厂商
+  「后台弹出界面」。更新后若图标仍隐藏、而后台启动状态不是 `READY`，就恢复
+  图标并把 `hideLauncherIcon` 写回 `false`，避免升级反而把用户锁在门外。
+  `UNKNOWN` 也按「不可证明」处理：图标重新出现可以再藏，进不去则不可逆。
+
+### 8.3 代价与限制
+
+- 新增 `SYSTEM_ALERT_WINDOW` 特殊权限：它在这里仅作为 Android 的 BAL 豁免，
+  不绘制悬浮窗；不授权时，非 MIUI 设备的隐藏入口会被拦下——因为那条路本来
+  就唤不回。
+- MIUI 的 `10021` 是私有实现，可能随 ROM 变化；读取失败只会退化为
+  `UNKNOWN`，由用户测试兜底，不会误报 `READY`。
+- 成功记录只存在于当前进程（10 分钟）；进程被回收后要重新测一次，避免旧记录
+  在权限被重置后仍然放行。
+- 拨号盘是否派发暗号仍不可控；执行「强制停止」后暗号仍无效。
+- 反射只用于读取状态，不修改任何系统设置。
+- 更新后若状态为 `UNKNOWN`，图标会重新出现一次；这是刻意选择的安全侧。
+
+### 8.4 R1 五问（本次修订）
+
+1. 属于哪个模块？仍是 `:app`（guide、manifest、receiver、activity）与
+   `:feature-settings`（`LauncherRecovery`、确认框文案），不新增模块。
+2. 依赖谁？`:app → :feature-settings` 已存在；`feature-settings` 不认识 AppOps，
+   只接收一个枚举。无新增依赖边、无环。
+3. 对外接口？`LauncherPermissionGuide.backgroundStartState()`、
+   `SettingsViewModel.launcherRecovery`；`SettingsScreen` 新增两个带默认值的
+   参数。接口仍然很窄。
+4. 移除该模块后？`LauncherRecovery` 随 `:feature-settings` 消失，`:app` 的
+   guide 与接收器仍在但不会被触发，图标始终显示；其余模块照常编译。
+5. 数据格式变更？没有，不新增偏好键。

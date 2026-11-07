@@ -44,10 +44,18 @@ class SecretCodeReceiver : BroadcastReceiver() {
         val log = runCatching { entryPoint(context).appLog() }.getOrNull()
 
         // A receiver has no task of its own; without NEW_TASK the launch is
-        // refused. No CLEAR_TOP: dialling the code should just bring the
-        // existing task forward instead of recreating the visible screen.
+        // refused. SINGLE_TOP + CLEAR_TOP keeps the visible screen (the app has
+        // a single activity) and still delivers the intent to the existing
+        // instance: `onNewIntent` is what proves the launch was allowed, which
+        // `startActivity` returning normally does not.
         val launch = Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            // Lets MainActivity record that the way back actually worked. A
+            // blocked background start never reaches the activity, so the two
+            // log lines together tell "broadcast arrived" from "launch dropped".
+            .putExtra(EXTRA_DIAL_CODE, true)
 
         runCatching { context.startActivity(launch) }
             .onSuccess { log?.info(TAG, "dial code received ($action), launch requested") }
@@ -64,13 +72,16 @@ class SecretCodeReceiver : BroadcastReceiver() {
             LogEntryPoint::class.java,
         )
 
-    private companion object {
-        val SECRET_CODE_ACTIONS = setOf(
+    companion object {
+        /** Set on the launch intent so the activity can log the successful return. */
+        const val EXTRA_DIAL_CODE = "com.meteor.memory.extra.DIAL_CODE"
+
+        private val SECRET_CODE_ACTIONS = setOf(
             "android.telephony.action.SECRET_CODE",
             // Legacy value, still dispatched by some OEM dialers.
             "android.provider.Telephony.SECRET_CODE",
         )
-        const val TAG = "SecretCode"
+        private const val TAG = "SecretCode"
     }
 }
 

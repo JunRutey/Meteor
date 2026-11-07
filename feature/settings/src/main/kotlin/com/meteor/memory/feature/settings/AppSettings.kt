@@ -71,6 +71,19 @@ enum class DarkMode { FOLLOW_SYSTEM, DARK, LIGHT }
 enum class FontScale { SYSTEM, SMALL, NORMAL, LARGE }
 
 /**
+ * Whether the dial code is allowed to bring the app back from the background
+ * (ADR-031).
+ *
+ * Android 10+ drops an activity start made by a background receiver unless the
+ * app holds a background-activity-start exemption; the drop is silent, so the
+ * only safe precondition for hiding the icon is this state. `BLOCKED` tells the
+ * settings UI which system page to send the user to; `UNKNOWN` means the ROM
+ * could not be queried. In both cases hiding stays disabled until a dial code
+ * has actually returned to the app, which is the authoritative proof.
+ */
+enum class LauncherRecovery { READY, BLOCKED, UNKNOWN }
+
+/**
  * R3 contract: when `:feature-settings` is removed, `aiEnabled` is permanently
  * false and every other module still compiles and reads existing data.
  */
