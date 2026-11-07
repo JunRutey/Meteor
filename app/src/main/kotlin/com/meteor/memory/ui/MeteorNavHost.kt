@@ -13,6 +13,7 @@ import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.tween
@@ -96,6 +97,16 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
 private const val ROUTE_SETTINGS = "settings"
+
+/**
+ * Settings opens over the current tab instead of replacing it laterally, so it
+ * uses a Material "fade through" with a slight scale rather than a slide. The
+ * incoming duration is deliberately longer than the outgoing one: the old
+ * screen clears first, then the settings panel settles.
+ */
+private const val SETTINGS_ENTER_MS = 220
+private const val SETTINGS_EXIT_MS = 120
+private const val SETTINGS_ENTER_SCALE = 0.97f
 private const val ROUTE_BIRTH_DATE = "settings/birth-date"
 private const val ROUTE_DIARY_EDIT = "diary/edit"
 private const val ROUTE_DIARY_VIEW = "diary/view/{date}"
@@ -170,44 +181,78 @@ fun MeteorNavHost(
 
     val enter: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
         if (animationsEnabled) {
-            fadeIn(tween(durationMillis = 160, easing = FastOutSlowInEasing)) +
-                slideIntoContainer(
-                    towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                    animationSpec = tween(durationMillis = 210, easing = FastOutSlowInEasing),
-                )
+            if (targetState.destination.route == ROUTE_SETTINGS) {
+                fadeIn(tween(durationMillis = SETTINGS_ENTER_MS, easing = FastOutSlowInEasing)) +
+                    scaleIn(
+                        initialScale = SETTINGS_ENTER_SCALE,
+                        animationSpec = tween(
+                            durationMillis = SETTINGS_ENTER_MS,
+                            easing = FastOutSlowInEasing,
+                        ),
+                    )
+            } else {
+                fadeIn(tween(durationMillis = 160, easing = FastOutSlowInEasing)) +
+                    slideIntoContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                        animationSpec = tween(durationMillis = 210, easing = FastOutSlowInEasing),
+                    )
+            }
         } else {
             EnterTransition.None
         }
     }
     val exit: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
         if (animationsEnabled) {
-            fadeOut(tween(durationMillis = 100, easing = FastOutLinearInEasing)) +
-                slideOutOfContainer(
-                    towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                    animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing),
-                )
+            if (targetState.destination.route == ROUTE_SETTINGS) {
+                fadeOut(tween(durationMillis = SETTINGS_EXIT_MS, easing = FastOutLinearInEasing))
+            } else {
+                fadeOut(tween(durationMillis = 100, easing = FastOutLinearInEasing)) +
+                    slideOutOfContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                        animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing),
+                    )
+            }
         } else {
             ExitTransition.None
         }
     }
     val popEnter: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
         if (animationsEnabled) {
-            fadeIn(tween(durationMillis = 160, easing = FastOutSlowInEasing)) +
-                slideIntoContainer(
-                    towards = AnimatedContentTransitionScope.SlideDirection.End,
-                    animationSpec = tween(durationMillis = 210, easing = FastOutSlowInEasing),
-                )
+            if (targetState.destination.route == ROUTE_SETTINGS) {
+                fadeIn(tween(durationMillis = SETTINGS_ENTER_MS, easing = FastOutSlowInEasing)) +
+                    scaleIn(
+                        initialScale = SETTINGS_ENTER_SCALE,
+                        animationSpec = tween(
+                            durationMillis = SETTINGS_ENTER_MS,
+                            easing = FastOutSlowInEasing,
+                        ),
+                    )
+            } else if (initialState.destination.route == ROUTE_SETTINGS) {
+                // Closing settings mirrors the fade-through; sliding the tab
+                // underneath it in from the edge fights the outgoing fade.
+                fadeIn(tween(durationMillis = SETTINGS_ENTER_MS, easing = FastOutSlowInEasing))
+            } else {
+                fadeIn(tween(durationMillis = 160, easing = FastOutSlowInEasing)) +
+                    slideIntoContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.End,
+                        animationSpec = tween(durationMillis = 210, easing = FastOutSlowInEasing),
+                    )
+            }
         } else {
             EnterTransition.None
         }
     }
     val popExit: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
         if (animationsEnabled) {
-            fadeOut(tween(durationMillis = 100, easing = FastOutLinearInEasing)) +
-                slideOutOfContainer(
-                    towards = AnimatedContentTransitionScope.SlideDirection.End,
-                    animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing),
-                )
+            if (initialState.destination.route == ROUTE_SETTINGS) {
+                fadeOut(tween(durationMillis = SETTINGS_EXIT_MS, easing = FastOutLinearInEasing))
+            } else {
+                fadeOut(tween(durationMillis = 100, easing = FastOutLinearInEasing)) +
+                    slideOutOfContainer(
+                        towards = AnimatedContentTransitionScope.SlideDirection.End,
+                        animationSpec = tween(durationMillis = 150, easing = FastOutSlowInEasing),
+                    )
+            }
         } else {
             ExitTransition.None
         }
