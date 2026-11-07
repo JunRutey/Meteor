@@ -60,10 +60,17 @@
     <string name="settings_hide_launcher_icon">隐藏桌面图标</string>
     <string name="settings_hide_launcher_icon_desc">通过 *#*#314159#*#* 来访问应用</string>
     <string name="settings_hide_launcher_icon_confirm_title">隐藏桌面图标？</string>
-    <string name="settings_hide_launcher_icon_confirm_body">隐藏后，桌面与应用列表里都不再显示 Meteor。需要打开时，在系统拨号盘输入 *#*#314159#*#*。\n\n小米 / 澎湃（MIUI）必须先允许 Meteor「自启动」与「后台弹出界面」，否则暗号唤不起应用；其他系统若拦截后台启动，暗号同样无效。也不要在系统设置里对 Meteor 执行「强制停止」，这时暗号也无效，只能重装，本地数据会一并丢失。建议先导出备份。</string>
-    <string name="settings_hide_launcher_icon_grants">当前是小米 / 澎湃系统：请先打开下面两个开关，再回来隐藏图标，否则隐藏后可能进不来。</string>
+    <string name="settings_hide_launcher_icon_confirm_body">隐藏后，桌面与应用列表里都不再显示 Meteor。需要打开时，在系统拨号盘输入 *#*#314159#*#*。\n\n系统默认禁止应用从后台弹出界面：小米 / 澎湃要打开「自启动」和「后台弹出界面」，其他系统要允许「显示在其他应用上层」。没授权时暗号会被系统静默丢弃，隐藏后可能再也进不来。也不要在系统设置里对 Meteor 执行「强制停止」，这时暗号同样无效。建议先导出备份。</string>
+    <string name="settings_hide_launcher_icon_grants">当前是小米 / 澎湃系统：在 Meteor 的「权限管理 → 其他权限」里打开「后台弹出界面」，并允许「自启动」，否则暗号唤不回应用。</string>
     <string name="settings_hide_launcher_icon_open_permissions">打开权限设置</string>
     <string name="settings_hide_launcher_icon_open_autostart">打开自启动管理</string>
+    <string name="settings_hide_launcher_icon_recovery_ready">已确认系统允许 Meteor 从后台弹出界面，暗号可以唤回应用。</string>
+    <string name="settings_hide_launcher_icon_recovery_blocked">系统当前禁止 Meteor 从后台弹出界面，暗号会被直接丢弃。请先授权，再隐藏图标。</string>
+    <string name="settings_hide_launcher_icon_recovery_unknown">无法读取系统是否允许后台启动，请务必先测试暗号。</string>
+    <string name="settings_hide_launcher_icon_open_recovery">去授权后台启动</string>
+    <string name="settings_hide_launcher_icon_test_hint">隐藏前必须先测试：保持图标可见，切到拨号盘输入 *#*#314159#*#*，确认 Meteor 能被唤回前台。只有测试成功后，这里的「隐藏」才会可点。</string>
+    <string name="settings_hide_launcher_icon_test_missing">还没有检测到成功的暗号唤回。请先离开设置去拨号盘试一次，能回到 Meteor 后再来开启。</string>
+    <string name="settings_hide_launcher_icon_test_done">已检测到暗号成功唤回应用（本次运行内 10 分钟有效）。</string>
     <string name="settings_hide_launcher_icon_confirm_ok">隐藏</string>
     <string name="settings_hide_launcher_icon_confirm_cancel">取消</string>
 

@@ -8,7 +8,9 @@ import com.meteor.memory.feature.ai.AiModule
 import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.DarkMode
 import com.meteor.memory.feature.settings.FontScale
+import com.meteor.memory.feature.settings.LauncherRecovery
 import com.meteor.memory.feature.settings.SettingsRepository
+import com.meteor.memory.system.DialCodeLaunchRecorder
 import com.meteor.memory.system.LauncherPermissionGuide
 import com.meteor.memory.system.NotificationFeature
 import com.meteor.memory.ui.ai.AiSettingsReader
@@ -58,6 +60,24 @@ class SettingsViewModel @Inject constructor(
      */
     val launcherIconNeedsSystemGrants: Boolean = launcherPermissionGuide.needsManualGrants()
     val notificationFeatureAvailable: Boolean = notificationFeature.available
+
+    /**
+     * Whether the dial code can legally bring the app back (ADR-031). Read on
+     * construction and refreshed whenever Settings resumes, so returning from
+     * the MIUI permission editor immediately unblocks the hide switch.
+     */
+    private val _launcherRecovery =
+        MutableStateFlow(launcherPermissionGuide.backgroundStartState())
+    val launcherRecovery: StateFlow<LauncherRecovery> = _launcherRecovery.asStateFlow()
+
+    /**
+     * True once a dial code actually brought the app back in this process. A
+     * blocked launch never reaches `MainActivity`, so this is the only positive
+     * proof the settings dialog accepts before hiding the icon (ADR-031).
+     */
+    private val _dialCodeVerified =
+        MutableStateFlow(DialCodeLaunchRecorder.succeededRecently())
+    val dialCodeVerified: StateFlow<Boolean> = _dialCodeVerified.asStateFlow()
 
     private val _notificationsAllowed = MutableStateFlow(notificationFeature.canPostNotifications())
     val notificationsAllowed: StateFlow<Boolean> = _notificationsAllowed.asStateFlow()
@@ -125,6 +145,17 @@ class SettingsViewModel @Inject constructor(
     /** Opens MIUI's auto-start manager; falls back to the permission editor. */
     fun openAutoStartSettings() {
         launcherPermissionGuide.openAutoStartSettings()
+    }
+
+    /** Re-reads the background-start gate after the user returns from a system page. */
+    fun refreshLauncherRecovery() {
+        _launcherRecovery.value = launcherPermissionGuide.backgroundStartState()
+        _dialCodeVerified.value = DialCodeLaunchRecorder.succeededRecently()
+    }
+
+    /** Opens the page that decides whether the dial code can bring the app back. */
+    fun openLauncherRecoverySettings() {
+        launcherPermissionGuide.openBackgroundStartSettings()
     }
 
     fun setDiaryReminderEnabled(enabled: Boolean) {
