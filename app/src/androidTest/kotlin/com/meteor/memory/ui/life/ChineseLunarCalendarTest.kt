@@ -13,25 +13,27 @@ class ChineseLunarCalendarTest {
 
     private val calendar = ChineseLunarCalendar()
 
+    // Method names are plain identifiers on purpose: this test is compiled into
+    // a DEX file, and DEX versions below 040 reject spaces in method names.
     @Test
-    fun `2024 lunar new year converts to February tenth`() {
+    fun lunarNewYear2024ConvertsToFebruaryTenth() {
         assertEquals(LocalDate.of(2024, 2, 10), calendar.toGregorian(2024, 1, 1, false))
     }
 
     @Test
-    fun `2023 leap second month converts correctly`() {
+    fun leapSecondMonth2023ConvertsCorrectly() {
         assertEquals(LocalDate.of(2023, 3, 22), calendar.toGregorian(2023, 2, 1, true))
         assertEquals(LocalDate.of(2023, 4, 19), calendar.toGregorian(2023, 2, 29, true))
         assertNull(calendar.toGregorian(2023, 2, 30, true))
     }
 
     @Test
-    fun `invalid leap month selection is rejected`() {
+    fun invalidLeapMonthSelectionIsRejected() {
         assertNull(calendar.toGregorian(2024, 2, 1, true))
     }
 
     @Test
-    fun `leap birthday falls back to same regular month in a year without that leap month`() {
+    fun leapBirthdayFallsBackToRegularMonthInYearWithoutLeapMonth() {
         val profile = BirthProfile.Lunar(
             year = 2023,
             month = 2,
@@ -50,7 +52,7 @@ class ChineseLunarCalendarTest {
     }
 
     @Test
-    fun `month list includes its real length and leap entry`() {
+    fun monthListIncludesRealLengthAndLeapEntry() {
         val months = calendar.monthsInYear(2023)
 
         assertNotNull(months.firstOrNull { it.month == 2 && !it.leapMonth })
