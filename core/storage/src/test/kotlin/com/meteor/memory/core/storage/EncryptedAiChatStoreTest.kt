@@ -175,7 +175,7 @@ class EncryptedAiChatStoreTest {
         File(legacyDir, "broken_legacy.bin").writeBytes(byteArrayOf(9, 9, 9))
         store.save("skill__all", listOf(turn("first question", true)))
 
-        val conversations = store.listConversations("skill__all")
+        val conversations = store.listConversations()
 
         assertEquals(1, conversations.size)
         assertEquals("first question", conversations.single().title)

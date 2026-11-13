@@ -115,7 +115,7 @@ class EncryptedAiChatStore(
     }
 
     override fun listConversations(scope: String?): List<StoredAiConversation> {
-        migrateLegacy()
+        migrateLegacy(scope)
         if (!sessionsDir.isDirectory) return emptyList()
         return sessionsDir.listFiles()
             .orEmpty()
@@ -161,12 +161,14 @@ class EncryptedAiChatStore(
         if (file.exists() && !file.delete()) error("chat-store-delete-failed")
     }
 
-    private fun migrateLegacy() {
+    private fun migrateLegacy(scope: String?) {
         if (!dir.isDirectory) return
+        val expected = scope?.let { fileFor(it).name }
         dir.listFiles()
             .orEmpty()
             .asSequence()
             .filter { it.isFile && it.extension == "bin" }
+            .filter { expected == null || it.name == expected }
             .forEach { oldFile ->
                 try {
                     migrateLegacyFile(oldFile)
