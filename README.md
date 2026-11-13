@@ -3,9 +3,10 @@
 本地优先、端到端加密的个人记忆档案。Android / Kotlin / Jetpack Compose。
 
 你的日记、人物档案、聊天记录及导入的文件附件以 **AES-256-GCM 加密文件**存放在应用私有目录，
-密钥绑定设备 Keystore，不可导出、不上传、无云端同步。
+密钥绑定设备 Keystore，不可导出、不上传、无云端同步。你可以选择接入自己的 AI 提供商，
+使用本机档案工具、DeepSeek 联网搜索/阅读链接、文档与图片输入，以及加密多会话。
 
-> 状态：**v0.9.0**。日记、全文搜索、心情日历、人际关系、Markdown 编辑器、
+> 状态：**v0.10.0**。日记、全文搜索、心情日历、人际关系、Markdown 编辑器、
 > AI 与数字人格均已可用。AI 默认关闭，需自备 API Key；开启前会明确提示
 > 「内容会通过 API 发往你选择的 AI 提供商」。
 >
@@ -31,7 +32,7 @@
 
 ```
 :app                    组装、DI、导航、主题
- ├── :feature-ai         AI 与数字人格（技能 + 按权限开放的 Agent，可关闭的联网提供商，ADR-027）
+ ├── :feature-ai         AI 与数字人格（本机档案工具、DeepSeek 联网/文件输入、加密多会话，ADR-027）
  ├── :feature-editor     Markdown 编辑与预览（图片、链接）
  ├── :feature-people     人际关系档案、档案编辑
  ├── :feature-gallery    加密图片浏览（按天分组、可删除）
@@ -67,7 +68,8 @@ AI 改为可关闭的联网提供商 + 技能驱动（ADR-027，取代 ADR-026�
 | v0.6 | 数字人格与 AI（联网、可关闭、技能驱动） | ✅ |
 | v0.7 | AI 工具开放与对话体验修复 | ✅ 已发布 |
 | v0.8 | AI 写权限细分、附件只读、隐藏桌面图标 | ✅ 已发布 |
-| v0.9 | 生辰页、首启引导、自动检查更新 | 🟡 待发布 |
+| v0.9 | 生辰页、首启引导、自动检查更新 | ✅ 已发布（0.9.0–0.9.5） |
+| v0.10 | AI 联网搜索、文件输入、加密多会话 | ✅ 已发布 |
 | v1.0 | 打磨发布、周/年档案代写 | 计划中 |
 
 ## 数据安全
@@ -149,6 +151,17 @@ AI 默认关闭，随时可在设置里关闭。
 细节见 [ADR-027](docs/adr/ADR-027-ai-networked-skills-agent.md)。
 工具权限边界见 [ADR-030](docs/adr/ADR-030-ai-tool-permissions.md) 与
 [ADR-032](docs/adr/ADR-032-ai-write-confirmation-and-scoped-deletion.md)。
+
+## 致谢
+
+Meteor 的实现依赖许多开源项目。主要直接依赖、参考项目及其许可证见
+[第三方开源致谢](docs/THIRD_PARTY_NOTICES.md)。
+
+特别感谢 AndroidX / Jetpack Compose、Kotlin 与 kotlinx.coroutines、Hilt / Dagger、
+KSP、JUnit 与 AndroidX Test 的维护者。AI 技能格式参考了 MIT 许可的
+[nuwa-skill](https://github.com/alchaincyf/nuwa-skill)、
+[distilly](https://github.com/titanwings/distilly)、
+[ex-skill](https://github.com/therealXiaomanChu/ex-skill)。
 
 ## 许可
 
