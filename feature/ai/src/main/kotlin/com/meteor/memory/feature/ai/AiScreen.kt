@@ -860,7 +860,7 @@ private fun ConversationToolbar(
                         renameDialog = false
                     },
                 ) {
-                    Text(stringResource(R.string.ai_send))
+                    Text(stringResource(R.string.ai_session_rename_confirm))
                 }
             },
             dismissButton = {

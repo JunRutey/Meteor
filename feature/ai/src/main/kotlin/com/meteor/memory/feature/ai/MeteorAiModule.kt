@@ -313,7 +313,7 @@ class MeteorAiModule(
 
     private fun agent(
         config: AiConfig,
-        tools: ArchiveTools,
+        tools: Toolbox,
         listener: AiChatListener? = null,
         options: AiProviderOptions = AiProviderOptions(),
     ): AiAgent = AiAgent(

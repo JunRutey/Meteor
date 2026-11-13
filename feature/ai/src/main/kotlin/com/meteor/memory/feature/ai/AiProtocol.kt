@@ -184,10 +184,10 @@ object AiProtocol {
         if (hasServerTools) {
             root.put("tools", JSONArray(buildList {
                 if (providerOptions.deepSeekWebSearch) {
-                    add(JSONObject().put("type", "deepseek_web_search").put("name", "deepseek_web_search"))
+                    add(JSONObject().put("type", "deepseek_web_search"))
                 }
                 if (providerOptions.deepSeekReadUrl) {
-                    add(JSONObject().put("type", "deepseek_read_url").put("name", "deepseek_read_url"))
+                    add(JSONObject().put("type", "deepseek_read_url"))
                 }
             }))
         } else if (tools.isNotEmpty()) {

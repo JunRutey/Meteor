@@ -58,6 +58,7 @@ class AiProtocolTest {
 
         assertEquals("deepseek_web_search", tools.getJSONObject(0).getString("type"))
         assertEquals("deepseek_read_url", tools.getJSONObject(1).getString("type"))
+        assertFalse(tools.getJSONObject(0).has("name"))
         assertFalse(body.has("tool_choice"))
     }
 

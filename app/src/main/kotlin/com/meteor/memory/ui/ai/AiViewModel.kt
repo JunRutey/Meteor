@@ -598,9 +598,10 @@ class AiViewModel @Inject constructor(
             try {
                 val conversation = chatStore.listConversations().firstOrNull { it.id == id } ?: return@launch
                 val pending = if (_state.value.activeConversationId == id) _state.value.pendingFiles else emptyList()
-                val filesDeleted = deleteRemoteFiles(
-                    (conversation.messages.flatMap { it.files } + pending).distinctBy { it.id },
-                )
+                val stored = conversation.messages.flatMap { it.files }.map {
+                    AiFileReference(it.id, it.fileName, it.purpose)
+                }
+                val filesDeleted = deleteRemoteFiles((stored + pending).distinctBy { it.id })
                 chatStore.deleteConversation(id)
                 val remaining = chatStore.listConversations(conversation.scope)
                 val next = remaining.firstOrNull() ?: newStoredConversation(conversation.scope)
