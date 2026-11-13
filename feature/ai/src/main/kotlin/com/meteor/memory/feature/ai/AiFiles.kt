@@ -1,6 +1,7 @@
 package com.meteor.memory.feature.ai
 
 import org.json.JSONObject
+import java.io.File
 import java.net.URLEncoder
 import java.time.Instant
 
@@ -12,28 +13,70 @@ object AiFiles {
         mimeType: String,
         bytes: ByteArray,
         transport: HttpTransport = UrlConnectionTransport(),
+    ): AiFileReference = uploadInternal(
+        config = config,
+        fileName = fileName,
+        mimeType = mimeType,
+        size = bytes.size.toLong(),
+    ) { fields, resolvedMime ->
+        transport.postMultipart(
+            url = config.filesEndpoint,
+            headers = authHeaders(config),
+            fields = fields,
+            fileName = fileName,
+            mimeType = resolvedMime,
+            bytes = bytes,
+        )
+    }
+
+    /** Uploads from disk so a 100 MiB document is never fully buffered in RAM. */
+    suspend fun upload(
+        config: AiConfig,
+        fileName: String,
+        mimeType: String,
+        file: File,
+        transport: HttpTransport = UrlConnectionTransport(),
+    ): AiFileReference {
+        if (!file.isFile) throw AiProviderException(0, "file-read-failed")
+        return uploadInternal(
+            config = config,
+            fileName = fileName,
+            mimeType = mimeType,
+            size = file.length(),
+        ) { fields, resolvedMime ->
+            transport.postMultipart(
+                url = config.filesEndpoint,
+                headers = authHeaders(config),
+                fields = fields,
+                fileName = fileName,
+                mimeType = resolvedMime,
+                file = file,
+            )
+        }
+    }
+
+    private suspend fun uploadInternal(
+        config: AiConfig,
+        fileName: String,
+        mimeType: String,
+        size: Long,
+        post: suspend (fields: List<Pair<String, String>>, mimeType: String) -> HttpResponse,
     ): AiFileReference {
         requireOfficialDeepSeek(config, requireFlash = true)
         if (fileName.isBlank() || fileName.toByteArray(Charsets.UTF_8).size > MAX_FILE_NAME_BYTES) {
             throw AiProviderException(0, "invalid-file-name")
         }
         val purpose = purposeFor(fileName)
-        if (bytes.isEmpty() || bytes.size > maxBytesFor(fileName)) {
+        if (size <= 0 || size > maxBytesFor(fileName).toLong()) {
             throw AiProviderException(0, "file-size-out-of-range")
         }
-        val key = config.apiKey?.takeIf(String::isNotBlank)
-            ?: throw AiProviderException(0, "missing-api-key")
-        val response = transport.postMultipart(
-            url = config.filesEndpoint,
-            headers = mapOf("Authorization" to "Bearer $key"),
-            fields = listOf(
+        val response = post(
+            listOf(
                 "purpose" to purpose,
                 "expires_after[anchor]" to "created_at",
                 "expires_after[seconds]" to FILE_EXPIRY_SECONDS.toString(),
             ),
-            fileName = fileName,
-            mimeType = mimeType.ifBlank { mimeTypeFor(fileName) },
-            bytes = bytes,
+            mimeType.ifBlank { mimeTypeFor(fileName) },
         )
         if (response.code !in 200..299) {
             throw AiProviderException(response.code, AiProtocol.errorMessage(response.body))
@@ -43,6 +86,12 @@ object AiFiles {
         val id = root.optString("id").takeIf(String::isNotBlank)
             ?: throw AiProviderException(0, "missing-file-id")
         return AiFileReference(id, fileName, purpose, Instant.now())
+    }
+
+    private fun authHeaders(config: AiConfig): Map<String, String> {
+        val key = config.apiKey?.takeIf(String::isNotBlank)
+            ?: throw AiProviderException(0, "missing-api-key")
+        return mapOf("Authorization" to "Bearer $key")
     }
 
     suspend fun delete(

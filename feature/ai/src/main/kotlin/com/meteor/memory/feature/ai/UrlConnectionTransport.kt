@@ -2,6 +2,8 @@ package com.meteor.memory.feature.ai
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -23,6 +25,16 @@ interface HttpTransport {
         mimeType: String,
         bytes: ByteArray,
     ): HttpResponse = throw AiProviderException(0, "multipart-not-supported")
+
+    /** Streams a file from disk instead of loading it into a byte array. */
+    suspend fun postMultipart(
+        url: String,
+        headers: Map<String, String>,
+        fields: List<Pair<String, String>>,
+        fileName: String,
+        mimeType: String,
+        file: File,
+    ): HttpResponse = postMultipart(url, headers, fields, fileName, mimeType, file.readBytes())
 
     suspend fun get(url: String, headers: Map<String, String>): HttpResponse
 
@@ -69,6 +81,28 @@ class UrlConnectionTransport : HttpTransport {
         fileName: String,
         mimeType: String,
         bytes: ByteArray,
+    ): HttpResponse = postMultipart(url, headers, fields, fileName, mimeType) { output ->
+        output.write(bytes)
+    }
+
+    override suspend fun postMultipart(
+        url: String,
+        headers: Map<String, String>,
+        fields: List<Pair<String, String>>,
+        fileName: String,
+        mimeType: String,
+        file: File,
+    ): HttpResponse = postMultipart(url, headers, fields, fileName, mimeType) { output ->
+        file.inputStream().use { it.copyTo(output) }
+    }
+
+    private suspend fun postMultipart(
+        url: String,
+        headers: Map<String, String>,
+        fields: List<Pair<String, String>>,
+        fileName: String,
+        mimeType: String,
+        writeBody: (OutputStream) -> Unit,
     ): HttpResponse = withContext(Dispatchers.IO) {
         val boundary = "meteor-${java.util.UUID.randomUUID()}"
         val connection = (URL(url).openConnection() as HttpURLConnection).apply {
@@ -101,7 +135,7 @@ class UrlConnectionTransport : HttpTransport {
                         ).toByteArray(Charsets.UTF_8),
                 )
                 output.write("Content-Type: $mimeType\r\n\r\n".toByteArray(Charsets.UTF_8))
-                output.write(bytes)
+                writeBody(output)
                 output.write("\r\n--$boundary--\r\n".toByteArray(Charsets.UTF_8))
             }
             val code = connection.responseCode
