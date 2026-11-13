@@ -142,4 +142,41 @@ class EncryptedAiChatStoreTest {
         store.deleteConversation("session_1")
         assertTrue(store.listConversations().isEmpty())
     }
+
+    @Test
+    fun `one unreadable session does not hide the healthy ones`() {
+        val root = temp.newFolder("root")
+        val store = EncryptedAiChatStore(root, crypto())
+        val at = Instant.parse("2026-10-31T10:00:00Z")
+        store.saveConversation(
+            StoredAiConversation("healthy", "skill__all", "title", at, at, emptyList()),
+        )
+        File(
+            root,
+            "${StorageLayout.LEGACY}/${StorageLayout.AI_CHAT}/sessions/broken.bin",
+        ).writeBytes(byteArrayOf(1, 2, 3, 4))
+
+        val conversations = store.listConversations("skill__all")
+
+        assertEquals(listOf("healthy"), conversations.map { it.id })
+        assertTrue(
+            File(root, "${StorageLayout.LEGACY}/${StorageLayout.AI_CHAT}/sessions/broken.bin").exists(),
+        )
+    }
+
+    @Test
+    fun `one unreadable legacy file does not block migration`() {
+        val root = temp.newFolder("root")
+        val store = EncryptedAiChatStore(root, crypto())
+        val legacyDir = File(root, "${StorageLayout.LEGACY}/${StorageLayout.AI_CHAT}")
+        legacyDir.mkdirs()
+        File(legacyDir, "broken_legacy.bin").writeBytes(byteArrayOf(9, 9, 9))
+        store.save("skill__all", listOf(turn("first question", true)))
+
+        val conversations = store.listConversations("skill__all")
+
+        assertEquals(1, conversations.size)
+        assertEquals("first question", conversations.single().title)
+        assertTrue(File(legacyDir, "broken_legacy.bin").exists())
+    }
 }

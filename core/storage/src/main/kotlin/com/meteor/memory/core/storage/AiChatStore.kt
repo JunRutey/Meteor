@@ -4,6 +4,8 @@ import com.meteor.memory.core.crypto.FileCrypto
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.time.Instant
 import java.util.Base64
 
@@ -113,7 +115,16 @@ class EncryptedAiChatStore(
             .orEmpty()
             .asSequence()
             .filter { it.isFile && it.extension == "bin" }
-            .map(::readConversation)
+            // One unreadable session (old key, interrupted write, newer format)
+            // must not hide every other conversation. Keep the file in place so
+            // a later key recovery or manual repair can still read it.
+            .mapNotNull { file ->
+                try {
+                    readConversation(file)
+                } catch (_: Exception) {
+                    null
+                }
+            }
             .filter { scope == null || it.scope == scope }
             .sortedByDescending { it.updatedAt }
             .toList()
@@ -121,10 +132,21 @@ class EncryptedAiChatStore(
 
     override fun saveConversation(conversation: StoredAiConversation) {
         require(ID_PATTERN.matches(conversation.id)) { "invalid-chat-id" }
-        val json = encodeConversation(conversation)
+        val kept = if (conversation.messages.size > MAX_MESSAGES) {
+            conversation.copy(messages = conversation.messages.takeLast(MAX_MESSAGES))
+        } else {
+            conversation
+        }
+        val json = encodeConversation(kept)
         if (!sessionsDir.exists() && !sessionsDir.mkdirs()) error("chat-store-unavailable")
         val destination = conversationFile(conversation.id)
-        destination.writeBytes(crypto.encrypt(json.toByteArray(Charsets.UTF_8)))
+        val temporary = File.createTempFile("${conversation.id}-", ".tmp", sessionsDir)
+        try {
+            temporary.writeBytes(crypto.encrypt(json.toByteArray(Charsets.UTF_8)))
+            replaceAtomically(temporary, destination)
+        } finally {
+            if (temporary.exists()) temporary.delete()
+        }
     }
 
     override fun deleteConversation(id: String) {
@@ -140,39 +162,63 @@ class EncryptedAiChatStore(
             .asSequence()
             .filter { it.isFile && it.extension == "bin" }
             .forEach { oldFile ->
-                val oldText = String(crypto.decrypt(oldFile.readBytes()), Charsets.UTF_8)
-                val turns = oldText.lineSequence().mapNotNull(::decode).toList()
-                if (turns.isEmpty()) return@forEach
-                val id = "legacy_${oldFile.nameWithoutExtension.take(54)}"
-                val destination = conversationFile(id)
-                if (destination.isFile) {
-                    if (readConversation(destination).scope != oldFile.nameWithoutExtension) {
-                        error("chat-store-migration-conflict")
-                    }
-                    if (!oldFile.delete()) error("chat-store-migration-cleanup-failed")
-                    return@forEach
+                try {
+                    migrateLegacyFile(oldFile)
+                } catch (_: Exception) {
+                    // Keep an unreadable legacy file untouched: a transient key
+                    // problem must not delete data, and one bad file must not
+                    // block the rest of the conversation list.
                 }
-                val now = turns.last().at
-                val messages = turns.mapIndexed { index, turn ->
-                    StoredChatMessage(
-                        id = "${id}_$index",
-                        fromUser = turn.fromUser,
-                        text = turn.text,
-                        at = turn.at,
-                    )
-                }
-                saveConversation(
-                    StoredAiConversation(
-                        id = id,
-                        scope = oldFile.nameWithoutExtension,
-                        title = messages.firstOrNull { it.fromUser }?.text?.take(TITLE_MAX_CHARS).orEmpty(),
-                        createdAt = turns.first().at,
-                        updatedAt = now,
-                        messages = messages,
-                    ),
-                )
-                if (!oldFile.delete()) error("chat-store-migration-cleanup-failed")
             }
+    }
+
+    private fun migrateLegacyFile(oldFile: File) {
+        val oldText = String(crypto.decrypt(oldFile.readBytes()), Charsets.UTF_8)
+        val turns = oldText.lineSequence().mapNotNull(::decode).toList()
+        if (turns.isEmpty()) return
+        val id = "legacy_${oldFile.nameWithoutExtension.take(54)}"
+        val destination = conversationFile(id)
+        if (destination.isFile) {
+            if (readConversation(destination).scope != oldFile.nameWithoutExtension) {
+                error("chat-store-migration-conflict")
+            }
+            if (!oldFile.delete()) error("chat-store-migration-cleanup-failed")
+            return
+        }
+        val now = turns.last().at
+        val messages = turns.mapIndexed { index, turn ->
+            StoredChatMessage(
+                id = "${id}_$index",
+                fromUser = turn.fromUser,
+                text = turn.text,
+                at = turn.at,
+            )
+        }
+        saveConversation(
+            StoredAiConversation(
+                id = id,
+                scope = oldFile.nameWithoutExtension,
+                title = messages.firstOrNull { it.fromUser }?.text?.take(TITLE_MAX_CHARS).orEmpty(),
+                createdAt = turns.first().at,
+                updatedAt = now,
+                messages = messages,
+            ),
+        )
+        if (!oldFile.delete()) error("chat-store-migration-cleanup-failed")
+    }
+
+    /** Android's rename is atomic on the same filesystem; replace in one step. */
+    private fun replaceAtomically(source: File, destination: File) {
+        try {
+            Files.move(
+                source.toPath(),
+                destination.toPath(),
+                StandardCopyOption.REPLACE_EXISTING,
+                StandardCopyOption.ATOMIC_MOVE,
+            )
+        } catch (_: Exception) {
+            Files.move(source.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        }
     }
 
     private fun readConversation(file: File): StoredAiConversation {
@@ -288,6 +334,7 @@ class EncryptedAiChatStore(
     private companion object {
         const val CHAT_FORMAT_VERSION = 2
         const val TITLE_MAX_CHARS = 32
+        const val MAX_MESSAGES = AiChatStore.MAX_TURNS * 2
         val ID_PATTERN = Regex("[A-Za-z0-9_-]{1,64}")
     }
 }
