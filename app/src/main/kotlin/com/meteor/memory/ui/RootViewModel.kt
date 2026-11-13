@@ -8,7 +8,6 @@ import com.meteor.memory.core.crypto.AppLock
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.SettingsRepository
-import com.meteor.memory.system.LauncherIconController
 import com.meteor.memory.system.LegacyInstallDetector
 import com.meteor.memory.update.UpdateService
 import com.meteor.memory.ui.search.SearchService
@@ -38,14 +37,12 @@ import javax.inject.Inject
  * one frame of plaintext content on every cold start.
  *
  * The settings DataStore is the single source of truth (archive R11); this view
- * model mirrors it into [AppLock], which owns its own keystore-backed storage
- * and cannot depend on `:feature-settings` itself. It mirrors
- * [AppSettings.hideLauncherIcon] onto the launcher alias the same way (ADR-031).
+ * model mirrors the app-lock preference into [AppLock], which owns keystore-backed
+ * storage and cannot depend on `:feature-settings` itself.
  */
 @HiltViewModel
 class RootViewModel @Inject constructor(
     private val appLock: AppLock,
-    private val launcherIcon: LauncherIconController,
     private val settingsRepository: SettingsRepository,
     private val appLog: AppLog,
     private val searchService: SearchService,
@@ -126,24 +123,6 @@ class RootViewModel @Inject constructor(
                 .map { it.verboseLogging }
                 .distinctUntilChanged()
                 .collect { appLog.setVerbose(it) }
-        }
-
-        viewModelScope.launch {
-            // ADR-031: the launcher alias is derived state. Re-applying it on
-            // every process start keeps the icon honest even when the package
-            // manager state was reset (data restore, an OEM launcher re-enabling
-            // the component after an update).
-            settingsRepository.settings
-                .map { it.hideLauncherIcon }
-                .distinctUntilChanged()
-                .collect { hidden ->
-                    val changed = withContext(Dispatchers.IO) {
-                        runCatching { launcherIcon.sync(hidden) }
-                            .onFailure { appLog.warn(LAUNCHER_TAG, "launcher icon sync failed", it) }
-                            .getOrDefault(false)
-                    }
-                    if (changed) appLog.info(LAUNCHER_TAG, "launcher icon hidden=$hidden")
-                }
         }
 
         viewModelScope.launch {
@@ -275,7 +254,6 @@ class RootViewModel @Inject constructor(
 
     private companion object {
         const val TAG = "AppLock"
-        const val LAUNCHER_TAG = "LauncherIcon"
         const val UPDATE_TAG = "AppUpdate"
         const val ONBOARDING_TAG = "Onboarding"
     }

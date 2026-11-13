@@ -13,15 +13,6 @@ data class AppSettings(
     val animationsEnabled: Boolean = true,
     val fontScale: FontScale = FontScale.SYSTEM,
     val appLockEnabled: Boolean = false,
-    /**
-     * Hide the launcher entry. The app stays reachable by dialling
-     * `*#*#314159#*#*` (ADR-031).
-     *
-     * This only records the intent: `:app` owns the `LauncherEntry` alias and
-     * mirrors this flag onto the component state, so there is one knob and the
-     * icon is derived from it (ADR-031).
-     */
-    val hideLauncherIcon: Boolean = false,
     /** Record every log level, not just warnings and errors. */
     val verboseLogging: Boolean = false,
     val autoBackupEnabled: Boolean = true,
@@ -69,19 +60,6 @@ data class AppSettings(
 enum class DarkMode { FOLLOW_SYSTEM, DARK, LIGHT }
 
 enum class FontScale { SYSTEM, SMALL, NORMAL, LARGE }
-
-/**
- * Whether the dial code is allowed to bring the app back from the background
- * (ADR-031).
- *
- * Android 10+ drops an activity start made by a background receiver unless the
- * app holds a background-activity-start exemption; the drop is silent, so the
- * only safe precondition for hiding the icon is this state. `BLOCKED` tells the
- * settings UI which system page to send the user to; `UNKNOWN` means the ROM
- * could not be queried. In both cases hiding stays disabled until a dial code
- * has actually returned to the app, which is the authoritative proof.
- */
-enum class LauncherRecovery { READY, BLOCKED, UNKNOWN }
 
 /**
  * R3 contract: when `:feature-settings` is removed, `aiEnabled` is permanently
