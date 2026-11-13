@@ -51,7 +51,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CancellationException
 import org.json.JSONException
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
+import java.io.File
 import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
@@ -480,11 +480,15 @@ class AiViewModel @Inject constructor(
             try {
                 val config = withContext(Dispatchers.IO) { reader.read().config }
                 for (uri in uris) {
-                    val uploaded = withContext(Dispatchers.IO) {
-                        val file = readSelectedFile(uri)
-                        AiFiles.upload(config, file.name, file.mimeType, file.bytes)
+                    val selected = withContext(Dispatchers.IO) { readSelectedFile(uri) }
+                    try {
+                        val uploaded = withContext(Dispatchers.IO) {
+                            AiFiles.upload(config, selected.name, selected.mimeType, selected.file)
+                        }
+                        _state.update { state -> state.copy(pendingFiles = state.pendingFiles + uploaded) }
+                    } finally {
+                        selected.file.delete()
                     }
-                    _state.update { state -> state.copy(pendingFiles = state.pendingFiles + uploaded) }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -874,24 +878,31 @@ class AiViewModel @Inject constructor(
                 val column = cursor.getColumnIndex(OpenableColumns.SIZE)
                 if (column >= 0 && cursor.moveToFirst()) cursor.getLong(column) else -1L
             } ?: -1L
-        if (declaredSize > limit) throw AiProviderException(0, "file-size-out-of-range")
-        val initialSize = declaredSize.takeIf { it in 1..limit.toLong() }?.toInt() ?: DEFAULT_BUFFER_SIZE
-        val output = ByteArrayOutputStream(initialSize)
-        resolver.openInputStream(uri)?.use { input ->
-            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-            var total = 0
-            while (true) {
-                val count = input.read(buffer)
-                if (count < 0) break
-                if (count == 0) continue
-                if (count > limit - total) {
-                    throw AiProviderException(0, "file-size-out-of-range")
+        if (declaredSize > limit.toLong()) throw AiProviderException(0, "file-size-out-of-range")
+        val temporary = File.createTempFile("meteor-ai-", ".upload", context.cacheDir)
+        var total = 0
+        try {
+            resolver.openInputStream(uri)?.use { input ->
+                temporary.outputStream().use { output ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        if (count == 0) continue
+                        if (count > limit - total) {
+                            throw AiProviderException(0, "file-size-out-of-range")
+                        }
+                        output.write(buffer, 0, count)
+                        total += count
+                    }
                 }
-                output.write(buffer, 0, count)
-                total += count
-            }
-        } ?: throw AiProviderException(0, "file-read-failed")
-        return SelectedAiFile(name, mimeType, output.toByteArray())
+            } ?: throw AiProviderException(0, "file-read-failed")
+            if (total == 0) throw AiProviderException(0, "file-size-out-of-range")
+            return SelectedAiFile(name, mimeType, temporary)
+        } catch (failure: Exception) {
+            temporary.delete()
+            throw failure
+        }
     }
 
     private fun restoreHistory() {
@@ -1011,5 +1022,5 @@ class AiViewModel @Inject constructor(
         private const val FILE_HISTORY_TTL_SECONDS = AiFiles.FILE_EXPIRY_SECONDS - 24 * 60 * 60
     }
 
-    private data class SelectedAiFile(val name: String, val mimeType: String, val bytes: ByteArray)
+    private data class SelectedAiFile(val name: String, val mimeType: String, val file: File)
 }

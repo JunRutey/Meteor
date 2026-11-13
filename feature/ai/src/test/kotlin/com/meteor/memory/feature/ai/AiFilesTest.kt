@@ -5,6 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 class AiFilesTest {
 
@@ -61,6 +62,20 @@ class AiFilesTest {
             ),
             transport.fields,
         )
+    }
+
+    @Test
+    fun `upload streams a file from disk`() = runBlocking {
+        val temporary = File.createTempFile("ai-file-", ".pdf")
+        temporary.writeBytes(byteArrayOf(1, 2, 3))
+        try {
+            val file = AiFiles.upload(config(), "report.pdf", "application/pdf", temporary, FakeTransport())
+
+            assertEquals("file-api-1", file.id)
+            assertEquals("rich_layout_recognition", file.purpose)
+        } finally {
+            temporary.delete()
+        }
     }
 
     @Test
