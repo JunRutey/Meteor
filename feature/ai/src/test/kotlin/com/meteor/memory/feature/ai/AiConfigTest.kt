@@ -12,7 +12,7 @@ class AiConfigTest {
         val config = AiConfig(provider = AiPresets.DEEPSEEK, apiKey = "k")
 
         assertEquals("https://api.deepseek.com/v1", config.resolvedBaseUrl)
-        assertEquals("deepseek-chat", config.resolvedModel)
+        assertEquals("deepseek-flash", config.resolvedModel)
         assertEquals("https://api.deepseek.com/v1/chat/completions", config.endpoint)
         assertTrue(config.isConfigured())
     }

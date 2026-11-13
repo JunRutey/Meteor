@@ -29,6 +29,42 @@ enum class AiRole(val wire: String) {
 /** One tool invocation requested by the model. */
 data class AiToolCall(val id: String, val name: String, val arguments: String)
 
+data class AiFileReference(
+    val id: String,
+    val fileName: String,
+    val purpose: String = "user_data",
+)
+
+data class AiCitation(
+    val url: String,
+    val title: String,
+    val startIndex: Int,
+    val endIndex: Int,
+)
+
+data class AiWebSource(
+    val title: String,
+    val url: String,
+    val snippet: String = "",
+    val siteName: String? = null,
+    val siteIcon: String? = null,
+)
+
+data class AiServerToolEvent(
+    val type: String,
+    val toolName: String? = null,
+    val action: String? = null,
+    val url: String? = null,
+    val queries: List<String> = emptyList(),
+    val sources: List<AiWebSource> = emptyList(),
+    val status: String? = null,
+)
+
+data class AiProviderOptions(
+    val deepSeekWebSearch: Boolean = false,
+    val deepSeekReadUrl: Boolean = false,
+)
+
 /**
  * One chat message. [toolCalls] is only used by assistant messages,
  * [toolCallId] only by tool messages, and [reasoningContent] only by assistant
@@ -41,11 +77,15 @@ data class AiMessage(
     val toolCalls: List<AiToolCall> = emptyList(),
     val toolCallId: String? = null,
     val reasoningContent: String? = null,
+    val serverToolCallsJson: String? = null,
+    val files: List<AiFileReference> = emptyList(),
+    val citations: List<AiCitation> = emptyList(),
 ) {
     companion object {
         fun system(text: String) = AiMessage(AiRole.SYSTEM, text)
 
-        fun user(text: String) = AiMessage(AiRole.USER, text)
+        fun user(text: String, files: List<AiFileReference> = emptyList()) =
+            AiMessage(AiRole.USER, text, files = files)
 
         fun assistant(text: String?, toolCalls: List<AiToolCall>) =
             AiMessage(AiRole.ASSISTANT, text, toolCalls)
@@ -87,6 +127,10 @@ data class AiCompletion(
     val toolCalls: List<AiToolCall>,
     val usage: AiUsage? = null,
     val reasoningContent: String? = null,
+    val serverToolCallsJson: String? = null,
+    val citations: List<AiCitation> = emptyList(),
+    val title: String? = null,
+    val finishReason: String? = null,
 )
 
 /** Result of the cheap `/models` probe used by "test connection". */
@@ -109,10 +153,18 @@ object AiProtocol {
         reasoning: ReasoningMode = ReasoningMode.AUTO,
         provider: String = AiPresets.DEEPSEEK,
         stream: Boolean = false,
+        providerOptions: AiProviderOptions = AiProviderOptions(),
     ): String {
+        val hasServerTools = providerOptions.deepSeekWebSearch || providerOptions.deepSeekReadUrl
+        require(!hasServerTools || provider == AiPresets.DEEPSEEK) {
+            "DeepSeek server tools require the DeepSeek provider"
+        }
+        require(!hasServerTools || tools.isEmpty()) {
+            "DeepSeek server tools cannot be combined with function tools"
+        }
         val root = JSONObject()
         root.put("model", model)
-        root.put("messages", JSONArray(messages.map { messageJson(it) }))
+        root.put("messages", JSONArray(messages.map { messageJson(it, provider) }))
         root.put("max_tokens", maxTokens)
         root.put("temperature", 0.7)
         if (stream) {
@@ -129,7 +181,16 @@ object AiProtocol {
             )
             reasoning.effort?.let { root.put("reasoning_effort", it) }
         }
-        if (tools.isNotEmpty()) {
+        if (hasServerTools) {
+            root.put("tools", JSONArray(buildList {
+                if (providerOptions.deepSeekWebSearch) {
+                    add(JSONObject().put("type", "deepseek_web_search").put("name", "deepseek_web_search"))
+                }
+                if (providerOptions.deepSeekReadUrl) {
+                    add(JSONObject().put("type", "deepseek_read_url").put("name", "deepseek_read_url"))
+                }
+            }))
+        } else if (tools.isNotEmpty()) {
             root.put("tools", JSONArray(tools.map { spec ->
                 JSONObject().apply {
                     put("type", "function")
@@ -148,11 +209,15 @@ object AiProtocol {
     fun parseCompletion(body: String): AiCompletion {
         val root = runCatching { JSONObject(body) }
             .getOrElse { throw AiProviderException(0, "invalid-json") }
+        root.optJSONObject("error")?.let { error ->
+            throw AiProviderException(0, error.optString("message").ifBlank { "provider-error" })
+        }
         val choices = root.optJSONArray("choices") ?: throw AiProviderException(0, "no-choices")
         if (choices.length() == 0) throw AiProviderException(0, "no-choices")
 
         val message = choices.optJSONObject(0)?.optJSONObject("message")
             ?: throw AiProviderException(0, "no-message")
+        val finishReason = choices.optJSONObject(0)?.optTextOrNull("finish_reason")
 
         val rawContent = message.opt("content")
         val content = if (rawContent == null || rawContent == JSONObject.NULL) {
@@ -175,8 +240,65 @@ object AiProtocol {
         }.orEmpty()
 
         val reasoning = message.optTextOrNull("reasoning_content")
+        val serverToolCalls = message.optJSONArray("server_tool_calls")?.toString()
+        val citations = parseCitations(message.optJSONArray("annotations"))
+        val title = message.optTextOrNull("title")
 
-        return AiCompletion(content, calls, parseUsage(root), reasoning)
+        return AiCompletion(
+            content = content,
+            toolCalls = calls,
+            usage = parseUsage(root),
+            reasoningContent = reasoning,
+            serverToolCallsJson = serverToolCalls,
+            citations = citations,
+            title = title,
+            finishReason = finishReason,
+        )
+    }
+
+    internal fun parseCitations(annotations: JSONArray?): List<AiCitation> =
+        annotations?.let { array ->
+            (0 until array.length()).mapNotNull { index ->
+                val annotation = array.optJSONObject(index) ?: return@mapNotNull null
+                val citation = annotation.optJSONObject("url_citation") ?: return@mapNotNull null
+                val url = citation.optString("url").takeIf(String::isNotBlank) ?: return@mapNotNull null
+                AiCitation(
+                    url = url,
+                    title = citation.optString("title").ifBlank { url },
+                    startIndex = citation.optInt("start_index", 0),
+                    endIndex = citation.optInt("end_index", 0),
+                )
+            }
+        }.orEmpty()
+
+    internal fun parseServerToolEvent(event: JSONObject): AiServerToolEvent {
+        val call = event.optJSONObject("call") ?: JSONObject()
+        val action = call.optJSONObject("action") ?: JSONObject()
+        val sources = call.optJSONArray("sources")?.let { array ->
+            (0 until array.length()).mapNotNull { index ->
+                val source = array.optJSONObject(index) ?: return@mapNotNull null
+                val url = source.optString("url").takeIf(String::isNotBlank) ?: return@mapNotNull null
+                AiWebSource(
+                    title = source.optString("title").ifBlank { url },
+                    url = url,
+                    snippet = source.optString("snippet"),
+                    siteName = source.optTextOrNull("site_name"),
+                    siteIcon = source.optTextOrNull("site_icon"),
+                )
+            }
+        }.orEmpty()
+        val queries = action.optJSONArray("queries")?.let { array ->
+            (0 until array.length()).mapNotNull { array.optString(it).takeIf(String::isNotBlank) }
+        }.orEmpty()
+        return AiServerToolEvent(
+            type = event.optString("type"),
+            toolName = call.optTextOrNull("type"),
+            action = action.optTextOrNull("type"),
+            url = action.optTextOrNull("url"),
+            queries = queries,
+            sources = sources,
+            status = call.optTextOrNull("status"),
+        )
     }
 
     internal fun parseUsage(root: JSONObject): AiUsage? {
@@ -223,7 +345,7 @@ object AiProtocol {
         return (message ?: "").trim().take(MAX_ERROR_CHARS).ifBlank { "provider-error" }
     }
 
-    private fun messageJson(message: AiMessage): JSONObject = JSONObject().apply {
+    private fun messageJson(message: AiMessage, provider: String): JSONObject = JSONObject().apply {
         put("role", message.role.wire)
         when (message.role) {
             AiRole.TOOL -> {
@@ -251,11 +373,32 @@ object AiProtocol {
                 message.reasoningContent?.takeIf { it.isNotBlank() }?.let {
                     put("reasoning_content", it)
                 }
+                if (provider == AiPresets.DEEPSEEK) {
+                    message.serverToolCallsJson?.let { put("server_tool_calls", JSONArray(it)) }
+                }
+            }
+
+            AiRole.USER -> {
+                if (provider == AiPresets.DEEPSEEK && message.files.isNotEmpty()) {
+                    put("content", JSONArray(buildList {
+                        message.content?.takeIf(String::isNotBlank)?.let {
+                            add(JSONObject().put("type", "text").put("text", it))
+                        }
+                        message.files.forEach { file ->
+                            add(
+                                JSONObject().put("type", "file")
+                                    .put("file_id", file.id),
+                            )
+                        }
+                    }))
+                } else {
+                    put("content", message.content.orEmpty())
+                }
             }
 
             else -> put("content", message.content.orEmpty())
         }
     }
 
-    private const val MAX_ERROR_CHARS = 300
+    internal const val MAX_ERROR_CHARS = 300
 }

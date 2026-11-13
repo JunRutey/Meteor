@@ -7,6 +7,8 @@ interface AiStreamCallback {
     fun onContent(delta: String) {}
 
     fun onReasoning(delta: String) {}
+
+    fun onServerToolEvent(event: AiServerToolEvent) {}
 }
 
 /**
@@ -20,6 +22,13 @@ interface AiProvider {
         maxTokens: Int = 1500,
     ): AiCompletion
 
+    suspend fun completeWithOptions(
+        messages: List<AiMessage>,
+        tools: List<AiToolSpec>,
+        maxTokens: Int,
+        options: AiProviderOptions,
+    ): AiCompletion = complete(messages, tools, maxTokens)
+
     /** Streaming variant; the default replays a non-streaming completion once. */
     suspend fun completeStream(
         messages: List<AiMessage>,
@@ -28,6 +37,19 @@ interface AiProvider {
         callback: AiStreamCallback,
     ): AiCompletion {
         val completion = complete(messages, tools, maxTokens)
+        completion.content?.takeIf { it.isNotBlank() }?.let(callback::onContent)
+        completion.reasoningContent?.takeIf { it.isNotBlank() }?.let(callback::onReasoning)
+        return completion
+    }
+
+    suspend fun completeStreamWithOptions(
+        messages: List<AiMessage>,
+        tools: List<AiToolSpec>,
+        maxTokens: Int,
+        options: AiProviderOptions,
+        callback: AiStreamCallback,
+    ): AiCompletion {
+        val completion = completeWithOptions(messages, tools, maxTokens, options)
         completion.content?.takeIf { it.isNotBlank() }?.let(callback::onContent)
         completion.reasoningContent?.takeIf { it.isNotBlank() }?.let(callback::onReasoning)
         return completion
@@ -53,10 +75,23 @@ class OpenAiCompatibleProvider(
         messages: List<AiMessage>,
         tools: List<AiToolSpec>,
         maxTokens: Int,
+    ): AiCompletion = completeWithOptions(messages, tools, maxTokens, AiProviderOptions())
+
+    override suspend fun completeWithOptions(
+        messages: List<AiMessage>,
+        tools: List<AiToolSpec>,
+        maxTokens: Int,
+        options: AiProviderOptions,
     ): AiCompletion {
         val apiKey = config.apiKey?.takeIf { it.isNotBlank() }
             ?: throw AiProviderException(0, "missing-api-key")
         if (!config.isConfigured()) throw AiProviderException(0, "not-configured")
+        if (
+            (options.deepSeekWebSearch || options.deepSeekReadUrl) &&
+            (config.provider != AiPresets.DEEPSEEK || !config.officialDeepSeekEndpoint)
+        ) {
+            throw AiProviderException(0, "web-tools-require-official-deepseek")
+        }
 
         val payload = AiProtocol.requestBody(
             model = config.resolvedModel,
@@ -65,6 +100,7 @@ class OpenAiCompatibleProvider(
             maxTokens = maxTokens,
             reasoning = config.reasoningMode,
             provider = config.provider,
+            providerOptions = options,
         )
         val response = transport.post(
             url = config.endpoint,
@@ -82,10 +118,30 @@ class OpenAiCompatibleProvider(
         tools: List<AiToolSpec>,
         maxTokens: Int,
         callback: AiStreamCallback,
+    ): AiCompletion = completeStreamWithOptions(
+        messages,
+        tools,
+        maxTokens,
+        AiProviderOptions(),
+        callback,
+    )
+
+    override suspend fun completeStreamWithOptions(
+        messages: List<AiMessage>,
+        tools: List<AiToolSpec>,
+        maxTokens: Int,
+        options: AiProviderOptions,
+        callback: AiStreamCallback,
     ): AiCompletion {
         val apiKey = config.apiKey?.takeIf { it.isNotBlank() }
             ?: throw AiProviderException(0, "missing-api-key")
         if (!config.isConfigured()) throw AiProviderException(0, "not-configured")
+        if (
+            (options.deepSeekWebSearch || options.deepSeekReadUrl) &&
+            (config.provider != AiPresets.DEEPSEEK || !config.officialDeepSeekEndpoint)
+        ) {
+            throw AiProviderException(0, "web-tools-require-official-deepseek")
+        }
 
         val payload = AiProtocol.requestBody(
             model = config.resolvedModel,
@@ -95,12 +151,18 @@ class OpenAiCompatibleProvider(
             reasoning = config.reasoningMode,
             provider = config.provider,
             stream = true,
+            providerOptions = options,
         )
 
         val content = StringBuilder()
         val reasoning = StringBuilder()
         val calls = sortedMapOf<Int, StreamingCall>()
         var usage: AiUsage? = null
+        var serverToolCallsJson: String? = null
+        var citations: List<AiCitation> = emptyList()
+        var title: String? = null
+        var finishReason: String? = null
+        var streamError: String? = null
 
         val response = transport.postStream(
             url = config.endpoint,
@@ -113,13 +175,23 @@ class OpenAiCompatibleProvider(
             val data = line.trim().removePrefix("data:").trim()
             if (data.isEmpty() || data == "[DONE]") return@postStream
             val root = runCatching { JSONObject(data) }.getOrNull() ?: return@postStream
+            root.optJSONObject("error")?.let { error ->
+                streamError = error.optString("message").ifBlank { "provider-error" }
+                return@postStream
+            }
 
             AiProtocol.parseUsage(root)?.let { chunk -> usage = usage?.merge(chunk) ?: chunk }
 
-            val delta = root.optJSONArray("choices")
-                ?.optJSONObject(0)
-                ?.optJSONObject("delta")
-                ?: return@postStream
+            val choice = root.optJSONArray("choices")?.optJSONObject(0) ?: return@postStream
+            choice.optTextOrNull("finish_reason")?.let { finishReason = it }
+            choice.optJSONObject("server_tool_event")?.let {
+                callback.onServerToolEvent(AiProtocol.parseServerToolEvent(it))
+            }
+            val delta = choice.optJSONObject("delta") ?: return@postStream
+
+            delta.optJSONArray("server_tool_calls")?.let { serverToolCallsJson = it.toString() }
+            delta.optJSONArray("annotations")?.let { citations = AiProtocol.parseCitations(it) }
+            delta.optTextOrNull("title")?.let { title = it }
 
             delta.optTextOrNull("reasoning_content")?.let {
                 reasoning.append(it)
@@ -146,6 +218,7 @@ class OpenAiCompatibleProvider(
         if (response.code !in 200..299) {
             throw AiProviderException(response.code, AiProtocol.errorMessage(response.body))
         }
+        streamError?.let { throw AiProviderException(0, it.take(AiProtocol.MAX_ERROR_CHARS)) }
 
         return AiCompletion(
             content = content.toString().ifBlank { null },
@@ -160,6 +233,10 @@ class OpenAiCompatibleProvider(
             },
             usage = usage,
             reasoningContent = reasoning.toString().ifBlank { null },
+            serverToolCallsJson = serverToolCallsJson,
+            citations = citations,
+            title = title,
+            finishReason = finishReason,
         )
     }
 
@@ -191,6 +268,7 @@ class OpenAiCompatibleProvider(
         }
         return AiProtocol.parseModels(response.body)
     }
+
 }
 
 /** Fetches available model ids for the settings picker. */

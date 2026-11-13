@@ -8,6 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import java.io.File
 import java.security.SecureRandom
 import java.time.Instant
 import javax.crypto.spec.SecretKeySpec
@@ -75,5 +76,70 @@ class EncryptedAiChatStoreTest {
         EncryptedAiChatStore(root, crypto()).save("a", listOf(turn("secret", true)))
 
         assertTrue(EncryptedAiChatStore(root, crypto()).load("a").isEmpty())
+    }
+
+    @Test
+    fun `version one turns migrate into an encrypted session`() {
+        val root = temp.newFolder("root")
+        val store = EncryptedAiChatStore(root, crypto())
+        val created = listOf(turn("first question", true), turn("answer", false))
+        store.save("skill__all", created)
+
+        val conversation = store.listConversations("skill__all").single()
+
+        assertEquals("first question", conversation.title)
+        assertEquals(2, conversation.messages.size)
+        assertEquals("answer", conversation.messages.last().text)
+        assertFalse(
+            File(root, "${StorageLayout.LEGACY}/${StorageLayout.AI_CHAT}/skill__all.bin").exists(),
+        )
+    }
+
+    @Test
+    fun `sessions round trip metadata and support rename and delete`() {
+        val root = temp.newFolder("root")
+        val store = EncryptedAiChatStore(root, crypto())
+        val at = Instant.parse("2026-10-31T10:00:00Z")
+        val session = StoredAiConversation(
+            id = "session_1",
+            scope = "skill__all",
+            title = "A title",
+            createdAt = at,
+            updatedAt = at,
+            messages = listOf(
+                StoredChatMessage(
+                    id = "message_1",
+                    fromUser = true,
+                    text = "read this",
+                    at = at,
+                    files = listOf(StoredChatFile("file-1", "report.pdf", "rich_layout_recognition")),
+                ),
+                StoredChatMessage(
+                    id = "message_2",
+                    fromUser = false,
+                    text = "A cited answer.",
+                    at = at,
+                    serverToolCallsJson = """[{"id":"server-1"}]""",
+                    citations = listOf(StoredChatCitation("https://example.com", "Example", 0, 8)),
+                ),
+            ),
+        )
+        store.saveConversation(session)
+
+        val loaded = store.listConversations().single()
+
+        assertEquals("A title", loaded.title)
+        assertEquals(session.messages, loaded.messages)
+        assertFalse(
+            File(root, "${StorageLayout.LEGACY}/${StorageLayout.AI_CHAT}/sessions/session_1.bin")
+                .readBytes()
+                .toString(Charsets.ISO_8859_1)
+                .contains("A cited answer"),
+        )
+
+        store.saveConversation(loaded.copy(title = "Renamed", updatedAt = at.plusSeconds(1)))
+        assertEquals("Renamed", store.listConversations().single().title)
+        store.deleteConversation("session_1")
+        assertTrue(store.listConversations().isEmpty())
     }
 }

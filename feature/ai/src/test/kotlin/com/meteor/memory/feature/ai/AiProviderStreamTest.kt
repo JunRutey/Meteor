@@ -114,4 +114,40 @@ class AiProviderStreamTest {
         assertEquals("", thought.toString())
         assertEquals(1, completion.toolCalls.size)
     }
+
+    @Test
+    fun `stream parses deepseek web events citations and server tool history`() = runBlocking {
+        val transport = FakeTransport(
+            listOf(
+                """data: {"choices":[{"server_tool_event":{"type":"call_started","call":{"type":"deepseek_web_search","action":{"type":"search","queries":["weather"]}}},"delta":{}}]}""",
+                """data: {"choices":[{"server_tool_event":{"type":"call_completed","call":{"type":"deepseek_web_search","status":"completed","sources":[{"url":"https://example.com","title":"Example","snippet":"forecast"}]}},"delta":{"content":"Sunny.","server_tool_calls":[{"index":0,"calls":[{"id":"srv1"}]}],"annotations":[{"type":"url_citation","url_citation":{"url":"https://example.com","title":"Example","start_index":0,"end_index":5}}]}}]}""",
+                """data: {"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":2}}""",
+                "data: [DONE]",
+            ),
+        )
+        val provider = OpenAiCompatibleProvider(
+            config = AiConfig(provider = AiPresets.DEEPSEEK, apiKey = "k"),
+            transport = transport,
+        )
+        val events = mutableListOf<AiServerToolEvent>()
+        val completion = provider.completeStreamWithOptions(
+            messages = listOf(AiMessage.user("weather")),
+            tools = emptyList(),
+            maxTokens = 100,
+            options = AiProviderOptions(deepSeekWebSearch = true, deepSeekReadUrl = true),
+            callback = object : AiStreamCallback {
+                override fun onServerToolEvent(event: AiServerToolEvent) {
+                    events += event
+                }
+            },
+        )
+
+        assertEquals("Sunny.", completion.content)
+        assertEquals("https://example.com", completion.citations.single().url)
+        assertTrue(completion.serverToolCallsJson.orEmpty().contains("srv1"))
+        assertEquals(2, events.size)
+        assertEquals(listOf("weather"), events.first().queries)
+        assertEquals("https://example.com", events.last().sources.single().url)
+        assertTrue(transport.lastBody.contains("deepseek_web_search"))
+    }
 }

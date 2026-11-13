@@ -15,7 +15,19 @@ data class HttpResponse(val code: Int, val body: String)
 interface HttpTransport {
     suspend fun post(url: String, headers: Map<String, String>, body: String): HttpResponse
 
+    suspend fun postMultipart(
+        url: String,
+        headers: Map<String, String>,
+        fields: List<Pair<String, String>>,
+        fileName: String,
+        mimeType: String,
+        bytes: ByteArray,
+    ): HttpResponse = throw AiProviderException(0, "multipart-not-supported")
+
     suspend fun get(url: String, headers: Map<String, String>): HttpResponse
+
+    suspend fun delete(url: String, headers: Map<String, String>): HttpResponse =
+        throw AiProviderException(0, "delete-not-supported")
 
     /**
      * Streams a POST response line by line (SSE `data:` lines). Default keeps
@@ -46,6 +58,60 @@ class UrlConnectionTransport : HttpTransport {
 
     override suspend fun get(url: String, headers: Map<String, String>): HttpResponse =
         execute("GET", url, headers, null)
+
+    override suspend fun delete(url: String, headers: Map<String, String>): HttpResponse =
+        execute("DELETE", url, headers, null)
+
+    override suspend fun postMultipart(
+        url: String,
+        headers: Map<String, String>,
+        fields: List<Pair<String, String>>,
+        fileName: String,
+        mimeType: String,
+        bytes: ByteArray,
+    ): HttpResponse = withContext(Dispatchers.IO) {
+        val boundary = "meteor-${java.util.UUID.randomUUID()}"
+        val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+            requestMethod = "POST"
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+            doInput = true
+            doOutput = true
+            headers.forEach { (name, value) -> setRequestProperty(name, value) }
+            setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+        }
+        try {
+            connection.outputStream.use { output ->
+                fields.forEach { (name, value) ->
+                    output.write("--$boundary\r\n".toByteArray(Charsets.UTF_8))
+                    output.write("Content-Disposition: form-data; name=\"$name\"\r\n\r\n".toByteArray(Charsets.UTF_8))
+                    output.write(value.toByteArray(Charsets.UTF_8))
+                    output.write("\r\n".toByteArray(Charsets.UTF_8))
+                }
+                val asciiName = fileName.map { if (it.code in 32..126 && it != '"' && it != '\\') it else '_' }
+                    .joinToString("")
+                    .take(MAX_FILE_NAME_CHARS)
+                    .ifBlank { "upload" }
+                val encodedName = java.net.URLEncoder.encode(fileName, Charsets.UTF_8.name()).replace("+", "%20")
+                output.write("--$boundary\r\n".toByteArray(Charsets.UTF_8))
+                output.write(
+                    (
+                        "Content-Disposition: form-data; name=\"file\"; filename=\"$asciiName\"; " +
+                            "filename*=UTF-8''$encodedName\r\n"
+                        ).toByteArray(Charsets.UTF_8),
+                )
+                output.write("Content-Type: $mimeType\r\n\r\n".toByteArray(Charsets.UTF_8))
+                output.write(bytes)
+                output.write("\r\n--$boundary--\r\n".toByteArray(Charsets.UTF_8))
+            }
+            val code = connection.responseCode
+            val stream = if (code in 200..299) connection.inputStream else connection.errorStream
+            val body = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+            HttpResponse(code, body.take(MAX_ERROR_BODY_CHARS))
+        } finally {
+            connection.disconnect()
+        }
+    }
 
     override suspend fun postStream(
         url: String,
@@ -117,5 +183,6 @@ class UrlConnectionTransport : HttpTransport {
         const val CONNECT_TIMEOUT_MS = 15_000
         const val READ_TIMEOUT_MS = 120_000
         const val MAX_ERROR_BODY_CHARS = 8_000
+        const val MAX_FILE_NAME_CHARS = 128
     }
 }

@@ -6,6 +6,10 @@ data class AgentResult(
     val steps: Int,
     val toolCalls: Int,
     val usage: AiUsage = AiUsage(),
+    val serverToolCallsJson: String? = null,
+    val citations: List<AiCitation> = emptyList(),
+    val title: String? = null,
+    val finishReason: String? = null,
 )
 
 /**
@@ -21,6 +25,7 @@ class AiAgent(
     private val maxToolResultChars: Int = 2500,
     private val maxTotalToolChars: Int = 24000,
     private val listener: AiChatListener? = null,
+    private val providerOptions: AiProviderOptions = AiProviderOptions(),
 ) {
 
     suspend fun run(conversation: List<AiMessage>, allowedPersonId: String?): AgentResult {
@@ -36,16 +41,27 @@ class AiAgent(
         while (steps < maxSteps) {
             steps++
             val completion = if (listener == null) {
-                provider.complete(messages = messages, tools = specs)
-            } else {
-                val active = listener
-                provider.completeStream(
+                provider.completeWithOptions(
                     messages = messages,
                     tools = specs,
+                    maxTokens = 1500,
+                    options = providerOptions,
+                )
+            } else {
+                val active = listener
+                provider.completeStreamWithOptions(
+                    messages = messages,
+                    tools = specs,
+                    maxTokens = 1500,
+                    options = providerOptions,
                     callback = object : AiStreamCallback {
                         override fun onContent(delta: String) = active.onContent(delta)
 
                         override fun onReasoning(delta: String) = active.onReasoning(delta)
+
+                        override fun onServerToolEvent(event: AiServerToolEvent) {
+                            active.onServerToolEvent(event)
+                        }
                     },
                 )
             }
@@ -53,7 +69,18 @@ class AiAgent(
             if (completion.toolCalls.isEmpty()) {
                 val text = completion.content?.trim().orEmpty()
                 if (text.isEmpty()) throw AiProviderException(0, "empty-response")
-                return AgentResult(text, steps, toolCalls, usage)
+                completion.citations.forEach { listener?.onCitation(it) }
+                completion.title?.let { listener?.onTitle(it) }
+                return AgentResult(
+                    content = text,
+                    steps = steps,
+                    toolCalls = toolCalls,
+                    usage = usage,
+                    serverToolCallsJson = completion.serverToolCallsJson,
+                    citations = completion.citations,
+                    title = completion.title,
+                    finishReason = completion.finishReason,
+                )
             }
 
             val calls = completion.toolCalls.take(maxToolCallsPerStep)

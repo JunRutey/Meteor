@@ -1,29 +1,42 @@
 package com.meteor.memory.ui.ai
 
+import android.content.Context
+import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.meteor.memory.core.storage.StoredAiConversation
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.AiChatStore
 import com.meteor.memory.core.storage.PersonEntry
 import com.meteor.memory.core.storage.PersonQueries
-import com.meteor.memory.core.storage.StoredChatTurn
+import com.meteor.memory.core.storage.StoredChatCitation
+import com.meteor.memory.core.storage.StoredChatFile
+import com.meteor.memory.core.storage.StoredChatMessage
 import com.meteor.memory.feature.ai.AiChatBubble
 import com.meteor.memory.feature.ai.AiChatListener
+import com.meteor.memory.feature.ai.AiChatMode
+import com.meteor.memory.feature.ai.AiCitation
+import com.meteor.memory.feature.ai.AiFileReference
+import com.meteor.memory.feature.ai.AiFiles
 import com.meteor.memory.feature.ai.AiModule
 import com.meteor.memory.feature.ai.AiPresets
 import com.meteor.memory.feature.ai.AiProviderException
 import com.meteor.memory.feature.ai.AiSkill
 import com.meteor.memory.feature.ai.AiProcessStep
+import com.meteor.memory.feature.ai.AiServerToolEvent
 import com.meteor.memory.feature.ai.AiToolApproval
 import com.meteor.memory.feature.ai.AiUsage
 import com.meteor.memory.feature.ai.ArchiveTools
+import com.meteor.memory.feature.ai.AiConversationItem
 import com.meteor.memory.feature.ai.ChatRequest
 import com.meteor.memory.feature.ai.ChatTurn
 import com.meteor.memory.feature.ai.SkillStage
 import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.SettingsRepository
 import com.meteor.memory.ui.search.SearchService
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -33,9 +46,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
 import org.json.JSONException
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.time.Instant
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 
@@ -75,6 +91,13 @@ data class AiUiState(
     val liveContent: String = "",
     val liveSteps: List<AiProcessStep> = emptyList(),
     val pendingToolApprovals: List<AiToolApproval> = emptyList(),
+    val conversations: List<AiConversationItem> = emptyList(),
+    val activeConversationId: String? = null,
+    val chatMode: AiChatMode = AiChatMode.ARCHIVE,
+    val pendingFiles: List<AiFileReference> = emptyList(),
+    val fileUploading: Boolean = false,
+    val canUploadFiles: Boolean = false,
+    val canUseWebTools: Boolean = false,
 )
 
 @HiltViewModel
@@ -87,6 +110,7 @@ class AiViewModel @Inject constructor(
     private val appLog: AppLog,
     private val chatStore: AiChatStore,
     private val searchService: SearchService,
+    @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
     private val initialPersonId: String? = savedStateHandle.get<String>(ARG_PERSON_ID)
@@ -106,7 +130,24 @@ class AiViewModel @Inject constructor(
         viewModelScope.launch {
             repository.settings.collect { settings ->
                 val blocked = blockedOf(settings)
-                _state.update { it.copy(blocked = blocked, provider = settings.aiProvider) }
+                val config = withContext(Dispatchers.IO) {
+                    runCatching { reader.read().config }.getOrNull()
+                }
+                val deepSeekFilesAvailable = config?.let {
+                    it.provider == AiPresets.DEEPSEEK &&
+                        it.officialDeepSeekEndpoint &&
+                        it.resolvedModel == "deepseek-flash" &&
+                        it.isConfigured()
+                } == true
+                _state.update {
+                    it.copy(
+                        blocked = blocked,
+                        provider = settings.aiProvider,
+                        canUploadFiles = deepSeekFilesAvailable,
+                        canUseWebTools = deepSeekFilesAvailable,
+                        chatMode = if (deepSeekFilesAvailable) it.chatMode else AiChatMode.ARCHIVE,
+                    )
+                }
             }
         }
     }
@@ -134,11 +175,13 @@ class AiViewModel @Inject constructor(
     }
 
     fun selectSkill(name: String) {
+        if (_state.value.busy || _state.value.fileUploading) return
         _state.update { it.copy(selectedSkill = name) }
         restoreHistory()
     }
 
     fun selectPerson(personId: String?) {
+        if (_state.value.busy || _state.value.fileUploading) return
         _state.update { state ->
             val current = state.skills.firstOrNull { it.name == state.selectedSkill }
             val compatible = when {
@@ -173,14 +216,39 @@ class AiViewModel @Inject constructor(
     fun send(text: String) {
         val query = text.trim()
         val current = _state.value
-        if (query.isEmpty() || current.busy || current.blocked != null) return
+        if (
+            query.isEmpty() ||
+            current.busy ||
+            current.fileUploading ||
+            current.blocked != null ||
+            current.activeConversationId == null
+        ) return
         val skillName = current.selectedSkill ?: return
         val personId = current.selectedPersonId
-        val history = current.messages.map { ChatTurn(fromUser = it.fromUser, text = it.text) }
+        val files = current.pendingFiles
+        val history = current.messages.map { bubble ->
+            ChatTurn(
+                fromUser = bubble.fromUser,
+                text = bubble.text,
+                files = bubble.files,
+                serverToolCallsJson = bubble.serverToolCallsJson,
+                citations = bubble.citations,
+            )
+        }
 
         _state.update {
+            val existingTitle = it.conversations.firstOrNull { item -> item.id == it.activeConversationId }?.title.orEmpty()
+            val title = existingTitle.ifBlank { query.take(MAX_TITLE_CHARS) }
             it.copy(
-                messages = it.messages + AiChatBubble(fromUser = true, text = query),
+                messages = it.messages + AiChatBubble(
+                    fromUser = true,
+                    text = query,
+                    files = files,
+                ),
+                conversations = it.conversations.map { item ->
+                    if (item.id == it.activeConversationId && item.title.isBlank()) item.copy(title = title) else item
+                },
+                pendingFiles = emptyList(),
                 busy = true,
                 streaming = true,
                 liveContent = "",
@@ -220,6 +288,12 @@ class AiViewModel @Inject constructor(
                             arguments = arguments.take(MAX_TOOL_ARG_CHARS),
                         ),
                     )
+                }
+            }
+
+            override fun onServerToolEvent(event: AiServerToolEvent) {
+                _state.update { state ->
+                    state.copy(liveSteps = state.liveSteps + AiProcessStep.Web(event))
                 }
             }
 
@@ -289,6 +363,8 @@ class AiViewModel @Inject constructor(
                         personId = personId,
                         history = history,
                         config = readiness.config,
+                        mode = current.chatMode,
+                        files = files,
                     ),
                     listener,
                 )
@@ -313,6 +389,9 @@ class AiViewModel @Inject constructor(
                             // Keep the ordered thinking/tool steps with the bubble;
                             // they used to be dropped the moment the answer landed.
                             steps = state.liveSteps,
+                            serverToolCallsJson = reply.serverToolCallsJson,
+                            citations = reply.citations,
+                            isTruncated = reply.finishReason == "length",
                         ),
                         sessionUsage = state.sessionUsage.merge(usage),
                         sessionElapsedMs = state.sessionElapsedMs + reply.elapsedMs,
@@ -336,13 +415,236 @@ class AiViewModel @Inject constructor(
         }
     }
 
+    fun setChatMode(mode: AiChatMode) {
+        val current = _state.value
+        if (current.busy || current.fileUploading) return
+        if (mode == AiChatMode.WEB && !current.canUseWebTools) {
+            _state.update { it.copy(errorCode = 0, errorDetail = "web-tools-unavailable") }
+            return
+        }
+        _state.update { it.copy(chatMode = mode, errorCode = 0, errorDetail = null) }
+    }
+
+    fun addFiles(uris: List<Uri>) {
+        val current = _state.value
+        if (current.busy || current.fileUploading || !current.canUploadFiles || current.blocked != null) return
+        _state.update { it.copy(fileUploading = true, errorCode = 0, errorDetail = null) }
+        viewModelScope.launch {
+            try {
+                val config = withContext(Dispatchers.IO) { reader.read().config }
+                for (uri in uris) {
+                    val uploaded = withContext(Dispatchers.IO) {
+                        val file = readSelectedFile(uri)
+                        AiFiles.upload(config, file.name, file.mimeType, file.bytes)
+                    }
+                    _state.update { state -> state.copy(pendingFiles = state.pendingFiles + uploaded) }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                appLog.warn(TAG, "AI file upload failed", failure)
+                _state.update {
+                    it.copy(
+                        errorCode = (failure as? AiProviderException)?.code ?: 0,
+                        errorDetail = (failure as? AiProviderException)?.message ?: "file-upload-failed",
+                    )
+                }
+            } finally {
+                _state.update { it.copy(fileUploading = false) }
+            }
+        }
+    }
+
+    fun removePendingFile(fileId: String) {
+        val file = _state.value.pendingFiles.firstOrNull { it.id == fileId } ?: return
+        viewModelScope.launch {
+            if (deleteRemoteFiles(listOf(file))) {
+                _state.update {
+                    it.copy(pendingFiles = it.pendingFiles.filterNot { pending -> pending.id == fileId })
+                }
+            } else {
+                _state.update { it.copy(errorCode = 0, errorDetail = "file-delete-failed") }
+            }
+        }
+    }
+
+    fun editMessage(messageId: String, text: String) {
+        val state = _state.value
+        val index = state.messages.indexOfFirst { it.id == messageId && it.fromUser }
+        if (index < 0 || state.busy || state.fileUploading) return
+        val original = state.messages[index]
+        _state.update {
+            it.copy(
+                messages = it.messages.take(index),
+                pendingFiles = original.files,
+                errorCode = 0,
+                errorDetail = null,
+            )
+        }
+        send(text)
+    }
+
+    fun regenerate(messageId: String) {
+        val state = _state.value
+        val index = state.messages.indexOfFirst { it.id == messageId && !it.fromUser }
+        if (index < 0 || state.busy || state.fileUploading) return
+        val userIndex = state.messages.subList(0, index).indexOfLast { it.fromUser }
+        if (userIndex < 0) return
+        val previousUser = state.messages[userIndex]
+        _state.update {
+            it.copy(
+                messages = it.messages.take(userIndex),
+                pendingFiles = previousUser.files,
+                errorCode = 0,
+                errorDetail = null,
+            )
+        }
+        send(previousUser.text)
+    }
+
+    fun continueResponse(messageId: String, prompt: String) {
+        val state = _state.value
+        val response = state.messages.firstOrNull { it.id == messageId && !it.fromUser } ?: return
+        if (!response.isTruncated || response.serverToolCallsJson != null || state.busy || state.fileUploading) return
+        send(prompt)
+    }
+
+    fun newConversation() {
+        if (_state.value.busy || _state.value.fileUploading) return
+        val state = _state.value
+        val unusedFiles = state.pendingFiles
+        val conversation = newStoredConversation(scopeKey(state.selectedSkill, state.selectedPersonId))
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val filesDeleted = deleteRemoteFiles(unusedFiles)
+                chatStore.saveConversation(conversation)
+                _state.update {
+                    it.copy(
+                        conversations = listOf(AiConversationItem(conversation.id, "")) +
+                            it.conversations.filterNot { item -> item.id == conversation.id },
+                        activeConversationId = conversation.id,
+                        messages = emptyList(),
+                        pendingFiles = emptyList(),
+                        sessionUsage = AiUsage(),
+                        sessionElapsedMs = 0,
+                        errorCode = 0,
+                        errorDetail = if (filesDeleted) null else "file-delete-failed",
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                appLog.warn(TAG, "AI conversation creation failed", failure)
+                _state.update { it.copy(errorCode = 0, errorDetail = "chat-store-write-failed") }
+            }
+        }
+    }
+
+    fun selectConversation(id: String) {
+        if (_state.value.busy || _state.value.fileUploading) return
+        val unusedFiles = _state.value.pendingFiles
+        val currentScope = scopeKey(_state.value.selectedSkill, _state.value.selectedPersonId)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val filesDeleted = deleteRemoteFiles(unusedFiles)
+                val conversation = chatStore.listConversations(currentScope).firstOrNull { it.id == id } ?: return@launch
+                _state.update {
+                    it.copy(
+                        activeConversationId = conversation.id,
+                        messages = conversation.messages.map(::toBubble),
+                        pendingFiles = emptyList(),
+                        sessionUsage = AiUsage(),
+                        sessionElapsedMs = 0,
+                        errorCode = 0,
+                        errorDetail = if (filesDeleted) null else "file-delete-failed",
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                appLog.warn(TAG, "AI conversation load failed", failure)
+                _state.update { it.copy(errorCode = 0, errorDetail = "chat-store-read-failed") }
+            }
+        }
+    }
+
+    fun renameConversation(id: String, title: String) {
+        val cleaned = title.trim().take(MAX_TITLE_CHARS)
+        if (cleaned.isBlank() || _state.value.busy || _state.value.fileUploading) return
+        val scope = scopeKey(_state.value.selectedSkill, _state.value.selectedPersonId)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val conversation = chatStore.listConversations(scope).firstOrNull { it.id == id } ?: return@launch
+                chatStore.saveConversation(conversation.copy(title = cleaned, updatedAt = Instant.now()))
+                _state.update { state ->
+                    state.copy(
+                        conversations = state.conversations.map {
+                            if (it.id == id) it.copy(title = cleaned) else it
+                        },
+                    )
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                appLog.warn(TAG, "AI conversation rename failed", failure)
+                _state.update { it.copy(errorCode = 0, errorDetail = "chat-store-write-failed") }
+            }
+        }
+    }
+
+    fun deleteConversation(id: String) {
+        if (_state.value.busy || _state.value.fileUploading) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val conversation = chatStore.listConversations().firstOrNull { it.id == id } ?: return@launch
+                val pending = if (_state.value.activeConversationId == id) _state.value.pendingFiles else emptyList()
+                val filesDeleted = deleteRemoteFiles(
+                    (conversation.messages.flatMap { it.files } + pending).distinctBy { it.id },
+                )
+                chatStore.deleteConversation(id)
+                val remaining = chatStore.listConversations(conversation.scope)
+                val next = remaining.firstOrNull() ?: newStoredConversation(conversation.scope)
+                if (remaining.isEmpty()) chatStore.saveConversation(next)
+                _state.update { state ->
+                    if (state.activeConversationId != id) {
+                        state.copy(
+                            conversations = state.conversations.filterNot { it.id == id },
+                            errorCode = 0,
+                            errorDetail = if (filesDeleted) null else "file-delete-failed",
+                        )
+                    } else {
+                        state.copy(
+                            conversations = (remaining.ifEmpty { listOf(next) })
+                                .map { AiConversationItem(it.id, it.title) },
+                            activeConversationId = next.id,
+                            messages = next.messages.map(::toBubble),
+                            pendingFiles = emptyList(),
+                            sessionUsage = AiUsage(),
+                            sessionElapsedMs = 0,
+                            errorCode = 0,
+                            errorDetail = if (filesDeleted) null else "file-delete-failed",
+                        )
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                appLog.warn(TAG, "AI conversation deletion failed", failure)
+                _state.update { it.copy(errorCode = 0, errorDetail = "chat-store-delete-failed") }
+            }
+        }
+    }
+
     fun clear() {
+        if (_state.value.fileUploading) return
         decideToolApproval(approved = false)
-        val key = scopeKey(_state.value.selectedSkill, _state.value.selectedPersonId)
-        viewModelScope.launch(Dispatchers.IO) { runCatching { chatStore.clear(key) } }
+        val files = (
+            _state.value.messages.flatMap { it.files } + _state.value.pendingFiles
+            ).distinctBy { it.id }
         _state.update {
             it.copy(
                 messages = emptyList(),
+                pendingFiles = emptyList(),
                 sessionUsage = AiUsage(),
                 sessionElapsedMs = 0,
                 streaming = false,
@@ -352,6 +654,12 @@ class AiViewModel @Inject constructor(
                 errorCode = 0,
                 errorDetail = null,
             )
+        }
+        persistHistory()
+        viewModelScope.launch {
+            if (!deleteRemoteFiles(files)) {
+                _state.update { it.copy(errorCode = 0, errorDetail = "file-delete-failed") }
+            }
         }
     }
 
@@ -367,33 +675,149 @@ class AiViewModel @Inject constructor(
     private fun scopeKey(skill: String?, personId: String?) =
         "${skill ?: "none"}__${personId ?: "all"}"
 
+    private fun toBubble(message: StoredChatMessage) = AiChatBubble(
+        id = message.id,
+        fromUser = message.fromUser,
+        text = message.text,
+        createdAt = message.at,
+        files = message.files.map { AiFileReference(it.id, it.fileName, it.purpose) },
+        serverToolCallsJson = message.serverToolCallsJson,
+        citations = message.citations.map {
+            AiCitation(it.url, it.title, it.startIndex, it.endIndex)
+        },
+        isTruncated = message.isTruncated,
+    )
+
+    private fun newStoredConversation(scope: String): StoredAiConversation {
+        val now = Instant.now()
+        return StoredAiConversation(
+            id = UUID.randomUUID().toString().replace("-", ""),
+            scope = scope,
+            title = "",
+            createdAt = now,
+            updatedAt = now,
+            messages = emptyList(),
+        )
+    }
+
+    private suspend fun deleteRemoteFiles(files: List<AiFileReference>): Boolean {
+        if (files.isEmpty()) return true
+        val config = try {
+            withContext(Dispatchers.IO) { reader.read().config }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            appLog.warn(TAG, "AI file cleanup could not load provider settings", failure)
+            return false
+        }
+        var allDeleted = true
+        files.distinctBy { it.id }.forEach { file ->
+            try {
+                withContext(Dispatchers.IO) { AiFiles.delete(config, file.id) }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                allDeleted = false
+                appLog.warn(TAG, "AI remote file deletion failed", failure)
+            }
+        }
+        return allDeleted
+    }
+
+    private fun readSelectedFile(uri: Uri): SelectedAiFile {
+        val resolver = context.contentResolver
+        val name = resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { cursor ->
+                val column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (column >= 0 && cursor.moveToFirst()) cursor.getString(column) else null
+            }
+            ?.takeIf(String::isNotBlank)
+            ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf(String::isNotBlank)
+            ?: throw AiProviderException(0, "missing-file-name")
+        val mimeType = resolver.getType(uri)?.takeUnless { it == "application/octet-stream" }.orEmpty()
+        val output = ByteArrayOutputStream()
+        resolver.openInputStream(uri)?.use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            var total = 0
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                if (count == 0) continue
+                if (count > MAX_AI_FILE_BYTES - total) {
+                    throw AiProviderException(0, "file-size-out-of-range")
+                }
+                output.write(buffer, 0, count)
+                total += count
+            }
+        } ?: throw AiProviderException(0, "file-read-failed")
+        return SelectedAiFile(name, mimeType, output.toByteArray())
+    }
+
     private fun restoreHistory() {
         if (_state.value.busy) return
         viewModelScope.launch {
-            val key = scopeKey(_state.value.selectedSkill, _state.value.selectedPersonId)
-            val turns = withContext(Dispatchers.IO) {
-                runCatching { chatStore.load(key) }.getOrDefault(emptyList())
-            }
-            _state.update {
-                it.copy(
-                    messages = turns.map { turn -> AiChatBubble(turn.fromUser, turn.text) },
-                    sessionUsage = AiUsage(),
-                    sessionElapsedMs = 0,
-                    streaming = false,
-                    liveContent = "",
-                    liveSteps = emptyList(),
-                )
+            val scope = scopeKey(_state.value.selectedSkill, _state.value.selectedPersonId)
+            try {
+                val sessions = withContext(Dispatchers.IO) { chatStore.listConversations(scope) }
+                val activeId = _state.value.activeConversationId
+                val selected = sessions.firstOrNull { it.id == activeId } ?: sessions.firstOrNull()
+                val conversation = selected ?: newStoredConversation(scope).also { created ->
+                    withContext(Dispatchers.IO) { chatStore.saveConversation(created) }
+                }
+                if (scope != scopeKey(_state.value.selectedSkill, _state.value.selectedPersonId)) return@launch
+                _state.update {
+                    it.copy(
+                        conversations = (if (selected == null) listOf(conversation) else sessions)
+                            .map { item -> AiConversationItem(item.id, item.title) },
+                        activeConversationId = conversation.id,
+                        messages = conversation.messages.map(::toBubble),
+                        pendingFiles = emptyList(),
+                        sessionUsage = AiUsage(),
+                        sessionElapsedMs = 0,
+                        streaming = false,
+                        liveContent = "",
+                        liveSteps = emptyList(),
+                        errorCode = 0,
+                        errorDetail = null,
+                    )
+                }
+            } catch (failure: Exception) {
+                appLog.warn(TAG, "AI conversation restore failed", failure)
+                _state.update { it.copy(errorCode = 0, errorDetail = "chat-store-read-failed") }
             }
         }
     }
 
     private fun persistHistory() {
-        val key = scopeKey(_state.value.selectedSkill, _state.value.selectedPersonId)
-        val turns = _state.value.messages.map {
-            StoredChatTurn(fromUser = it.fromUser, text = it.text, at = Instant.now())
-        }
+        val state = _state.value
+        val id = state.activeConversationId ?: return
+        val scope = scopeKey(state.selectedSkill, state.selectedPersonId)
+        val existing = state.conversations.firstOrNull { it.id == id }
+        val now = Instant.now()
+        val conversation = StoredAiConversation(
+            id = id,
+            scope = scope,
+            title = existing?.title.orEmpty(),
+            createdAt = state.messages.firstOrNull()?.createdAt ?: now,
+            updatedAt = now,
+            messages = state.messages.map { bubble ->
+                StoredChatMessage(
+                    id = bubble.id,
+                    fromUser = bubble.fromUser,
+                    text = bubble.text,
+                    at = bubble.createdAt,
+                    files = bubble.files.map { StoredChatFile(it.id, it.fileName, it.purpose) },
+                    serverToolCallsJson = bubble.serverToolCallsJson,
+                    citations = bubble.citations.map {
+                        StoredChatCitation(it.url, it.title, it.startIndex, it.endIndex)
+                    },
+                    isTruncated = bubble.isTruncated,
+                )
+            },
+        )
         viewModelScope.launch(Dispatchers.IO) {
-            runCatching { chatStore.save(key, turns) }
+            runCatching { chatStore.saveConversation(conversation) }
+                .onFailure { appLog.warn(TAG, "AI conversation save failed", it) }
         }
     }
 
@@ -426,5 +850,9 @@ class AiViewModel @Inject constructor(
         /** Arguments and results are shown inline, so keep them short. */
         private const val MAX_TOOL_ARG_CHARS = 160
         private const val MAX_TOOL_RESULT_CHARS = 400
+        private const val MAX_TITLE_CHARS = 32
+        private const val MAX_AI_FILE_BYTES = 100 * 1024 * 1024
     }
+
+    private data class SelectedAiFile(val name: String, val mimeType: String, val bytes: ByteArray)
 }
