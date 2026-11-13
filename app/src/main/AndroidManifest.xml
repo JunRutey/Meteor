@@ -8,16 +8,6 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!--
-        Android 10+ silently drops an activity start made from the background
-        unless the app holds a background-activity-start exemption. The dial
-        code comes in as a broadcast, so without one "隐藏桌面图标" has no way
-        back on AOSP. "显示在其他应用上层" is the public exemption; MIUI /
-        HyperOS adds its own 「后台弹出界面」 gate on top (ADR-031). The app
-        never draws an overlay.
-    -->
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-
-    <!--
         The app lock asks for a biometric or device-credential check. This is a
         normal, install-time permission: it never raises a runtime dialog.
         androidx.biometric pulls it in transitively, but declaring it here keeps
@@ -39,18 +29,17 @@
             when the keyboard opens (ADR-024). Edge-to-edge means the window is not
             literally resized; the IME inset is delivered to Compose instead, and
             the tree pads once at the root.
-
-            No MAIN/LAUNCHER filter here on purpose: the launcher entry is the
-            LauncherEntry alias below, so hiding the icon does not disable this
-            activity too (ADR-031). It stays exported so home-screen shortcuts
-            created by older versions, which point at this component, keep
-            working after the upgrade.
         -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:windowSoftInputMode="adjustResize"
-            android:theme="@style/Theme.Meteor" />
+            android:theme="@style/Theme.Meteor">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -61,66 +50,6 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/update_file_paths" />
         </provider>
-
-        <!--
-            The component a launcher sees. "隐藏桌面图标" disables exactly this
-            alias via PackageManager; MainActivity keeps working so the secret
-            dial code can still open the app.
-        -->
-        <activity-alias
-            android:name=".LauncherEntry"
-            android:enabled="true"
-            android:exported="true"
-            android:icon="@mipmap/ic_launcher"
-            android:label="@string/app_name"
-            android:roundIcon="@mipmap/ic_launcher_round"
-            android:targetActivity=".MainActivity">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity-alias>
-
-        <!--
-            Way back in while the launcher icon is hidden: the system dialer
-            dispatches *#*#314159#*#* as a protected broadcast whose data URI is
-            android_secret_code://314159. The filters match that host only.
-
-            Two actions on purpose: Android 10 renamed the broadcast from
-            android.provider.Telephony.SECRET_CODE to
-            android.telephony.action.SECRET_CODE, and OEM dialers are not
-            consistent about which one they send. Both map to the same receiver,
-            which accepts either (ADR-031).
-        -->
-        <receiver
-            android:name=".system.SecretCodeReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="android.telephony.action.SECRET_CODE" />
-                <data
-                    android:scheme="android_secret_code"
-                    android:host="314159" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="android.provider.Telephony.SECRET_CODE" />
-                <data
-                    android:scheme="android_secret_code"
-                    android:host="314159" />
-            </intent-filter>
-        </receiver>
-
-        <!--
-            ADR-031: an update can reset the vendor background-start gate. If the
-            icon is hidden at that point the user cannot get back in, so this
-            receiver restores the icon whenever the way back is not provable.
-        -->
-        <receiver
-            android:name=".system.LauncherRecoveryGuard"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
-            </intent-filter>
-        </receiver>
 
         <receiver
             android:name=".system.DailyReminderReceiver"

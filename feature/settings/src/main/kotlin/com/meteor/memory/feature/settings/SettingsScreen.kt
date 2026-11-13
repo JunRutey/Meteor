@@ -32,10 +32,6 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -70,28 +66,6 @@ fun SettingsScreen(
     onDynamicColorChanged: (Boolean) -> Unit,
     onAnimationsChanged: (Boolean) -> Unit,
     onAppLockChanged: (Boolean) -> Unit,
-    onHideLauncherIconChanged: (Boolean) -> Unit,
-    /**
-     * MIUI / HyperOS only lets the dial code bring the app back once 「自启动」 and
-     * 「后台弹出界面」 are granted (ADR-031), so the confirm dialog has to say so
-     * and offer the two system pages. False on every other ROM.
-     */
-    launcherIconNeedsSystemGrants: Boolean = false,
-    onOpenLauncherPermissions: () -> Unit = {},
-    onOpenAutoStartSettings: () -> Unit = {},
-    /**
-     * Whether the system currently allows the dial-code receiver to bring the
-     * app to the foreground. `BLOCKED` keeps the hide switch from being
-     * confirmed; `UNKNOWN` relies on the user's own pre-hide test (ADR-031).
-     */
-    launcherRecovery: LauncherRecovery = LauncherRecovery.UNKNOWN,
-    /**
-     * True once a dial code actually returned to the app in this process. A
-     * blocked launch never comes back, so this is the only proof the dialog
-     * accepts before hiding the icon (ADR-031).
-     */
-    dialCodeVerified: Boolean = false,
-    onOpenLauncherRecoverySettings: () -> Unit = {},
     onVerboseLoggingChanged: (Boolean) -> Unit,
     onOpenAbout: () -> Unit,
     onOpenDonate: () -> Unit,
@@ -180,17 +154,6 @@ fun SettingsScreen(
                     subtitle = stringResource(R.string.settings_app_lock_desc),
                     checked = settings.appLockEnabled,
                     onCheckedChange = onAppLockChanged,
-                )
-                Hairline()
-                HideLauncherIconRow(
-                    hidden = settings.hideLauncherIcon,
-                    needsSystemGrants = launcherIconNeedsSystemGrants,
-                    recovery = launcherRecovery,
-                    dialCodeVerified = dialCodeVerified,
-                    onHiddenChange = onHideLauncherIconChanged,
-                    onOpenPermissions = onOpenLauncherPermissions,
-                    onOpenAutoStart = onOpenAutoStartSettings,
-                    onOpenRecovery = onOpenLauncherRecoverySettings,
                 )
             }
 
@@ -691,143 +654,5 @@ private fun formatBytes(bytes: Long): String {
         bytes >= 1024L * 1024L -> String.format(locale, "%.1f MB", bytes / (1024.0 * 1024.0))
         bytes >= 1024L -> String.format(locale, "%.1f KB", bytes / 1024.0)
         else -> String.format(locale, "%d B", bytes)
-    }
-}
-
-/**
- * Hiding the launcher entry is the only setting that can lock the user out of
- * the app, so switching it on asks for confirmation first and stays disabled
- * until a real dial-code return has been observed.
- *
- * The way back in is the dial code, which the ROM has to allow twice: the dialer
- * must dispatch it and the system must let a background receiver start an
- * activity. MIUI / HyperOS gates the second half behind 「自启动」 and
- * 「后台弹出界面」, AOSP behind 「显示在其他应用上层」. The state is checked by
- * `:app` and passed in; the dialog only renders it. On top of that `:app`
- * records a dial code that actually returned to the app, so hiding stays
- * disabled until a real launch (not just the permission) has been observed.
- * Switching it off never asks: the app is right here. See ADR-031.
- */
-@Composable
-private fun HideLauncherIconRow(
-    hidden: Boolean,
-    needsSystemGrants: Boolean,
-    recovery: LauncherRecovery,
-    dialCodeVerified: Boolean,
-    onHiddenChange: (Boolean) -> Unit,
-    onOpenPermissions: () -> Unit,
-    onOpenAutoStart: () -> Unit,
-    onOpenRecovery: () -> Unit,
-) {
-    var confirming by rememberSaveable { mutableStateOf(false) }
-
-    ToggleRow(
-        title = stringResource(R.string.settings_hide_launcher_icon),
-        subtitle = stringResource(R.string.settings_hide_launcher_icon_desc),
-        checked = hidden,
-        onCheckedChange = { next ->
-            if (next) confirming = true else onHiddenChange(false)
-        },
-    )
-
-    if (confirming) {
-        AlertDialog(
-            onDismissRequest = { confirming = false },
-            title = { Text(text = stringResource(R.string.settings_hide_launcher_icon_confirm_title)) },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .heightIn(max = 420.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    Text(text = stringResource(R.string.settings_hide_launcher_icon_confirm_body))
-
-                    when (recovery) {
-                        LauncherRecovery.READY -> Text(
-                            text = stringResource(R.string.settings_hide_launcher_icon_recovery_ready),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-
-                        LauncherRecovery.BLOCKED -> {
-                            Text(
-                                text = stringResource(R.string.settings_hide_launcher_icon_recovery_blocked),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.error,
-                            )
-                            TextButton(onClick = onOpenRecovery) {
-                                Text(text = stringResource(R.string.settings_hide_launcher_icon_open_recovery))
-                            }
-                        }
-
-                        LauncherRecovery.UNKNOWN -> {
-                            Text(
-                                text = stringResource(R.string.settings_hide_launcher_icon_recovery_unknown),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                            TextButton(onClick = onOpenRecovery) {
-                                Text(text = stringResource(R.string.settings_hide_launcher_icon_open_recovery))
-                            }
-                        }
-                    }
-
-                    // MIUI / HyperOS answers "start the app from the background"
-                    // with two switches of its own; without them the dial code is
-                    // a dead end (ADR-031).
-                    if (needsSystemGrants) {
-                        Text(
-                            text = stringResource(R.string.settings_hide_launcher_icon_grants),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            TextButton(onClick = onOpenPermissions) {
-                                Text(text = stringResource(R.string.settings_hide_launcher_icon_open_permissions))
-                            }
-                            TextButton(onClick = onOpenAutoStart) {
-                                Text(text = stringResource(R.string.settings_hide_launcher_icon_open_autostart))
-                            }
-                        }
-                    }
-
-                    Text(
-                        text = stringResource(R.string.settings_hide_launcher_icon_test_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    Text(
-                        text = stringResource(
-                            if (dialCodeVerified) {
-                                R.string.settings_hide_launcher_icon_test_done
-                            } else {
-                                R.string.settings_hide_launcher_icon_test_missing
-                            },
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (dialCodeVerified) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.error
-                        },
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    // A recorded return is direct proof and outranks the state
-                    // probe; the probe only explains why a test would fail.
-                    enabled = dialCodeVerified,
-                    onClick = {
-                        confirming = false
-                        onHiddenChange(true)
-                    },
-                ) {
-                    Text(text = stringResource(R.string.settings_hide_launcher_icon_confirm_ok))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirming = false }) {
-                    Text(text = stringResource(R.string.settings_hide_launcher_icon_confirm_cancel))
-                }
-            },
-        )
     }
 }

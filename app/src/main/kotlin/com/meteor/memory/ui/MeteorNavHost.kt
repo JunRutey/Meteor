@@ -606,8 +606,6 @@ fun MeteorNavHost(
             val reminderNotificationsAllowed by viewModel.reminderNotificationsAllowed
                 .collectAsStateWithLifecycle()
             val canScheduleExactAlarms by viewModel.canScheduleExactAlarms.collectAsStateWithLifecycle()
-            val launcherRecovery by viewModel.launcherRecovery.collectAsStateWithLifecycle()
-            val dialCodeVerified by viewModel.dialCodeVerified.collectAsStateWithLifecycle()
             val updateState by viewModel.updateState.collectAsStateWithLifecycle()
             val context = LocalContext.current
             var notificationPermissionDenied by rememberSaveable { mutableStateOf(false) }
@@ -626,7 +624,6 @@ fun MeteorNavHost(
                 viewModel.refreshLogSize()
                 viewModel.refreshNotificationPermissions()
                 viewModel.refreshUpdateInstallPermission()
-                viewModel.refreshLauncherRecovery()
             }
 
             SettingsScreen(
@@ -636,13 +633,6 @@ fun MeteorNavHost(
                 onDynamicColorChanged = viewModel::setDynamicColor,
                 onAnimationsChanged = viewModel::setAnimationsEnabled,
                 onAppLockChanged = viewModel::setAppLockEnabled,
-                onHideLauncherIconChanged = viewModel::setHideLauncherIcon,
-                launcherIconNeedsSystemGrants = viewModel.launcherIconNeedsSystemGrants,
-                onOpenLauncherPermissions = viewModel::openLauncherPermissionEditor,
-                onOpenAutoStartSettings = viewModel::openAutoStartSettings,
-                launcherRecovery = launcherRecovery,
-                dialCodeVerified = dialCodeVerified,
-                onOpenLauncherRecoverySettings = viewModel::openLauncherRecoverySettings,
                 onVerboseLoggingChanged = viewModel::setVerboseLogging,
                 onOpenAbout = { navController.navigate(ROUTE_ABOUT) },
                 onOpenDonate = { navController.navigate(ROUTE_ABOUT_DONATE) },
