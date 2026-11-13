@@ -47,6 +47,12 @@ jobs:
       - name: Assemble debug
         run: gradle :app:assembleDebug --stacktrace --no-daemon
 
+      # The release variant is the only one R8 touches, and until now nothing
+      # built it before a tag was pushed. Assembling it here keeps the shrinking
+      # rules honest on every PR and on main.
+      - name: Assemble release (R8)
+        run: gradle :app:assembleRelease --stacktrace --no-daemon
+
       - name: Unit tests
         run: gradle testDebugUnitTest --stacktrace --no-daemon
 
