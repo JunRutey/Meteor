@@ -1,6 +1,7 @@
 package com.meteor.memory.ui.chats
 
 import android.text.format.Formatter
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -10,13 +11,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -50,7 +54,10 @@ fun ChatsScreen(
         ?: stringResource(R.string.records_unassigned)
     var pendingDelete by remember { mutableStateOf<ChatAttachmentRow?>(null) }
 
-    Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
+    Column(
+        modifier = modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -63,49 +70,60 @@ fun ChatsScreen(
             TextButton(onClick = onBack) { Text(text = stringResource(R.string.chats_back)) }
         }
 
-        Row(
+        Surface(
             modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+            color = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(22.dp),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.records_owner_label, selectedPersonName),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                TextButton(onClick = { personMenuExpanded = true }) {
-                    Text(text = stringResource(R.string.records_choose_person))
-                }
-                DropdownMenu(
-                    expanded = personMenuExpanded,
-                    onDismissRequest = { personMenuExpanded = false },
-                ) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.records_unassigned)) },
-                        onClick = {
-                            onPersonSelected(null)
-                            personMenuExpanded = false
-                        },
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.records_owner_label, selectedPersonName),
+                        style = MaterialTheme.typography.bodyMedium,
                     )
-                    state.people.forEach { person ->
+                    TextButton(onClick = { personMenuExpanded = true }) {
+                        Text(text = stringResource(R.string.records_choose_person))
+                    }
+                    DropdownMenu(
+                        expanded = personMenuExpanded,
+                        onDismissRequest = { personMenuExpanded = false },
+                    ) {
                         DropdownMenuItem(
-                            text = {
-                                Text(person.displayName ?: person.personId.take(8))
-                            },
+                            text = { Text(stringResource(R.string.records_unassigned)) },
                             onClick = {
-                                onPersonSelected(person.personId)
+                                onPersonSelected(null)
                                 personMenuExpanded = false
                             },
                         )
+                        state.people.forEach { person ->
+                            DropdownMenuItem(
+                                text = {
+                                    Text(person.displayName ?: person.personId.take(8))
+                                },
+                                onClick = {
+                                    onPersonSelected(person.personId)
+                                    personMenuExpanded = false
+                                },
+                            )
+                        }
                     }
                 }
-            }
-            Button(onClick = onImportFiles, enabled = !state.isImporting) {
-                Text(
-                    text = stringResource(
-                        if (state.isImporting) R.string.records_importing else R.string.records_import,
-                    ),
-                )
+                Button(
+                    onClick = onImportFiles,
+                    enabled = !state.isImporting,
+                    shape = RoundedCornerShape(22.dp),
+                ) {
+                    Text(
+                        text = stringResource(
+                            if (state.isImporting) R.string.records_importing else R.string.records_import,
+                        ),
+                    )
+                }
             }
         }
 
@@ -155,46 +173,57 @@ fun ChatsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = 12.dp),
             )
-            else -> LazyColumn(modifier = Modifier.weight(1f)) {
+            else -> LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 items(state.attachments, key = { it.id }) { row ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     ) {
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(3.dp),
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(text = row.fileName, style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                text = stringResource(
-                                    R.string.records_attachment_details,
-                                    row.mimeType,
-                                    Formatter.formatShortFileSize(context, row.sizeBytes),
-                                    row.dateLabel,
-                                ),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Text(
-                                text = stringResource(
-                                    R.string.records_attachment_owner,
-                                    row.personName ?: stringResource(R.string.records_unassigned),
-                                ),
-                                style = MaterialTheme.typography.labelSmall,
-                            )
-                        }
-                        Column {
-                            TextButton(onClick = { onExport(row) }) {
-                                Text(stringResource(R.string.records_export))
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(3.dp),
+                            ) {
+                                Text(text = row.fileName, style = MaterialTheme.typography.titleSmall)
+                                Text(
+                                    text = stringResource(
+                                        R.string.records_attachment_details,
+                                        row.mimeType,
+                                        Formatter.formatShortFileSize(context, row.sizeBytes),
+                                        row.dateLabel,
+                                    ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = stringResource(
+                                        R.string.records_attachment_owner,
+                                        row.personName ?: stringResource(R.string.records_unassigned),
+                                    ),
+                                    style = MaterialTheme.typography.labelSmall,
+                                )
                             }
-                            TextButton(onClick = { pendingDelete = row }) {
-                                Text(stringResource(R.string.records_delete))
+                            Column {
+                                TextButton(onClick = { onExport(row) }) {
+                                    Text(stringResource(R.string.records_export))
+                                }
+                                TextButton(onClick = { pendingDelete = row }) {
+                                    Text(stringResource(R.string.records_delete))
+                                }
                             }
                         }
                     }
-                    HorizontalDivider()
                 }
             }
         }

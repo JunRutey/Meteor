@@ -1,17 +1,23 @@
 package com.meteor.memory.feature.ai
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -67,12 +73,12 @@ fun PersonaScreen(
 
     Column(modifier = modifier.fillMaxSize()) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Column {
-                Text(text = persona.displayName, style = MaterialTheme.typography.headlineSmall)
+                Text(text = persona.displayName, style = MaterialTheme.typography.titleLarge)
                 Text(
                     text = stringResource(R.string.persona_title),
                     style = MaterialTheme.typography.labelSmall,
@@ -83,130 +89,186 @@ fun PersonaScreen(
         }
         HorizontalDivider()
 
-        LazyColumn(modifier = Modifier.weight(1f)) {
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
             item {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(22.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                        Text(
-                            text = stringResource(R.string.persona_stats_records, persona.recordCount),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        Text(
-                            text = stringResource(R.string.persona_stats_diaries, persona.diaryMentions),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-
-                    if (persona.distilled) {
-                        val generated = persona.generatedLabel
-                        if (generated != null) {
-                            Text(
-                                text = stringResource(R.string.persona_generated, generated),
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                        val provider = persona.providerLabel
-                        val skill = persona.skillLabel
-                        if (provider != null && skill != null) {
-                            Text(
-                                text = stringResource(R.string.persona_by, provider, skill),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        }
-                    } else {
-                        Text(
-                            text = stringResource(R.string.persona_body_missing),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-
-                    val blocked = blockedMessage
-                    if (blocked != null) {
-                        Text(text = blocked, style = MaterialTheme.typography.bodyMedium)
-                    }
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = { showConfirm = true },
-                            enabled = !busy && blocked == null,
-                        ) {
-                            Text(
-                                text = stringResource(
-                                    when {
-                                        busy -> R.string.persona_distilling
-                                        persona.distilled -> R.string.persona_redistill
-                                        else -> R.string.persona_distill
-                                    },
-                                ),
-                            )
-                        }
-                        OutlinedButton(onClick = onOpenChat, enabled = !busy) {
-                            Text(stringResource(R.string.persona_open_chat))
-                        }
-                        if (blocked != null) {
-                            TextButton(onClick = onOpenSettings) {
-                                Text(stringResource(R.string.ai_open_settings))
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                shape = RoundedCornerShape(16.dp),
+                            ) {
+                                Text(
+                                    text = stringResource(
+                                        R.string.persona_stats_records,
+                                        persona.recordCount,
+                                    ),
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                )
+                            }
+                            Surface(
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                shape = RoundedCornerShape(16.dp),
+                            ) {
+                                Text(
+                                    text = stringResource(
+                                        R.string.persona_stats_diaries,
+                                        persona.diaryMentions,
+                                    ),
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                )
                             }
                         }
-                    }
 
-                    val message = error
-                    if (message != null) {
+                        if (persona.distilled) {
+                            val generated = persona.generatedLabel
+                            if (generated != null) {
+                                Text(
+                                    text = stringResource(R.string.persona_generated, generated),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            val provider = persona.providerLabel
+                            val skill = persona.skillLabel
+                            if (provider != null && skill != null) {
+                                Text(
+                                    text = stringResource(R.string.persona_by, provider, skill),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
+                        } else {
+                            Text(
+                                text = stringResource(R.string.persona_body_missing),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+
+                        val blocked = blockedMessage
+                        if (blocked != null) {
+                            Text(text = blocked, style = MaterialTheme.typography.bodyMedium)
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Button(
+                                onClick = { showConfirm = true },
+                                enabled = !busy && blocked == null,
+                                shape = RoundedCornerShape(22.dp),
+                            ) {
+                                Text(
+                                    text = stringResource(
+                                        when {
+                                            busy -> R.string.persona_distilling
+                                            persona.distilled -> R.string.persona_redistill
+                                            else -> R.string.persona_distill
+                                        },
+                                    ),
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = onOpenChat,
+                                enabled = !busy,
+                                shape = RoundedCornerShape(22.dp),
+                            ) {
+                                Text(stringResource(R.string.persona_open_chat))
+                            }
+                            if (blocked != null) {
+                                TextButton(onClick = onOpenSettings) {
+                                    Text(stringResource(R.string.ai_open_settings))
+                                }
+                            }
+                        }
+
+                        val message = error
+                        if (message != null) {
+                            Text(
+                                text = message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+
                         Text(
-                            text = message,
+                            text = stringResource(R.string.ai_send_to, providerLabel),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.error,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-
-                    Text(
-                        text = stringResource(R.string.ai_send_to, providerLabel),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
                 }
             }
 
             if (persona.distilled) {
                 item {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.surface,
+                        shape = RoundedCornerShape(22.dp),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     ) {
-                        Text(text = persona.body, style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            text = persona.body,
+                            modifier = Modifier.padding(18.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
                     }
-                    HorizontalDivider(Modifier.padding(vertical = 8.dp))
                 }
             }
 
             item {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(22.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 ) {
-                    Text(
-                        text = stringResource(R.string.persona_topics),
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    if (persona.topics.isEmpty()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
                         Text(
-                            text = stringResource(R.string.persona_topics_empty),
-                            style = MaterialTheme.typography.bodySmall,
+                            text = stringResource(R.string.persona_topics),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
                         )
-                    } else {
-                        persona.topics.forEach { topic ->
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                            ) {
-                                Text(text = topic.term, style = MaterialTheme.typography.bodyMedium)
-                                Text(
-                                    text = stringResource(R.string.persona_topic_weight, topic.count),
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
+                        if (persona.topics.isEmpty()) {
+                            Text(
+                                text = stringResource(R.string.persona_topics_empty),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        } else {
+                            persona.topics.forEach { topic ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                ) {
+                                    Text(text = topic.term, style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        text = stringResource(R.string.persona_topic_weight, topic.count),
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                }
                             }
                         }
                     }
@@ -214,27 +276,34 @@ fun PersonaScreen(
             }
 
             item {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(22.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 ) {
-                    Text(
-                        text = stringResource(R.string.persona_quotes),
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    if (persona.quotes.isEmpty()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
                         Text(
-                            text = stringResource(R.string.persona_quotes_empty),
-                            style = MaterialTheme.typography.bodySmall,
+                            text = stringResource(R.string.persona_quotes),
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
                         )
-                    } else {
-                        persona.quotes.forEach { quote ->
-                            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                Text(text = quote.dateLabel, style = MaterialTheme.typography.bodySmall)
-                                Text(text = quote.text, style = MaterialTheme.typography.bodyMedium)
+                        if (persona.quotes.isEmpty()) {
+                            Text(
+                                text = stringResource(R.string.persona_quotes_empty),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        } else {
+                            persona.quotes.forEach { quote ->
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text(text = quote.dateLabel, style = MaterialTheme.typography.bodySmall)
+                                    Text(text = quote.text, style = MaterialTheme.typography.bodyMedium)
+                                }
+                                HorizontalDivider(Modifier.padding(vertical = 4.dp))
                             }
-                            HorizontalDivider(Modifier.padding(vertical = 4.dp))
                         }
                     }
                 }

@@ -1,6 +1,9 @@
 package com.meteor.memory.feature.ai
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +20,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -31,6 +36,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -371,9 +377,13 @@ private fun WorkspaceHeader(
     val clearDescription = stringResource(R.string.ai_clear)
     val settingsDescription = stringResource(R.string.ai_open_settings)
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 72.dp)
+            .background(MaterialTheme.colorScheme.background)
+            .padding(start = 4.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         IconButton(
             onClick = onBack,
@@ -383,17 +393,20 @@ private fun WorkspaceHeader(
         }
         Surface(
             color = MaterialTheme.colorScheme.primaryContainer,
-            shape = MaterialTheme.shapes.large,
+            shape = CircleShape,
         ) {
             Text(
                 text = "✦",
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                 style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(horizontal = 13.dp, vertical = 10.dp),
+                modifier = Modifier.padding(12.dp),
             )
         }
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(stringResource(R.string.ai_title), style = MaterialTheme.typography.titleMedium)
+        Column(
+            modifier = Modifier.weight(1f).padding(start = 2.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(stringResource(R.string.ai_title), style = MaterialTheme.typography.titleSmall)
             Text(
                 text = stringResource(R.string.ai_header_provider, providerLabel),
                 style = MaterialTheme.typography.labelSmall,
@@ -405,7 +418,7 @@ private fun WorkspaceHeader(
             enabled = canClear,
             modifier = Modifier.semantics { contentDescription = clearDescription },
         ) {
-            Text("↺", style = MaterialTheme.typography.titleLarge)
+            Text("↺", style = MaterialTheme.typography.titleMedium)
         }
         IconButton(
             onClick = onOpenSettings,
@@ -431,13 +444,25 @@ private fun ConversationContext(
     onOpenPersona: (String) -> Unit,
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .background(
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(22.dp),
+            )
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant,
+                shape = RoundedCornerShape(22.dp),
+            )
+            .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
             text = stringResource(R.string.ai_context_heading),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
         )
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             skills.forEach { skill ->
@@ -530,7 +555,11 @@ private fun WelcomePanel(enabled: Boolean, onSend: (String) -> Unit) {
     ) {
         Surface(
             color = MaterialTheme.colorScheme.primaryContainer,
-            shape = MaterialTheme.shapes.extraLarge,
+            shape = RoundedCornerShape(24.dp),
+            border = BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.outlineVariant,
+            ),
         ) {
             Column(
                 modifier = Modifier.fillMaxWidth().padding(22.dp),
@@ -564,8 +593,12 @@ private fun WelcomePanel(enabled: Boolean, onSend: (String) -> Unit) {
             val prompt = stringResource(promptId)
             Surface(
                 modifier = Modifier.fillMaxWidth().clickable(enabled = enabled) { onSend(prompt) },
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant,
+                ),
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
@@ -648,7 +681,12 @@ private fun ChatMessage(bubble: AiChatBubble) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(0.94f),
                     color = MaterialTheme.colorScheme.primaryContainer,
-                    shape = MaterialTheme.shapes.extraLarge,
+                    shape = RoundedCornerShape(
+                        topStart = 20.dp,
+                        topEnd = 20.dp,
+                        bottomEnd = 6.dp,
+                        bottomStart = 20.dp,
+                    ),
                 ) {
                     SelectionContainer {
                         Text(
@@ -675,8 +713,17 @@ private fun ChatMessage(bubble: AiChatBubble) {
             ) {
                 ProcessSteps(steps = bubble.steps, initiallyExpanded = false)
                 Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    shape = MaterialTheme.shapes.extraLarge,
+                    color = MaterialTheme.colorScheme.surface,
+                    shape = RoundedCornerShape(
+                        topStart = 20.dp,
+                        topEnd = 20.dp,
+                        bottomEnd = 20.dp,
+                        bottomStart = 6.dp,
+                    ),
+                    border = BorderStroke(
+                        1.dp,
+                        MaterialTheme.colorScheme.outlineVariant,
+                    ),
                 ) {
                     SelectionContainer {
                         Text(
@@ -869,7 +916,10 @@ private fun ChatComposer(
     HorizontalDivider()
     val sendDescription = stringResource(R.string.ai_send)
     Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.background)
+            .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         if (sessionUsage.totalTokens > 0) {
@@ -880,9 +930,13 @@ private fun ChatComposer(
             onValueChange = onInputChange,
             modifier = Modifier.fillMaxWidth(),
             placeholder = { Text(stringResource(R.string.ai_question_hint)) },
-            shape = MaterialTheme.shapes.extraLarge,
+            shape = RoundedCornerShape(26.dp),
             minLines = 1,
             maxLines = 4,
+            colors = OutlinedTextFieldDefaults.colors(
+                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                focusedContainerColor = MaterialTheme.colorScheme.surface,
+            ),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
             keyboardActions = KeyboardActions(onSend = { onSend() }),
             trailingIcon = {
