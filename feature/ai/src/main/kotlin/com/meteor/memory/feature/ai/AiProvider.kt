@@ -49,6 +49,10 @@ interface AiProvider {
         options: AiProviderOptions,
         callback: AiStreamCallback,
     ): AiCompletion {
+        // Preserve streaming for providers that only override completeStream.
+        if (options == AiProviderOptions()) {
+            return completeStream(messages, tools, maxTokens, callback)
+        }
         val completion = completeWithOptions(messages, tools, maxTokens, options)
         completion.content?.takeIf { it.isNotBlank() }?.let(callback::onContent)
         completion.reasoningContent?.takeIf { it.isNotBlank() }?.let(callback::onReasoning)

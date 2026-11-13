@@ -94,8 +94,13 @@ data class AiConfig(
     /** Only DeepSeek documents the thinking fields; others keep AUTO. */
     val reasoningSupported: Boolean get() = provider == AiPresets.DEEPSEEK
 
+    /** The official API accepts both `/v1` and the bare host as base URL. */
     val officialDeepSeekEndpoint: Boolean
-        get() = resolvedBaseUrl.trimEnd('/').equals(AiPresets.defaultBaseUrl(AiPresets.DEEPSEEK), ignoreCase = true)
+        get() {
+            val normalized = resolvedBaseUrl.trimEnd('/').lowercase()
+            return normalized == "https://api.deepseek.com" ||
+                normalized == "https://api.deepseek.com/v1"
+        }
 
     fun isConfigured(): Boolean =
         !apiKey.isNullOrBlank() && resolvedModel.isNotBlank() && endpoint.isHttps()

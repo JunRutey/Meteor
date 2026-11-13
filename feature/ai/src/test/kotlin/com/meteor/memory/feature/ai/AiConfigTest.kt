@@ -66,6 +66,27 @@ class AiConfigTest {
     }
 
     @Test
+    fun `official deepseek endpoint accepts bare host and versioned path`() {
+        assertTrue(AiConfig(provider = AiPresets.DEEPSEEK, apiKey = "k").officialDeepSeekEndpoint)
+
+        val bare = AiConfig(
+            provider = AiPresets.DEEPSEEK,
+            baseUrl = "https://api.deepseek.com",
+            apiKey = "k",
+        )
+        assertTrue(bare.officialDeepSeekEndpoint)
+        assertEquals("https://api.deepseek.com/files", bare.filesEndpoint)
+
+        assertFalse(
+            AiConfig(
+                provider = AiPresets.DEEPSEEK,
+                baseUrl = "https://api.deepseek.com/v1beta",
+                apiKey = "k",
+            ).officialDeepSeekEndpoint,
+        )
+    }
+
+    @Test
     fun `a missing key means not configured`() {
         assertFalse(AiConfig(provider = AiPresets.DEEPSEEK).isConfigured())
     }

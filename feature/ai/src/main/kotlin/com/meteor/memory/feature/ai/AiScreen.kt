@@ -999,12 +999,18 @@ private fun ChatMessage(
     }
 }
 
+/** Citations come from the model, so only open ordinary web links. */
+private fun openWebUrl(uriHandler: androidx.compose.ui.platform.UriHandler, url: String) {
+    if (!url.startsWith("https://", true) && !url.startsWith("http://", true)) return
+    runCatching { uriHandler.openUri(url) }
+}
+
 @Composable
 private fun CitationList(citations: List<AiCitation>) {
     val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
         citations.distinctBy(AiCitation::url).forEachIndexed { index, citation ->
-            TextButton(onClick = { uriHandler.openUri(citation.url) }) {
+            TextButton(onClick = { openWebUrl(uriHandler, citation.url) }) {
                 Text(
                     text = stringResource(R.string.ai_citation_link, index + 1, citation.title),
                     maxLines = 2,
@@ -1136,7 +1142,7 @@ private fun WebToolStep(event: AiServerToolEvent) {
             )
         }
         event.sources.forEach { source ->
-            TextButton(onClick = { uriHandler.openUri(source.url) }) {
+            TextButton(onClick = { openWebUrl(uriHandler, source.url) }) {
                 Text(
                     text = source.siteName?.let { "$it · ${source.title}" } ?: source.title,
                     maxLines = 2,
