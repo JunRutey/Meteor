@@ -99,6 +99,23 @@ class AiAgentTest {
     }
 
     @Test
+    fun `a content-filter refusal is reported as a refusal`() {
+        val agent = AiAgent(
+            FakeProvider(
+                AiCompletion("", emptyList(), finishReason = "content_filter"),
+            ),
+            FakeToolbox(),
+        )
+
+        val error = assertThrows(
+            AiProviderException::class.java,
+            ThrowingRunnable { runBlocking { agent.run(conversation(), allowedPersonId = null) } },
+        )
+
+        assertEquals("content-filter", error.message)
+    }
+
+    @Test
     fun `usage is summed across tool rounds`() = runBlocking {
         val provider = FakeProvider(
             AiCompletion(

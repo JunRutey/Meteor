@@ -891,12 +891,14 @@ private fun aiErrorText(code: Int, detail: String?): String? {
         detail == "files-require-deepseek-flash" -> stringResource(AiR.string.ai_file_not_supported)
         detail == "file-delete-failed" -> stringResource(AiR.string.ai_file_delete_error)
         detail == "file-limit" -> stringResource(AiR.string.ai_file_limit)
+        detail == "file-expired" -> stringResource(AiR.string.ai_file_expired)
         detail == "unsupported-file-type" ||
             detail == "file-size-out-of-range" ||
             detail?.startsWith("file-") == true -> stringResource(AiR.string.ai_file_error)
         detail?.startsWith("chat-store-") == true -> stringResource(AiR.string.ai_chat_storage_error)
         detail == "not-configured" || detail == "missing-api-key" -> stringResource(AiR.string.ai_need_config)
         detail == "empty-response" -> stringResource(AiR.string.ai_error_empty)
+        detail == "content-filter" -> stringResource(AiR.string.ai_error_content_filter)
         detail == "step-limit" -> stringResource(AiR.string.ai_error_step_limit)
         code == 401 || code == 403 -> stringResource(AiR.string.ai_error_auth)
         code == 429 -> stringResource(AiR.string.ai_error_rate)

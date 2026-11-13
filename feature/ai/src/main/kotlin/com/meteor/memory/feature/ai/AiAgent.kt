@@ -68,7 +68,12 @@ class AiAgent(
             completion.usage?.let { usage = usage.merge(it) }
             if (completion.toolCalls.isEmpty()) {
                 val text = completion.content?.trim().orEmpty()
-                if (text.isEmpty()) throw AiProviderException(0, "empty-response")
+                if (text.isEmpty()) {
+                    if (completion.finishReason == "content_filter") {
+                        throw AiProviderException(0, "content-filter")
+                    }
+                    throw AiProviderException(0, "empty-response")
+                }
                 completion.citations.forEach { listener?.onCitation(it) }
                 completion.title?.let { listener?.onTitle(it) }
                 return AgentResult(

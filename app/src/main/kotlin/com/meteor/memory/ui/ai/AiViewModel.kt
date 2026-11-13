@@ -129,7 +129,6 @@ class AiViewModel @Inject constructor(
     init {
         observeReadiness()
         loadLibrary()
-        initialPersonId?.let { selectPerson(it) }
     }
 
     private fun observeReadiness() {
@@ -164,8 +163,10 @@ class AiViewModel @Inject constructor(
                 .getOrDefault(emptyList())
                 .filter { it.stage == SkillStage.CHAT }
             val people = withContext(Dispatchers.IO) { personQueries.list() }
+            val targetPersonId = _state.value.selectedPersonId ?: initialPersonId
             _state.update { state ->
-                val default = if (state.selectedPersonId != null) {
+                val personId = state.selectedPersonId ?: targetPersonId
+                val default = if (personId != null) {
                     chatSkills.firstOrNull { it.requiresPerson }
                 } else {
                     chatSkills.firstOrNull { !it.requiresPerson }
@@ -173,10 +174,20 @@ class AiViewModel @Inject constructor(
                 state.copy(
                     skills = chatSkills,
                     people = people,
+                    selectedPersonId = personId,
                     selectedSkill = state.selectedSkill ?: default?.name ?: chatSkills.firstOrNull()?.name,
                 )
             }
             restoreHistory()
+            _state.value.selectedPersonId?.let { loadPersona(it) }
+        }
+    }
+
+    private fun loadPersona(personId: String) {
+        viewModelScope.launch {
+            runCatching { aiModule.persona(personId) }.onSuccess { persona ->
+                _state.update { it.copy(personaDistilled = persona.distilled) }
+            }
         }
     }
 
@@ -212,11 +223,7 @@ class AiViewModel @Inject constructor(
             return
         }
         restoreHistory()
-        viewModelScope.launch {
-            runCatching { aiModule.persona(personId) }.onSuccess { persona ->
-                _state.update { it.copy(personaDistilled = persona.distilled) }
-            }
-        }
+        loadPersona(personId)
     }
 
     fun send(text: String) {
@@ -237,6 +244,7 @@ class AiViewModel @Inject constructor(
         }
         val now = Instant.now()
         val files = current.pendingFiles.filter { isFresh(it, now) }
+        val hasExpiredPending = files.size != current.pendingFiles.size
         // The API accepts at most 20 document references per request, and an
         // expired file_id makes every later turn fail. Keep only fresh files
         // and charge the newest history first so an ongoing document is kept.
@@ -277,7 +285,7 @@ class AiViewModel @Inject constructor(
                 liveContent = "",
                 liveSteps = emptyList(),
                 errorCode = 0,
-                errorDetail = null,
+                errorDetail = if (hasExpiredPending) "file-expired" else null,
             )
         }
         persistHistory()
@@ -732,7 +740,7 @@ class AiViewModel @Inject constructor(
 
     private fun isFresh(file: AiFileReference, now: Instant): Boolean =
         file.uploadedAt != Instant.EPOCH &&
-            file.uploadedAt.plusSeconds(FILE_HISTORY_TTL_SECONDS).isAfter(now)
+            file.uploadedAt.plusSeconds(FILE_HISTORY_TTL_SECONDS.toLong()).isAfter(now)
 
     private fun toBubble(message: StoredChatMessage) = AiChatBubble(
         id = message.id,
