@@ -45,6 +45,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CancellationException
 import org.json.JSONException
@@ -117,6 +119,10 @@ class AiViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(AiUiState())
     val state: StateFlow<AiUiState> = _state.asStateFlow()
+
+    /** Serialises every conversation read/write so a late save cannot win. */
+    private val chatStoreMutex = Mutex()
+
     @Volatile
     private var toolApprovalDecision: CompletableDeferred<Boolean>? = null
 
@@ -517,19 +523,21 @@ class AiViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val filesDeleted = deleteRemoteFiles(unusedFiles)
-                chatStore.saveConversation(conversation)
-                _state.update {
-                    it.copy(
-                        conversations = listOf(AiConversationItem(conversation.id, "")) +
-                            it.conversations.filterNot { item -> item.id == conversation.id },
-                        activeConversationId = conversation.id,
-                        messages = emptyList(),
-                        pendingFiles = emptyList(),
-                        sessionUsage = AiUsage(),
-                        sessionElapsedMs = 0,
-                        errorCode = 0,
-                        errorDetail = if (filesDeleted) null else "file-delete-failed",
-                    )
+                chatStoreMutex.withLock {
+                    chatStore.saveConversation(conversation)
+                    _state.update {
+                        it.copy(
+                            conversations = listOf(AiConversationItem(conversation.id, "")) +
+                                it.conversations.filterNot { item -> item.id == conversation.id },
+                            activeConversationId = conversation.id,
+                            messages = emptyList(),
+                            pendingFiles = emptyList(),
+                            sessionUsage = AiUsage(),
+                            sessionElapsedMs = 0,
+                            errorCode = 0,
+                            errorDetail = if (filesDeleted) null else "file-delete-failed",
+                        )
+                    }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -547,17 +555,29 @@ class AiViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val filesDeleted = deleteRemoteFiles(unusedFiles)
-                val conversation = chatStore.listConversations(currentScope).firstOrNull { it.id == id } ?: return@launch
-                _state.update {
-                    it.copy(
-                        activeConversationId = conversation.id,
-                        messages = conversation.messages.map(::toBubble),
-                        pendingFiles = emptyList(),
-                        sessionUsage = AiUsage(),
-                        sessionElapsedMs = 0,
-                        errorCode = 0,
-                        errorDetail = if (filesDeleted) null else "file-delete-failed",
-                    )
+                chatStoreMutex.withLock {
+                    val conversation = chatStore.listConversations(currentScope).firstOrNull { it.id == id }
+                    if (conversation == null) {
+                        _state.update {
+                            it.copy(
+                                pendingFiles = emptyList(),
+                                errorCode = 0,
+                                errorDetail = if (filesDeleted) null else "file-delete-failed",
+                            )
+                        }
+                        return@withLock
+                    }
+                    _state.update {
+                        it.copy(
+                            activeConversationId = conversation.id,
+                            messages = conversation.messages.map(::toBubble),
+                            pendingFiles = emptyList(),
+                            sessionUsage = AiUsage(),
+                            sessionElapsedMs = 0,
+                            errorCode = 0,
+                            errorDetail = if (filesDeleted) null else "file-delete-failed",
+                        )
+                    }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -574,14 +594,19 @@ class AiViewModel @Inject constructor(
         val scope = scopeKey(_state.value.selectedSkill, _state.value.selectedPersonId)
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val conversation = chatStore.listConversations(scope).firstOrNull { it.id == id } ?: return@launch
-                chatStore.saveConversation(conversation.copy(title = cleaned, updatedAt = Instant.now()))
-                _state.update { state ->
-                    state.copy(
-                        conversations = state.conversations.map {
-                            if (it.id == id) it.copy(title = cleaned) else it
-                        },
-                    )
+                chatStoreMutex.withLock {
+                    val conversation = chatStore.listConversations(scope).firstOrNull { it.id == id }
+                        ?: return@withLock
+                    chatStore.saveConversation(conversation.copy(title = cleaned, updatedAt = Instant.now()))
+                    // Update the in-memory title inside the lock as well, so the
+                    // next queued persist cannot write the old title back.
+                    _state.update { state ->
+                        state.copy(
+                            conversations = state.conversations.map {
+                                if (it.id == id) it.copy(title = cleaned) else it
+                            },
+                        )
+                    }
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -596,35 +621,39 @@ class AiViewModel @Inject constructor(
         if (_state.value.busy || _state.value.fileUploading) return
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val conversation = chatStore.listConversations().firstOrNull { it.id == id } ?: return@launch
+                val conversation = chatStoreMutex.withLock {
+                    chatStore.listConversations().firstOrNull { it.id == id }
+                } ?: return@launch
                 val pending = if (_state.value.activeConversationId == id) _state.value.pendingFiles else emptyList()
                 val stored = conversation.messages.flatMap { it.files }.map {
                     AiFileReference(it.id, it.fileName, it.purpose)
                 }
                 val filesDeleted = deleteRemoteFiles((stored + pending).distinctBy { it.id })
-                chatStore.deleteConversation(id)
-                val remaining = chatStore.listConversations(conversation.scope)
-                val next = remaining.firstOrNull() ?: newStoredConversation(conversation.scope)
-                if (remaining.isEmpty()) chatStore.saveConversation(next)
-                _state.update { state ->
-                    if (state.activeConversationId != id) {
-                        state.copy(
-                            conversations = state.conversations.filterNot { it.id == id },
-                            errorCode = 0,
-                            errorDetail = if (filesDeleted) null else "file-delete-failed",
-                        )
-                    } else {
-                        state.copy(
-                            conversations = (remaining.ifEmpty { listOf(next) })
-                                .map { AiConversationItem(it.id, it.title) },
-                            activeConversationId = next.id,
-                            messages = next.messages.map(::toBubble),
-                            pendingFiles = emptyList(),
-                            sessionUsage = AiUsage(),
-                            sessionElapsedMs = 0,
-                            errorCode = 0,
-                            errorDetail = if (filesDeleted) null else "file-delete-failed",
-                        )
+                chatStoreMutex.withLock {
+                    chatStore.deleteConversation(id)
+                    val remaining = chatStore.listConversations(conversation.scope)
+                    val next = remaining.firstOrNull() ?: newStoredConversation(conversation.scope)
+                    if (remaining.isEmpty()) chatStore.saveConversation(next)
+                    _state.update { state ->
+                        if (state.activeConversationId != id) {
+                            state.copy(
+                                conversations = state.conversations.filterNot { it.id == id },
+                                errorCode = 0,
+                                errorDetail = if (filesDeleted) null else "file-delete-failed",
+                            )
+                        } else {
+                            state.copy(
+                                conversations = (remaining.ifEmpty { listOf(next) })
+                                    .map { AiConversationItem(it.id, it.title) },
+                                activeConversationId = next.id,
+                                messages = next.messages.map(::toBubble),
+                                pendingFiles = emptyList(),
+                                sessionUsage = AiUsage(),
+                                sessionElapsedMs = 0,
+                                errorCode = 0,
+                                errorDetail = if (filesDeleted) null else "file-delete-failed",
+                            )
+                        }
                     }
                 }
             } catch (cancelled: CancellationException) {
@@ -790,35 +819,39 @@ class AiViewModel @Inject constructor(
     }
 
     private fun persistHistory() {
-        val state = _state.value
-        val id = state.activeConversationId ?: return
-        val scope = scopeKey(state.selectedSkill, state.selectedPersonId)
-        val existing = state.conversations.firstOrNull { it.id == id }
-        val now = Instant.now()
-        val conversation = StoredAiConversation(
-            id = id,
-            scope = scope,
-            title = existing?.title.orEmpty(),
-            createdAt = state.messages.firstOrNull()?.createdAt ?: now,
-            updatedAt = now,
-            messages = state.messages.map { bubble ->
-                StoredChatMessage(
-                    id = bubble.id,
-                    fromUser = bubble.fromUser,
-                    text = bubble.text,
-                    at = bubble.createdAt,
-                    files = bubble.files.map { StoredChatFile(it.id, it.fileName, it.purpose) },
-                    serverToolCallsJson = bubble.serverToolCallsJson,
-                    citations = bubble.citations.map {
-                        StoredChatCitation(it.url, it.title, it.startIndex, it.endIndex)
-                    },
-                    isTruncated = bubble.isTruncated,
-                )
-            },
-        )
         viewModelScope.launch(Dispatchers.IO) {
-            runCatching { chatStore.saveConversation(conversation) }
-                .onFailure { appLog.warn(TAG, "AI conversation save failed", it) }
+            chatStoreMutex.withLock {
+                // Build the snapshot while holding the lock: a rename or clear
+                // that landed after this call must be the one that is written.
+                val state = _state.value
+                val id = state.activeConversationId ?: return@withLock
+                val scope = scopeKey(state.selectedSkill, state.selectedPersonId)
+                val existing = state.conversations.firstOrNull { it.id == id }
+                val now = Instant.now()
+                val conversation = StoredAiConversation(
+                    id = id,
+                    scope = scope,
+                    title = existing?.title.orEmpty(),
+                    createdAt = state.messages.firstOrNull()?.createdAt ?: now,
+                    updatedAt = now,
+                    messages = state.messages.map { bubble ->
+                        StoredChatMessage(
+                            id = bubble.id,
+                            fromUser = bubble.fromUser,
+                            text = bubble.text,
+                            at = bubble.createdAt,
+                            files = bubble.files.map { StoredChatFile(it.id, it.fileName, it.purpose) },
+                            serverToolCallsJson = bubble.serverToolCallsJson,
+                            citations = bubble.citations.map {
+                                StoredChatCitation(it.url, it.title, it.startIndex, it.endIndex)
+                            },
+                            isTruncated = bubble.isTruncated,
+                        )
+                    },
+                )
+                runCatching { chatStore.saveConversation(conversation) }
+                    .onFailure { appLog.warn(TAG, "AI conversation save failed", it) }
+            }
         }
     }
 
