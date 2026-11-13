@@ -168,7 +168,7 @@ fun CalendarScreen(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = 16.dp)
+                    .padding(end = 16.dp, bottom = 8.dp)
                     .size(48.dp)
                     .background(MaterialTheme.colorScheme.primaryContainer, CircleShape)
                     .clickable(onClick = open)

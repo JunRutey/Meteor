@@ -1,5 +1,6 @@
 package com.meteor.memory.feature.people
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,8 +10,12 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -72,7 +77,7 @@ fun PersonDetailScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Column {
-                Text(text = displayName, style = MaterialTheme.typography.headlineSmall)
+                Text(text = displayName, style = MaterialTheme.typography.titleLarge)
                 Text(
                     text = relationLabel(relation),
                     style = MaterialTheme.typography.labelSmall,
@@ -97,11 +102,18 @@ fun PersonDetailScreen(
         if (note.isBlank()) {
             Placeholder(stringResource(R.string.people_note_empty))
         } else {
-            Text(
-                text = note,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
-            )
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            ) {
+                Text(
+                    text = note,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(14.dp),
+                )
+            }
         }
 
         HorizontalDivider(Modifier.padding(top = 8.dp))
@@ -116,15 +128,22 @@ fun PersonDetailScreen(
         if (notes.isBlank()) {
             Placeholder(stringResource(R.string.people_body_empty))
         } else {
-            MarkdownPreview(
-                body = notes,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 240.dp)
-                    .padding(horizontal = 4.dp),
-                resolveImage = resolveImage,
-                onActivate = onActivate,
-            )
+            Surface(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            ) {
+                MarkdownPreview(
+                    body = notes,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 240.dp)
+                        .padding(12.dp),
+                    resolveImage = resolveImage,
+                    onActivate = onActivate,
+                )
+            }
         }
 
         HorizontalDivider(Modifier.padding(top = 8.dp))
@@ -184,43 +203,63 @@ fun PersonDetailScreen(
             )
         }
 
-        LazyColumn(modifier = Modifier.weight(1f)) {
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             items(records, key = { it.recordId }) { row ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = row.title ?: row.typeLabel,
-                            style = MaterialTheme.typography.titleSmall,
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (row.title != null) {
-                                Text(
-                                    text = row.typeLabel,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
-                                row.sizeBytes?.let { size ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 14.dp, top = 10.dp, end = 8.dp, bottom = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            Text(
+                                text = row.title ?: row.typeLabel,
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                if (row.title != null) {
                                     Text(
-                                        text = Formatter.formatShortFileSize(LocalContext.current, size),
+                                        text = row.typeLabel,
                                         style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
                                     )
+                                    row.sizeBytes?.let { size ->
+                                        Text(
+                                            text = Formatter.formatShortFileSize(
+                                                LocalContext.current,
+                                                size,
+                                            ),
+                                            style = MaterialTheme.typography.labelSmall,
+                                        )
+                                    }
                                 }
+                                Text(
+                                    text = row.dateLabel,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
-                            Text(text = row.dateLabel, style = MaterialTheme.typography.bodySmall)
-                        }
-                        if (row.title != null) {
-                            TextButton(onClick = { onExportAttachment(row.recordId) }) {
-                                Text(stringResource(R.string.people_record_export))
+                            if (row.title != null) {
+                                TextButton(onClick = { onExportAttachment(row.recordId) }) {
+                                    Text(stringResource(R.string.people_record_export))
+                                }
                             }
                         }
                     }
                 }
-                HorizontalDivider()
             }
         }
     }
@@ -238,7 +277,11 @@ private fun SectionHeader(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(text = title, style = MaterialTheme.typography.titleSmall)
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
         TextButton(onClick = onAction, enabled = enabled) {
             Text(text = action, style = MaterialTheme.typography.labelLarge)
         }
