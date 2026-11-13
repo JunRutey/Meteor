@@ -49,8 +49,11 @@ android {
             isMinifyEnabled = false
         }
         release {
-            isMinifyEnabled = false
-            isShrinkResources = false
+            // R8 shrinks code (and, with shrinkResources, unused resources) for
+            // the signed release only. CI assembles this variant so a shrinking
+            // rule that breaks the app fails long before a tag is pushed.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             // Signed only when CI provides a keystore (see .github/workflows/release.yml).
             // Secret names are shared across all of my apps — see the private
