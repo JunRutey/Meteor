@@ -841,31 +841,35 @@ class AiViewModel @Inject constructor(
 
     private fun restoreHistory() {
         if (_state.value.busy) return
-        viewModelScope.launch {
-            val scope = scopeKey(_state.value.selectedSkill, _state.value.selectedPersonId)
+        viewModelScope.launch(Dispatchers.IO) {
             try {
-                val sessions = withContext(Dispatchers.IO) { chatStore.listConversations(scope) }
-                val activeId = _state.value.activeConversationId
-                val selected = sessions.firstOrNull { it.id == activeId } ?: sessions.firstOrNull()
-                val conversation = selected ?: newStoredConversation(scope).also { created ->
-                    withContext(Dispatchers.IO) { chatStore.saveConversation(created) }
-                }
-                if (scope != scopeKey(_state.value.selectedSkill, _state.value.selectedPersonId)) return@launch
-                _state.update {
-                    it.copy(
-                        conversations = (if (selected == null) listOf(conversation) else sessions)
-                            .map { item -> AiConversationItem(item.id, item.title) },
-                        activeConversationId = conversation.id,
-                        messages = conversation.messages.map(::toBubble),
-                        pendingFiles = emptyList(),
-                        sessionUsage = AiUsage(),
-                        sessionElapsedMs = 0,
-                        streaming = false,
-                        liveContent = "",
-                        liveSteps = emptyList(),
-                        errorCode = 0,
-                        errorDetail = null,
-                    )
+                chatStoreMutex.withLock {
+                    val scope = scopeKey(_state.value.selectedSkill, _state.value.selectedPersonId)
+                    val sessions = chatStore.listConversations(scope)
+                    val activeId = _state.value.activeConversationId
+                    val selected = sessions.firstOrNull { it.id == activeId } ?: sessions.firstOrNull()
+                    val conversation = selected ?: newStoredConversation(scope).also {
+                        chatStore.saveConversation(it)
+                    }
+                    if (scope != scopeKey(_state.value.selectedSkill, _state.value.selectedPersonId)) {
+                        return@withLock
+                    }
+                    _state.update {
+                        it.copy(
+                            conversations = (if (selected == null) listOf(conversation) else sessions)
+                                .map { item -> AiConversationItem(item.id, item.title) },
+                            activeConversationId = conversation.id,
+                            messages = conversation.messages.map(::toBubble),
+                            pendingFiles = emptyList(),
+                            sessionUsage = AiUsage(),
+                            sessionElapsedMs = 0,
+                            streaming = false,
+                            liveContent = "",
+                            liveSteps = emptyList(),
+                            errorCode = 0,
+                            errorDetail = null,
+                        )
+                    }
                 }
             } catch (failure: Exception) {
                 appLog.warn(TAG, "AI conversation restore failed", failure)

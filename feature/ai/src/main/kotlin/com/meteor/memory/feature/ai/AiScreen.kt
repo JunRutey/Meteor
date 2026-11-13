@@ -140,6 +140,11 @@ fun AiScreen(
     var personMenuExpanded by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+
+    // Switching conversations must not leave an edit target from the old one.
+    LaunchedEffect(activeConversationId) {
+        editingMessageId = null
+    }
     val coroutineScope = rememberCoroutineScope()
     val bottomSlackPx = with(LocalDensity.current) { BOTTOM_SLACK_DP.dp.roundToPx() }
     var followTail by remember { mutableStateOf(true) }
@@ -849,7 +854,7 @@ private fun ConversationToolbar(
             text = {
                 OutlinedTextField(
                     value = titleDraft,
-                    onValueChange = { titleDraft = it.take(80) },
+                    onValueChange = { titleDraft = it.take(32) },
                     singleLine = true,
                 )
             },
