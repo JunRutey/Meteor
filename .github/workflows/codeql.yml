@@ -12,8 +12,17 @@ name: CodeQL
 on:
   push:
     branches: [ main ]
+    # Docs-only changes have no code to analyze.
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'LICENSE'
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - 'LICENSE'
   schedule:
     - cron: '23 3 * * 1'
   workflow_dispatch:
