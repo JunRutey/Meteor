@@ -79,6 +79,12 @@ interface AiChatListener {
         }
         return true
     }
+
+    fun onServerToolEvent(event: AiServerToolEvent) {}
+
+    fun onCitation(citation: AiCitation) {}
+
+    fun onTitle(title: String) {}
 }
 
 /** A mutation the model wants to perform and the exact arguments to review. */
@@ -153,7 +159,18 @@ data class DistillResult(
 )
 
 /** One previous chat turn. History lives in the caller's memory only. */
-data class ChatTurn(val fromUser: Boolean, val text: String)
+enum class AiChatMode {
+    ARCHIVE,
+    WEB,
+}
+
+data class ChatTurn(
+    val fromUser: Boolean,
+    val text: String,
+    val files: List<AiFileReference> = emptyList(),
+    val serverToolCallsJson: String? = null,
+    val citations: List<AiCitation> = emptyList(),
+)
 
 /**
  * [personId] null = talk to the whole archive (grounded Q&A skill);
@@ -165,6 +182,8 @@ data class ChatRequest(
     val personId: String? = null,
     val history: List<ChatTurn> = emptyList(),
     val config: AiConfig,
+    val mode: AiChatMode = AiChatMode.ARCHIVE,
+    val files: List<AiFileReference> = emptyList(),
 )
 
 data class ChatReply(
@@ -172,4 +191,8 @@ data class ChatReply(
     val steps: Int,
     val usage: AiUsage = AiUsage(),
     val elapsedMs: Long = 0,
+    val serverToolCallsJson: String? = null,
+    val citations: List<AiCitation> = emptyList(),
+    val title: String? = null,
+    val finishReason: String? = null,
 )

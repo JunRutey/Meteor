@@ -509,6 +509,7 @@ fun MeteorNavHost(
         ) {
             val viewModel: AiViewModel = hiltViewModel()
             val state by viewModel.state.collectAsStateWithLifecycle()
+            val pickAiFiles = rememberAiFilePicker(viewModel::addFiles)
 
             RefreshOnResume { viewModel.refresh() }
 
@@ -535,6 +536,13 @@ fun MeteorNavHost(
                 liveContent = state.liveContent,
                 liveSteps = state.liveSteps,
                 pendingToolApprovals = state.pendingToolApprovals,
+                chatMode = state.chatMode,
+                conversations = state.conversations,
+                activeConversationId = state.activeConversationId,
+                pendingFiles = state.pendingFiles,
+                fileUploading = state.fileUploading,
+                canUploadFiles = state.canUploadFiles,
+                canUseWebTools = state.canUseWebTools,
                 onSkillSelect = viewModel::selectSkill,
                 onPersonSelect = viewModel::selectPerson,
                 onSend = viewModel::send,
@@ -543,6 +551,16 @@ fun MeteorNavHost(
                 onClear = viewModel::clear,
                 onToolApproval = viewModel::decideToolApproval,
                 onBack = { navController.popBackStack() },
+                onChatModeSelect = viewModel::setChatMode,
+                onNewConversation = viewModel::newConversation,
+                onSelectConversation = viewModel::selectConversation,
+                onRenameConversation = viewModel::renameConversation,
+                onDeleteConversation = viewModel::deleteConversation,
+                onPickFiles = pickAiFiles,
+                onRemovePendingFile = viewModel::removePendingFile,
+                onEditMessage = viewModel::editMessage,
+                onRegenerate = viewModel::regenerate,
+                onContinue = viewModel::continueResponse,
             )
         }
 
@@ -868,8 +886,19 @@ private fun aiSkillLabel(name: String): String = when (name) {
 private fun aiErrorText(code: Int, detail: String?): String? {
     if (code == 0 && detail == null) return null
     return when {
+        detail == "web-tools-unavailable" ||
+            detail?.startsWith("web-tools-require-") == true -> stringResource(AiR.string.ai_web_unavailable)
+        detail == "files-require-deepseek-flash" -> stringResource(AiR.string.ai_file_not_supported)
+        detail == "file-delete-failed" -> stringResource(AiR.string.ai_file_delete_error)
+        detail == "file-limit" -> stringResource(AiR.string.ai_file_limit)
+        detail == "file-expired" -> stringResource(AiR.string.ai_file_expired)
+        detail == "unsupported-file-type" ||
+            detail == "file-size-out-of-range" ||
+            detail?.startsWith("file-") == true -> stringResource(AiR.string.ai_file_error)
+        detail?.startsWith("chat-store-") == true -> stringResource(AiR.string.ai_chat_storage_error)
         detail == "not-configured" || detail == "missing-api-key" -> stringResource(AiR.string.ai_need_config)
         detail == "empty-response" -> stringResource(AiR.string.ai_error_empty)
+        detail == "content-filter" -> stringResource(AiR.string.ai_error_content_filter)
         detail == "step-limit" -> stringResource(AiR.string.ai_error_step_limit)
         code == 401 || code == 403 -> stringResource(AiR.string.ai_error_auth)
         code == 429 -> stringResource(AiR.string.ai_error_rate)
@@ -923,6 +952,14 @@ private fun rememberImagePicker(onBytes: (ByteArray) -> Unit): () -> Unit {
 
 @Composable
 private fun rememberAttachmentPicker(onUris: (List<Uri>) -> Unit): () -> Unit {
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) onUris(uris)
+    }
+    return { launcher.launch(arrayOf("*/*")) }
+}
+
+@Composable
+private fun rememberAiFilePicker(onUris: (List<Uri>) -> Unit): () -> Unit {
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) onUris(uris)
     }

@@ -8,6 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
+import java.io.File
 import java.security.SecureRandom
 import java.time.Instant
 import javax.crypto.spec.SecretKeySpec
@@ -75,5 +76,125 @@ class EncryptedAiChatStoreTest {
         EncryptedAiChatStore(root, crypto()).save("a", listOf(turn("secret", true)))
 
         assertTrue(EncryptedAiChatStore(root, crypto()).load("a").isEmpty())
+    }
+
+    @Test
+    fun `version one turns migrate into an encrypted session`() {
+        val root = temp.newFolder("root")
+        val store = EncryptedAiChatStore(root, crypto())
+        val created = listOf(turn("first question", true), turn("answer", false))
+        store.save("skill__all", created)
+
+        val conversation = store.listConversations("skill__all").single()
+
+        assertEquals("first question", conversation.title)
+        assertEquals(2, conversation.messages.size)
+        assertEquals("answer", conversation.messages.last().text)
+        assertFalse(
+            File(root, "${StorageLayout.LEGACY}/${StorageLayout.AI_CHAT}/skill__all.bin").exists(),
+        )
+    }
+
+    @Test
+    fun `sessions round trip metadata and support rename and delete`() {
+        val root = temp.newFolder("root")
+        val store = EncryptedAiChatStore(root, crypto())
+        val at = Instant.parse("2026-10-31T10:00:00Z")
+        val session = StoredAiConversation(
+            id = "session_1",
+            scope = "skill__all",
+            title = "A title",
+            createdAt = at,
+            updatedAt = at,
+            messages = listOf(
+                StoredChatMessage(
+                    id = "message_1",
+                    fromUser = true,
+                    text = "read this",
+                    at = at,
+                    files = listOf(
+                        StoredChatFile("file-1", "report.pdf", "rich_layout_recognition", at),
+                    ),
+                ),
+                StoredChatMessage(
+                    id = "message_2",
+                    fromUser = false,
+                    text = "A cited answer.",
+                    at = at,
+                    serverToolCallsJson = """[{"id":"server-1"}]""",
+                    citations = listOf(StoredChatCitation("https://example.com", "Example", 0, 8)),
+                ),
+            ),
+        )
+        store.saveConversation(session)
+
+        val loaded = store.listConversations().single()
+
+        assertEquals("A title", loaded.title)
+        assertEquals(session.messages, loaded.messages)
+        assertFalse(
+            File(root, "${StorageLayout.LEGACY}/${StorageLayout.AI_CHAT}/sessions/session_1.bin")
+                .readBytes()
+                .toString(Charsets.ISO_8859_1)
+                .contains("A cited answer"),
+        )
+
+        store.saveConversation(loaded.copy(title = "Renamed", updatedAt = at.plusSeconds(1)))
+        assertEquals("Renamed", store.listConversations().single().title)
+        store.deleteConversation("session_1")
+        assertTrue(store.listConversations().isEmpty())
+    }
+
+    @Test
+    fun `one unreadable session does not hide the healthy ones`() {
+        val root = temp.newFolder("root")
+        val store = EncryptedAiChatStore(root, crypto())
+        val at = Instant.parse("2026-10-31T10:00:00Z")
+        store.saveConversation(
+            StoredAiConversation("healthy", "skill__all", "title", at, at, emptyList()),
+        )
+        File(
+            root,
+            "${StorageLayout.LEGACY}/${StorageLayout.AI_CHAT}/sessions/broken.bin",
+        ).writeBytes(byteArrayOf(1, 2, 3, 4))
+
+        val conversations = store.listConversations("skill__all")
+
+        assertEquals(listOf("healthy"), conversations.map { it.id })
+        assertTrue(
+            File(root, "${StorageLayout.LEGACY}/${StorageLayout.AI_CHAT}/sessions/broken.bin").exists(),
+        )
+    }
+
+    @Test
+    fun `one unreadable legacy file does not block migration`() {
+        val root = temp.newFolder("root")
+        val store = EncryptedAiChatStore(root, crypto())
+        val legacyDir = File(root, "${StorageLayout.LEGACY}/${StorageLayout.AI_CHAT}")
+        legacyDir.mkdirs()
+        File(legacyDir, "broken_legacy.bin").writeBytes(byteArrayOf(9, 9, 9))
+        store.save("skill__all", listOf(turn("first question", true)))
+
+        val conversations = store.listConversations()
+
+        assertEquals(1, conversations.size)
+        assertEquals("first question", conversations.single().title)
+        assertTrue(File(legacyDir, "broken_legacy.bin").exists())
+    }
+
+    @Test
+    fun `saving keeps only the newest messages`() {
+        val root = temp.newFolder("root")
+        val store = EncryptedAiChatStore(root, crypto())
+        val at = Instant.parse("2026-10-31T10:00:00Z")
+        val messages = (0 until 130).map { index ->
+            StoredChatMessage("message_$index", index % 2 == 0, "text $index", at)
+        }
+
+        store.saveConversation(StoredAiConversation("capped", "skill__all", "", at, at, messages))
+
+        val loaded = store.listConversations().single()
+        assertEquals(AiChatStore.MAX_TURNS * 2, loaded.messages.size)
+        assertEquals("text 129", loaded.messages.last().text)
     }
 }

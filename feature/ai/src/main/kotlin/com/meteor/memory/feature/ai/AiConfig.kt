@@ -43,7 +43,7 @@ object AiPresets {
     }
 
     fun defaultModel(id: String): String = when (id) {
-        DEEPSEEK -> "deepseek-chat"
+        DEEPSEEK -> "deepseek-flash"
         OPENAI -> "gpt-4o-mini"
         else -> ""
     }
@@ -86,10 +86,21 @@ data class AiConfig(
 
     val modelsEndpoint: String get() = "${resolvedBaseUrl.trimEnd('/')}/models"
 
+    val filesEndpoint: String
+        get() = "${resolvedBaseUrl.trimEnd('/').removeSuffix("/v1")}/files"
+
     val reasoningMode: ReasoningMode get() = ReasoningMode.fromWire(reasoning)
 
     /** Only DeepSeek documents the thinking fields; others keep AUTO. */
     val reasoningSupported: Boolean get() = provider == AiPresets.DEEPSEEK
+
+    /** The official API accepts both `/v1` and the bare host as base URL. */
+    val officialDeepSeekEndpoint: Boolean
+        get() {
+            val normalized = resolvedBaseUrl.trimEnd('/').lowercase()
+            return normalized == "https://api.deepseek.com" ||
+                normalized == "https://api.deepseek.com/v1"
+        }
 
     fun isConfigured(): Boolean =
         !apiKey.isNullOrBlank() && resolvedModel.isNotBlank() && endpoint.isHttps()

@@ -58,6 +58,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import java.time.Instant
+import java.util.UUID
 
 /** One selectable skill. Labels are resolved by the caller. */
 data class AiSkillChip(val id: String, val label: String, val requiresPerson: Boolean)
@@ -77,7 +79,15 @@ data class AiChatBubble(
     val usage: AiUsage? = null,
     val elapsedMs: Long = 0,
     val steps: List<AiProcessStep> = emptyList(),
+    val id: String = UUID.randomUUID().toString(),
+    val createdAt: Instant = Instant.now(),
+    val files: List<AiFileReference> = emptyList(),
+    val serverToolCallsJson: String? = null,
+    val citations: List<AiCitation> = emptyList(),
+    val isTruncated: Boolean = false,
 )
+
+data class AiConversationItem(val id: String, val title: String)
 
 /** The AI workspace. It renders state only and keeps all AI operations in the caller. */
 @Composable
@@ -98,6 +108,13 @@ fun AiScreen(
     liveContent: String = "",
     liveSteps: List<AiProcessStep> = emptyList(),
     pendingToolApprovals: List<AiToolApproval> = emptyList(),
+    chatMode: AiChatMode = AiChatMode.ARCHIVE,
+    conversations: List<AiConversationItem> = emptyList(),
+    activeConversationId: String? = null,
+    pendingFiles: List<AiFileReference> = emptyList(),
+    fileUploading: Boolean = false,
+    canUploadFiles: Boolean = false,
+    canUseWebTools: Boolean = false,
     onSkillSelect: (String) -> Unit,
     onPersonSelect: (String?) -> Unit,
     onSend: (String) -> Unit,
@@ -106,12 +123,28 @@ fun AiScreen(
     onClear: () -> Unit,
     onToolApproval: (Boolean) -> Unit = {},
     onBack: () -> Unit,
+    onChatModeSelect: (AiChatMode) -> Unit = {},
+    onNewConversation: () -> Unit = {},
+    onSelectConversation: (String) -> Unit = {},
+    onRenameConversation: (String, String) -> Unit = { _, _ -> },
+    onDeleteConversation: (String) -> Unit = {},
+    onPickFiles: () -> Unit = {},
+    onRemovePendingFile: (String) -> Unit = {},
+    onEditMessage: (String, String) -> Unit = { _, _ -> },
+    onRegenerate: (String) -> Unit = {},
+    onContinue: (String, String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     var input by remember { mutableStateOf("") }
+    var editingMessageId by remember { mutableStateOf<String?>(null) }
     var personMenuExpanded by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+
+    // Switching conversations must not leave an edit target from the old one.
+    LaunchedEffect(activeConversationId) {
+        editingMessageId = null
+    }
     val coroutineScope = rememberCoroutineScope()
     val bottomSlackPx = with(LocalDensity.current) { BOTTOM_SLACK_DP.dp.roundToPx() }
     var followTail by remember { mutableStateOf(true) }
@@ -141,10 +174,12 @@ fun AiScreen(
 
     fun submit(text: String = input) {
         val query = text.trim()
-        if (query.isNotEmpty() && !busy && blockedMessage == null) {
+        if (query.isNotEmpty() && !busy && !fileUploading && blockedMessage == null) {
             input = ""
             followTail = true
-            onSend(query)
+            val editingId = editingMessageId
+            editingMessageId = null
+            if (editingId == null) onSend(query) else onEditMessage(editingId, query)
         }
     }
 
@@ -248,7 +283,7 @@ fun AiScreen(
     Column(modifier = modifier.fillMaxSize()) {
         WorkspaceHeader(
             providerLabel = providerLabel,
-            canClear = messages.isNotEmpty() && !busy,
+            canClear = messages.isNotEmpty() && !busy && !fileUploading,
             onBack = onBack,
             onClear = { confirmClear = true },
             onOpenSettings = onOpenSettings,
@@ -259,21 +294,57 @@ fun AiScreen(
         if (blockedMessage != null) {
             BlockedPanel(message = blockedMessage, onOpenSettings = onOpenSettings)
         } else {
+            ConversationToolbar(
+                title = conversations.firstOrNull { it.id == activeConversationId }?.title.orEmpty(),
+                conversations = conversations,
+                activeConversationId = activeConversationId,
+                enabled = !busy && !fileUploading,
+                onNew = onNewConversation,
+                onSelect = onSelectConversation,
+                onRename = onRenameConversation,
+                onDelete = onDeleteConversation,
+            )
             ConversationContext(
                 skills = skills,
                 selectedSkillId = selectedSkillId,
                 people = people,
                 selectedPersonId = selectedPersonId,
                 personaStatus = personaStatus,
-                enabled = !busy,
+                enabled = !busy && !fileUploading,
                 personMenuExpanded = personMenuExpanded,
                 onPersonMenuExpandedChange = { personMenuExpanded = it },
                 onSkillSelect = onSkillSelect,
                 onPersonSelect = onPersonSelect,
                 onOpenPersona = onOpenPersona,
             )
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilterChip(
+                    selected = chatMode == AiChatMode.ARCHIVE,
+                    onClick = { onChatModeSelect(AiChatMode.ARCHIVE) },
+                    enabled = !busy && !fileUploading,
+                    label = { Text(stringResource(R.string.ai_mode_archive)) },
+                )
+                FilterChip(
+                    selected = chatMode == AiChatMode.WEB,
+                    onClick = { onChatModeSelect(AiChatMode.WEB) },
+                    enabled = !busy && !fileUploading && canUseWebTools,
+                    label = { Text(stringResource(R.string.ai_mode_web)) },
+                )
+            }
+            if (chatMode == AiChatMode.WEB && !canUseWebTools) {
+                Text(
+                    text = stringResource(R.string.ai_web_unavailable),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
 
             val showLive = streaming || liveContent.isNotBlank() || liveSteps.isNotEmpty()
+            val continuePrompt = stringResource(R.string.ai_continue_prompt)
             val itemCount = (if (messages.isEmpty()) 1 else messages.size) +
                 (if (showLive) 1 else 0) +
                 (if (busy && !showLive) 1 else 0) +
@@ -295,16 +366,26 @@ fun AiScreen(
                     if (messages.isEmpty()) {
                         item(key = "welcome") {
                             WelcomePanel(
-                                enabled = !busy,
+                                enabled = !busy && !fileUploading,
                                 onSend = { text -> submit(text) },
                             )
                         }
                     } else {
                         itemsIndexed(
                             items = messages,
-                            key = { index, _ -> "message-$index" },
-                        ) { _, bubble ->
-                            ChatMessage(bubble)
+                            key = { _, bubble -> bubble.id },
+                        ) { index, bubble ->
+                            ChatMessage(
+                                bubble = bubble,
+                                enabled = !busy && !fileUploading,
+                                canContinue = index == messages.lastIndex,
+                                onEdit = {
+                                    editingMessageId = bubble.id
+                                    input = bubble.text
+                                },
+                                onRegenerate = { onRegenerate(bubble.id) },
+                                onContinue = { onContinue(bubble.id, continuePrompt) },
+                            )
                         }
                     }
 
@@ -351,11 +432,44 @@ fun AiScreen(
                 }
             }
 
+            if (pendingFiles.isNotEmpty() || canUploadFiles || fileUploading) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    if (canUploadFiles) {
+                        TextButton(onClick = onPickFiles, enabled = !busy && !fileUploading) {
+                            Text(stringResource(R.string.ai_file_add))
+                        }
+                    }
+                    if (fileUploading) Text(stringResource(R.string.ai_file_uploading))
+                    pendingFiles.forEach { file ->
+                        TextButton(
+                            onClick = { onRemovePendingFile(file.id) },
+                            enabled = !busy && !fileUploading,
+                        ) {
+                            Text("${file.fileName} ×")
+                        }
+                    }
+                }
+            }
+            if (editingMessageId != null) {
+                TextButton(
+                    onClick = {
+                        editingMessageId = null
+                        input = ""
+                    },
+                    enabled = !busy && !fileUploading,
+                ) {
+                    Text(stringResource(R.string.ai_edit_cancel))
+                }
+            }
             ChatComposer(
                 input = input,
                 onInputChange = { input = it },
                 onSend = { submit() },
-                busy = busy,
+                busy = busy || fileUploading,
                 blocked = blockedMessage != null,
                 providerLabel = providerLabel,
                 sessionUsage = sessionUsage,
@@ -667,7 +781,134 @@ private fun ThinkingIndicator() {
 }
 
 @Composable
-private fun ChatMessage(bubble: AiChatBubble) {
+private fun ConversationToolbar(
+    title: String,
+    conversations: List<AiConversationItem>,
+    activeConversationId: String?,
+    enabled: Boolean,
+    onNew: () -> Unit,
+    onSelect: (String) -> Unit,
+    onRename: (String, String) -> Unit,
+    onDelete: (String) -> Unit,
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    var renameDialog by remember { mutableStateOf(false) }
+    var deleteDialog by remember { mutableStateOf(false) }
+    var titleDraft by remember(title) { mutableStateOf(title) }
+    val current = conversations.firstOrNull { it.id == activeConversationId }
+
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Box(modifier = Modifier.weight(1f)) {
+            TextButton(onClick = { menuExpanded = true }, enabled = enabled) {
+                Text(
+                    text = title.ifBlank { stringResource(R.string.ai_session_untitled) },
+                    maxLines = 1,
+                )
+            }
+            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                conversations.forEach { conversation ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                conversation.title.ifBlank {
+                                    stringResource(R.string.ai_session_untitled)
+                                },
+                                maxLines = 1,
+                            )
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            onSelect(conversation.id)
+                        },
+                    )
+                }
+            }
+        }
+        TextButton(onClick = onNew, enabled = enabled) {
+            Text(stringResource(R.string.ai_session_new))
+        }
+        TextButton(
+            onClick = {
+                titleDraft = title
+                renameDialog = true
+            },
+            enabled = enabled && current != null,
+        ) {
+            Text(stringResource(R.string.ai_session_rename))
+        }
+        TextButton(
+            onClick = { deleteDialog = true },
+            enabled = enabled && current != null,
+        ) {
+            Text(stringResource(R.string.ai_session_delete))
+        }
+    }
+
+    if (renameDialog && current != null) {
+        AlertDialog(
+            onDismissRequest = { renameDialog = false },
+            title = { Text(stringResource(R.string.ai_session_rename)) },
+            text = {
+                OutlinedTextField(
+                    value = titleDraft,
+                    onValueChange = { titleDraft = it.take(32) },
+                    singleLine = true,
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onRename(current.id, titleDraft.trim())
+                        renameDialog = false
+                    },
+                ) {
+                    Text(stringResource(R.string.ai_session_rename_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { renameDialog = false }) {
+                    Text(stringResource(R.string.ai_settings_cancel))
+                }
+            },
+        )
+    }
+    if (deleteDialog && current != null) {
+        AlertDialog(
+            onDismissRequest = { deleteDialog = false },
+            title = { Text(stringResource(R.string.ai_session_delete)) },
+            text = { Text(stringResource(R.string.ai_session_delete_confirm)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDelete(current.id)
+                        deleteDialog = false
+                    },
+                ) {
+                    Text(stringResource(R.string.ai_session_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteDialog = false }) {
+                    Text(stringResource(R.string.ai_settings_cancel))
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun ChatMessage(
+    bubble: AiChatBubble,
+    enabled: Boolean,
+    canContinue: Boolean,
+    onEdit: () -> Unit,
+    onRegenerate: () -> Unit,
+    onContinue: () -> Unit,
+) {
     if (bubble.fromUser) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -696,6 +937,15 @@ private fun ChatMessage(bubble: AiChatBubble) {
                             color = MaterialTheme.colorScheme.onPrimaryContainer,
                         )
                     }
+                }
+                bubble.files.forEach { file ->
+                    Text(
+                        text = stringResource(R.string.ai_file_attached, file.fileName),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+                TextButton(onClick = onEdit, enabled = enabled) {
+                    Text(stringResource(R.string.ai_message_edit))
                 }
             }
             AvatarBadge(assistant = false, modifier = Modifier.padding(start = 8.dp))
@@ -733,10 +983,45 @@ private fun ChatMessage(bubble: AiChatBubble) {
                         )
                     }
                 }
+                if (bubble.citations.isNotEmpty()) {
+                    CitationList(bubble.citations)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = onRegenerate, enabled = enabled) {
+                        Text(stringResource(R.string.ai_message_regenerate))
+                    }
+                    if (bubble.isTruncated && bubble.serverToolCallsJson == null && canContinue) {
+                        TextButton(onClick = onContinue, enabled = enabled) {
+                            Text(stringResource(R.string.ai_message_continue))
+                        }
+                    }
+                }
                 val usage = bubble.usage
                 if (usage != null && usage.totalTokens > 0 && bubble.elapsedMs > 0) {
                     UsageSummary(usage, bubble.elapsedMs, compact = true)
                 }
+
+            }
+        }
+    }
+}
+
+/** Citations come from the model, so only open ordinary web links. */
+private fun openWebUrl(uriHandler: androidx.compose.ui.platform.UriHandler, url: String) {
+    if (!url.startsWith("https://", true) && !url.startsWith("http://", true)) return
+    runCatching { uriHandler.openUri(url) }
+}
+
+@Composable
+private fun CitationList(citations: List<AiCitation>) {
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        citations.distinctBy(AiCitation::url).forEachIndexed { index, citation ->
+            TextButton(onClick = { openWebUrl(uriHandler, citation.url) }) {
+                Text(
+                    text = stringResource(R.string.ai_citation_link, index + 1, citation.title),
+                    maxLines = 2,
+                )
             }
         }
     }
@@ -829,8 +1114,46 @@ private fun ProcessSteps(steps: List<AiProcessStep>, initiallyExpanded: Boolean)
                     when (step) {
                         is AiProcessStep.Reasoning -> ReasoningStep(step.text)
                         is AiProcessStep.Tool -> ToolStep(step)
+                        is AiProcessStep.Web -> WebToolStep(step.event)
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WebToolStep(event: AiServerToolEvent) {
+    val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
+    val action = when (event.action) {
+        "search" -> stringResource(R.string.ai_web_searching)
+        "read_link" -> stringResource(R.string.ai_web_reading)
+        "open_page" -> stringResource(R.string.ai_web_opening)
+        "find_in_page" -> stringResource(R.string.ai_web_finding)
+        else -> stringResource(R.string.ai_web_working)
+    }
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, bottom = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Text(
+            text = "$action${event.url?.let { " · $it" }.orEmpty()}",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (event.queries.isNotEmpty()) {
+            Text(
+                text = event.queries.joinToString(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        event.sources.forEach { source ->
+            TextButton(onClick = { openWebUrl(uriHandler, source.url) }) {
+                Text(
+                    text = source.siteName?.let { "$it · ${source.title}" } ?: source.title,
+                    maxLines = 2,
+                )
             }
         }
     }

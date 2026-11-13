@@ -25,4 +25,6 @@ sealed interface AiProcessStep {
         val result: String? = null,
         val done: Boolean = false,
     ) : AiProcessStep
+
+    data class Web(val event: AiServerToolEvent) : AiProcessStep
 }

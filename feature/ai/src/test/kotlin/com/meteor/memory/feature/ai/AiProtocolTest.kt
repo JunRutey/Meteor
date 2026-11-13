@@ -6,6 +6,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class AiProtocolTest {
@@ -40,6 +41,50 @@ class AiProtocolTest {
 
         assertEquals("function", tool.getString("type"))
         assertEquals("search_archive", tool.getJSONObject("function").getString("name"))
+    }
+
+    @Test
+    fun `deepseek web tools are encoded without function tools`() {
+        val body = JSONObject(
+            AiProtocol.requestBody(
+                model = "deepseek-flash",
+                messages = listOf(AiMessage.user("q")),
+                tools = emptyList(),
+                maxTokens = 10,
+                providerOptions = AiProviderOptions(deepSeekWebSearch = true, deepSeekReadUrl = true),
+            ),
+        )
+        val tools = body.getJSONArray("tools")
+
+        assertEquals("deepseek_web_search", tools.getJSONObject(0).getString("type"))
+        assertEquals("deepseek_read_url", tools.getJSONObject(1).getString("type"))
+        assertFalse(tools.getJSONObject(0).has("name"))
+        assertFalse(body.has("tool_choice"))
+    }
+
+    @Test
+    fun `deepseek server tools cannot be mixed with app functions or other providers`() {
+        val options = AiProviderOptions(deepSeekWebSearch = true)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            AiProtocol.requestBody(
+                model = "deepseek-flash",
+                messages = listOf(AiMessage.user("q")),
+                tools = listOf(AiToolSpec("search_archive", "search", """{"type":"object"}""")),
+                maxTokens = 10,
+                providerOptions = options,
+            )
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            AiProtocol.requestBody(
+                model = "m",
+                messages = listOf(AiMessage.user("q")),
+                tools = emptyList(),
+                maxTokens = 10,
+                provider = AiPresets.OPENAI,
+                providerOptions = options,
+            )
+        }
     }
 
     @Test
@@ -86,6 +131,56 @@ class AiProtocolTest {
         assertEquals(1, completion.toolCalls.size)
         assertEquals("read_record", completion.toolCalls[0].name)
         assertEquals("{\"record_id\":\"a\"}", completion.toolCalls[0].arguments)
+    }
+
+    @Test
+    fun `parses and echoes server calls and citation metadata`() {
+        val body = """
+            {"choices":[{"message":{
+              "role":"assistant","content":"A fact.[1]",
+              "server_tool_calls":[{"index":0,"calls":[{"id":"srv1","type":"deepseek_web_search"}]}],
+              "annotations":[{"type":"url_citation","url_citation":{
+                "url":"https://example.com","title":"Example","start_index":8,"end_index":11
+              }}]
+            }}]}
+        """.trimIndent()
+
+        val completion = AiProtocol.parseCompletion(body)
+        val echoed = JSONObject(
+            AiProtocol.requestBody(
+                model = "deepseek-flash",
+                messages = listOf(
+                    AiMessage(
+                        role = AiRole.ASSISTANT,
+                        content = completion.content,
+                        serverToolCallsJson = completion.serverToolCallsJson,
+                    ),
+                ),
+                tools = emptyList(),
+                maxTokens = 10,
+            ),
+        ).getJSONArray("messages").getJSONObject(0)
+
+        assertEquals("https://example.com", completion.citations.single().url)
+        assertEquals(8, completion.citations.single().startIndex)
+        assertEquals(completion.serverToolCallsJson, echoed.getJSONArray("server_tool_calls").toString())
+    }
+
+    @Test
+    fun `file references become deepseek file content blocks`() {
+        val message = JSONObject(
+            AiProtocol.requestBody(
+                model = "deepseek-flash",
+                messages = listOf(AiMessage.user("summarize", listOf(AiFileReference("file-1", "report.pdf")))),
+                tools = emptyList(),
+                maxTokens = 10,
+            ),
+        ).getJSONArray("messages").getJSONObject(0)
+        val content = message.getJSONArray("content")
+
+        assertEquals("text", content.getJSONObject(0).getString("type"))
+        assertEquals("file", content.getJSONObject(1).getString("type"))
+        assertEquals("file-1", content.getJSONObject(1).getString("file_id"))
     }
 
     @Test

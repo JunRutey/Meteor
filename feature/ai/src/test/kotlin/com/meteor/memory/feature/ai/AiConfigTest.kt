@@ -12,7 +12,7 @@ class AiConfigTest {
         val config = AiConfig(provider = AiPresets.DEEPSEEK, apiKey = "k")
 
         assertEquals("https://api.deepseek.com/v1", config.resolvedBaseUrl)
-        assertEquals("deepseek-chat", config.resolvedModel)
+        assertEquals("deepseek-flash", config.resolvedModel)
         assertEquals("https://api.deepseek.com/v1/chat/completions", config.endpoint)
         assertTrue(config.isConfigured())
     }
@@ -62,6 +62,27 @@ class AiConfigTest {
                 model = "m",
                 apiKey = "k",
             ).isConfigured(),
+        )
+    }
+
+    @Test
+    fun `official deepseek endpoint accepts bare host and versioned path`() {
+        assertTrue(AiConfig(provider = AiPresets.DEEPSEEK, apiKey = "k").officialDeepSeekEndpoint)
+
+        val bare = AiConfig(
+            provider = AiPresets.DEEPSEEK,
+            baseUrl = "https://api.deepseek.com",
+            apiKey = "k",
+        )
+        assertTrue(bare.officialDeepSeekEndpoint)
+        assertEquals("https://api.deepseek.com/files", bare.filesEndpoint)
+
+        assertFalse(
+            AiConfig(
+                provider = AiPresets.DEEPSEEK,
+                baseUrl = "https://api.deepseek.com/v1beta",
+                apiKey = "k",
+            ).officialDeepSeekEndpoint,
         )
     }
 
