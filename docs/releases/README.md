@@ -16,7 +16,7 @@
 1. 功能分支合进 `main`，CI 三项全绿。
 2. 单独一次提交改 `app/build.gradle.kts` 的 `versionCode` 与 `versionName`。
 3. 单独一次提交写 `docs/releases/<tag>.md`，并同步 `assets/changelog.md`。
-4. 推 `main`，等 CI 绿。
+4. 推 `main`，跳过CI。
 5. 打附注标签（`git tag -a v0.x.y -m "v0.x.y: 一句话概括"`）并推送标签，触发 Release。
 
 ## 例外：v0.6.0 / v0.6.1 / v0.6.2
