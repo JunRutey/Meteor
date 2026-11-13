@@ -8,6 +8,7 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.time.Instant
 import java.util.Base64
+import java.util.concurrent.ConcurrentHashMap
 
 /** One persisted AI chat turn. Content is plaintext only in memory. */
 data class StoredChatTurn(val fromUser: Boolean, val text: String, val at: Instant)
@@ -87,6 +88,12 @@ class EncryptedAiChatStore(
     private val dir = File(rootDir, "${StorageLayout.LEGACY}/${StorageLayout.AI_CHAT}")
     private val sessionsDir = File(dir, "sessions")
 
+    /** id -> scope, built by decrypting each session once per store instance. */
+    private val scopeIndex = ConcurrentHashMap<String, String>()
+
+    @Volatile
+    private var scopeIndexBuilt = false
+
     override fun load(scope: String, limit: Int): List<StoredChatTurn> = runCatching {
         val file = fileFor(scope)
         if (!file.isFile) return emptyList()
@@ -117,10 +124,17 @@ class EncryptedAiChatStore(
     override fun listConversations(scope: String?): List<StoredAiConversation> {
         migrateLegacy(scope)
         if (!sessionsDir.isDirectory) return emptyList()
+        buildScopeIndex()
         return sessionsDir.listFiles()
             .orEmpty()
             .asSequence()
             .filter { it.isFile && it.extension == "bin" }
+            // Only decrypt the requested scope once the index is warm. A file
+            // that cannot be indexed is skipped by the null check.
+            .filter { file ->
+                val fileScope = scopeIndex[file.nameWithoutExtension] ?: return@filter false
+                scope == null || fileScope == scope
+            }
             // One unreadable session (old key, interrupted write, newer format)
             // must not hide every other conversation. Keep the file in place so
             // a later key recovery or manual repair can still read it.
@@ -131,7 +145,6 @@ class EncryptedAiChatStore(
                     null
                 }
             }
-            .filter { scope == null || it.scope == scope }
             .sortedByDescending { it.updatedAt }
             .toList()
     }
@@ -150,6 +163,7 @@ class EncryptedAiChatStore(
         try {
             temporary.writeBytes(crypto.encrypt(json.toByteArray(Charsets.UTF_8)))
             replaceAtomically(temporary, destination)
+            scopeIndex[conversation.id] = conversation.scope
         } finally {
             if (temporary.exists()) temporary.delete()
         }
@@ -159,6 +173,25 @@ class EncryptedAiChatStore(
         require(ID_PATTERN.matches(id)) { "invalid-chat-id" }
         val file = conversationFile(id)
         if (file.exists() && !file.delete()) error("chat-store-delete-failed")
+        scopeIndex.remove(id)
+    }
+
+    private fun buildScopeIndex() {
+        if (scopeIndexBuilt) return
+        synchronized(this) {
+            if (scopeIndexBuilt) return
+            sessionsDir.listFiles()
+                .orEmpty()
+                .asSequence()
+                .filter { it.isFile && it.extension == "bin" }
+                .forEach { file ->
+                    val id = file.nameWithoutExtension
+                    if (scopeIndex.containsKey(id)) return@forEach
+                    runCatching { readConversation(file).scope }
+                        .onSuccess { scopeIndex[id] = it }
+                }
+            scopeIndexBuilt = true
+        }
     }
 
     private fun migrateLegacy(scope: String?) {
