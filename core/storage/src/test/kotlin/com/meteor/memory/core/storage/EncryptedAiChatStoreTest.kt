@@ -23,6 +23,17 @@ class EncryptedAiChatStoreTest {
         return AesGcmFileCrypto { SecretKeySpec(key, "AES") }
     }
 
+    private class CountingCrypto(private val delegate: FileCrypto) : FileCrypto {
+        var decryptions = 0
+
+        override fun encrypt(plaintext: ByteArray): ByteArray = delegate.encrypt(plaintext)
+
+        override fun decrypt(ciphertext: ByteArray): ByteArray {
+            decryptions++
+            return delegate.decrypt(ciphertext)
+        }
+    }
+
     private fun turn(text: String, fromUser: Boolean) =
         StoredChatTurn(fromUser = fromUser, text = text, at = Instant.parse("2026-10-31T10:00:00Z"))
 
@@ -180,6 +191,24 @@ class EncryptedAiChatStoreTest {
         assertEquals(1, conversations.size)
         assertEquals("first question", conversations.single().title)
         assertTrue(File(legacyDir, "broken_legacy.bin").exists())
+    }
+
+    @Test
+    fun `scope listing only decrypts the target after the index is warm`() {
+        val root = temp.newFolder("root")
+        val counting = CountingCrypto(crypto())
+        val writer = EncryptedAiChatStore(root, counting)
+        val at = Instant.parse("2026-10-31T10:00:00Z")
+        writer.saveConversation(StoredAiConversation("a1", "scope_a", "a", at, at, emptyList()))
+        writer.saveConversation(StoredAiConversation("b1", "scope_b", "b", at, at, emptyList()))
+        val reader = EncryptedAiChatStore(root, counting)
+
+        reader.listConversations("scope_a")
+        val warm = counting.decryptions
+        val conversations = reader.listConversations("scope_a")
+
+        assertEquals(listOf("a1"), conversations.map { it.id })
+        assertEquals(1, counting.decryptions - warm)
     }
 
     @Test
