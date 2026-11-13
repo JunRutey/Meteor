@@ -123,6 +123,9 @@ class AiViewModel @Inject constructor(
     /** Serialises every conversation read/write so a late save cannot win. */
     private val chatStoreMutex = Mutex()
 
+    /** Blocks sending while a conversation-level operation is still running. */
+    private val conversationOp = AtomicBoolean(false)
+
     @Volatile
     private var toolApprovalDecision: CompletableDeferred<Boolean>? = null
 
@@ -192,13 +195,15 @@ class AiViewModel @Inject constructor(
     }
 
     fun selectSkill(name: String) {
-        if (_state.value.busy || _state.value.fileUploading) return
+        if (_state.value.busy || _state.value.fileUploading || conversationOp.get()) return
+        discardPendingFiles()
         _state.update { it.copy(selectedSkill = name) }
         restoreHistory()
     }
 
     fun selectPerson(personId: String?) {
-        if (_state.value.busy || _state.value.fileUploading) return
+        if (_state.value.busy || _state.value.fileUploading || conversationOp.get()) return
+        discardPendingFiles()
         _state.update { state ->
             val current = state.skills.firstOrNull { it.name == state.selectedSkill }
             val compatible = when {
@@ -233,6 +238,7 @@ class AiViewModel @Inject constructor(
             query.isEmpty() ||
             current.busy ||
             current.fileUploading ||
+            conversationOp.get() ||
             current.blocked != null ||
             current.activeConversationId == null
         ) return
@@ -448,7 +454,7 @@ class AiViewModel @Inject constructor(
 
     fun setChatMode(mode: AiChatMode) {
         val current = _state.value
-        if (current.busy || current.fileUploading) return
+        if (current.busy || current.fileUploading || conversationOp.get()) return
         if (mode == AiChatMode.WEB && !current.canUseWebTools) {
             _state.update { it.copy(errorCode = 0, errorDetail = "web-tools-unavailable") }
             return
@@ -458,7 +464,13 @@ class AiViewModel @Inject constructor(
 
     fun addFiles(uris: List<Uri>) {
         val current = _state.value
-        if (current.busy || current.fileUploading || !current.canUploadFiles || current.blocked != null) return
+        if (
+            current.busy ||
+            current.fileUploading ||
+            conversationOp.get() ||
+            !current.canUploadFiles ||
+            current.blocked != null
+        ) return
         if (current.pendingFiles.size + uris.size > MAX_FILES_PER_MESSAGE) {
             _state.update { it.copy(errorCode = 0, errorDetail = "file-limit") }
             return
@@ -492,13 +504,19 @@ class AiViewModel @Inject constructor(
 
     fun removePendingFile(fileId: String) {
         val file = _state.value.pendingFiles.firstOrNull { it.id == fileId } ?: return
+        if (conversationOp.get()) return
+        if (!beginConversationOp()) return
         viewModelScope.launch {
-            if (deleteRemoteFiles(listOf(file))) {
-                _state.update {
-                    it.copy(pendingFiles = it.pendingFiles.filterNot { pending -> pending.id == fileId })
+            try {
+                if (deleteRemoteFiles(listOf(file))) {
+                    _state.update {
+                        it.copy(pendingFiles = it.pendingFiles.filterNot { pending -> pending.id == fileId })
+                    }
+                } else {
+                    _state.update { it.copy(errorCode = 0, errorDetail = "file-delete-failed") }
                 }
-            } else {
-                _state.update { it.copy(errorCode = 0, errorDetail = "file-delete-failed") }
+            } finally {
+                endConversationOp()
             }
         }
     }
@@ -506,7 +524,7 @@ class AiViewModel @Inject constructor(
     fun editMessage(messageId: String, text: String) {
         val state = _state.value
         val index = state.messages.indexOfFirst { it.id == messageId && it.fromUser }
-        if (index < 0 || state.busy || state.fileUploading) return
+        if (index < 0 || state.busy || state.fileUploading || conversationOp.get()) return
         val original = state.messages[index]
         val dropped = state.messages.drop(index + 1)
         _state.update {
@@ -524,7 +542,7 @@ class AiViewModel @Inject constructor(
     fun regenerate(messageId: String) {
         val state = _state.value
         val index = state.messages.indexOfFirst { it.id == messageId && !it.fromUser }
-        if (index < 0 || state.busy || state.fileUploading) return
+        if (index < 0 || state.busy || state.fileUploading || conversationOp.get()) return
         val userIndex = state.messages.subList(0, index).indexOfLast { it.fromUser }
         if (userIndex < 0) return
         val previousUser = state.messages[userIndex]
@@ -544,12 +562,16 @@ class AiViewModel @Inject constructor(
     fun continueResponse(messageId: String, prompt: String) {
         val state = _state.value
         val response = state.messages.firstOrNull { it.id == messageId && !it.fromUser } ?: return
-        if (!response.isTruncated || response.serverToolCallsJson != null || state.busy || state.fileUploading) return
+        if (state.messages.lastOrNull()?.id != messageId) return
+        if (!response.isTruncated || response.serverToolCallsJson != null || state.busy ||
+            state.fileUploading || conversationOp.get()
+        ) return
         send(prompt)
     }
 
     fun newConversation() {
-        if (_state.value.busy || _state.value.fileUploading) return
+        if (_state.value.busy || _state.value.fileUploading || conversationOp.get()) return
+        if (!beginConversationOp()) return
         val state = _state.value
         val unusedFiles = state.pendingFiles
         val conversation = newStoredConversation(scopeKey(state.selectedSkill, state.selectedPersonId))
@@ -577,12 +599,15 @@ class AiViewModel @Inject constructor(
             } catch (failure: Exception) {
                 appLog.warn(TAG, "AI conversation creation failed", failure)
                 _state.update { it.copy(errorCode = 0, errorDetail = "chat-store-write-failed") }
+            } finally {
+                endConversationOp()
             }
         }
     }
 
     fun selectConversation(id: String) {
-        if (_state.value.busy || _state.value.fileUploading) return
+        if (_state.value.busy || _state.value.fileUploading || conversationOp.get()) return
+        if (!beginConversationOp()) return
         val unusedFiles = _state.value.pendingFiles
         val currentScope = scopeKey(_state.value.selectedSkill, _state.value.selectedPersonId)
         viewModelScope.launch(Dispatchers.IO) {
@@ -617,13 +642,21 @@ class AiViewModel @Inject constructor(
             } catch (failure: Exception) {
                 appLog.warn(TAG, "AI conversation load failed", failure)
                 _state.update { it.copy(errorCode = 0, errorDetail = "chat-store-read-failed") }
+            } finally {
+                endConversationOp()
             }
         }
     }
 
     fun renameConversation(id: String, title: String) {
         val cleaned = title.trim().take(MAX_TITLE_CHARS)
-        if (cleaned.isBlank() || _state.value.busy || _state.value.fileUploading) return
+        if (
+            cleaned.isBlank() ||
+            _state.value.busy ||
+            _state.value.fileUploading ||
+            conversationOp.get()
+        ) return
+        if (!beginConversationOp()) return
         val scope = scopeKey(_state.value.selectedSkill, _state.value.selectedPersonId)
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -646,12 +679,15 @@ class AiViewModel @Inject constructor(
             } catch (failure: Exception) {
                 appLog.warn(TAG, "AI conversation rename failed", failure)
                 _state.update { it.copy(errorCode = 0, errorDetail = "chat-store-write-failed") }
+            } finally {
+                endConversationOp()
             }
         }
     }
 
     fun deleteConversation(id: String) {
-        if (_state.value.busy || _state.value.fileUploading) return
+        if (_state.value.busy || _state.value.fileUploading || conversationOp.get()) return
+        if (!beginConversationOp()) return
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val conversation = chatStoreMutex.withLock {
@@ -694,12 +730,14 @@ class AiViewModel @Inject constructor(
             } catch (failure: Exception) {
                 appLog.warn(TAG, "AI conversation deletion failed", failure)
                 _state.update { it.copy(errorCode = 0, errorDetail = "chat-store-delete-failed") }
+            } finally {
+                endConversationOp()
             }
         }
     }
 
     fun clear() {
-        if (_state.value.fileUploading) return
+        if (_state.value.busy || _state.value.fileUploading || conversationOp.get()) return
         decideToolApproval(approved = false)
         val files = (
             _state.value.messages.flatMap { it.files } + _state.value.pendingFiles
@@ -738,6 +776,12 @@ class AiViewModel @Inject constructor(
     private fun scopeKey(skill: String?, personId: String?) =
         "${skill ?: "none"}__${personId ?: "all"}"
 
+    private fun beginConversationOp(): Boolean = conversationOp.compareAndSet(false, true)
+
+    private fun endConversationOp() {
+        conversationOp.set(false)
+    }
+
     private fun isFresh(file: AiFileReference, now: Instant): Boolean =
         file.uploadedAt != Instant.EPOCH &&
             file.uploadedAt.plusSeconds(FILE_HISTORY_TTL_SECONDS.toLong()).isAfter(now)
@@ -773,6 +817,17 @@ class AiViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             if (!deleteRemoteFiles(files)) {
                 appLog.warn(TAG, "AI dropped-message file cleanup failed")
+            }
+        }
+    }
+
+    private fun discardPendingFiles() {
+        val files = _state.value.pendingFiles
+        if (files.isEmpty()) return
+        _state.update { it.copy(pendingFiles = emptyList()) }
+        viewModelScope.launch(Dispatchers.IO) {
+            if (!deleteRemoteFiles(files)) {
+                appLog.warn(TAG, "AI pending file cleanup failed")
             }
         }
     }

@@ -374,10 +374,11 @@ fun AiScreen(
                         itemsIndexed(
                             items = messages,
                             key = { _, bubble -> bubble.id },
-                        ) { _, bubble ->
+                        ) { index, bubble ->
                             ChatMessage(
                                 bubble = bubble,
                                 enabled = !busy && !fileUploading,
+                                canContinue = index == messages.lastIndex,
                                 onEdit = {
                                     editingMessageId = bubble.id
                                     input = bubble.text
@@ -903,6 +904,7 @@ private fun ConversationToolbar(
 private fun ChatMessage(
     bubble: AiChatBubble,
     enabled: Boolean,
+    canContinue: Boolean,
     onEdit: () -> Unit,
     onRegenerate: () -> Unit,
     onContinue: () -> Unit,
@@ -988,7 +990,7 @@ private fun ChatMessage(
                     TextButton(onClick = onRegenerate, enabled = enabled) {
                         Text(stringResource(R.string.ai_message_regenerate))
                     }
-                    if (bubble.isTruncated && bubble.serverToolCallsJson == null) {
+                    if (bubble.isTruncated && bubble.serverToolCallsJson == null && canContinue) {
                         TextButton(onClick = onContinue, enabled = enabled) {
                             Text(stringResource(R.string.ai_message_continue))
                         }

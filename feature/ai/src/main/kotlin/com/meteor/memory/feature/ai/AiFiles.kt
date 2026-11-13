@@ -80,8 +80,7 @@ object AiFiles {
 
     private fun purposeFor(fileName: String): String = when (fileName.substringAfterLast('.', "").lowercase()) {
         "pdf", "doc", "docx", "ppt", "pptx", "bmp", "tif", "tiff" -> "rich_layout_recognition"
-        "jpg", "jpeg", "png", "gif", "webp", "txt", "md", "csv", "json", "xls", "xlsx", "epub" ->
-            "user_data"
+        in FILE_USER_DATA_EXTENSIONS -> "user_data"
         else -> throw AiProviderException(0, "unsupported-file-type")
     }
 
@@ -111,8 +110,20 @@ object AiFiles {
         "csv" -> "text/csv"
         "json" -> "application/json"
         "epub" -> "application/epub+zip"
+        "mobi" -> "application/x-mobipocket-ebook"
+        in FILE_TEXT_EXTENSIONS -> "text/plain"
         else -> "application/octet-stream"
     }
+
+    private val FILE_TEXT_EXTENSIONS = setOf(
+        "txt", "md", "csv", "json", "xml", "yaml", "yml", "html", "css", "toml", "ini", "properties",
+        "kt", "kts", "java", "py", "js", "ts", "tsx", "jsx", "c", "h", "cpp", "hpp", "cs", "go",
+        "rs", "rb", "php", "sh", "sql", "gradle",
+    )
+
+    private val FILE_USER_DATA_EXTENSIONS = FILE_TEXT_EXTENSIONS + setOf(
+        "jpg", "jpeg", "png", "gif", "webp", "xls", "xlsx", "epub", "mobi",
+    )
 
     private val FILE_ID = Regex("[A-Za-z0-9_-]{1,256}")
 

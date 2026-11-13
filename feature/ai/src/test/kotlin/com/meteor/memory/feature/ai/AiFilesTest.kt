@@ -64,6 +64,17 @@ class AiFilesTest {
     }
 
     @Test
+    fun `code and ebook files are accepted as user data`() = runBlocking {
+        val transport = FakeTransport()
+
+        val code = AiFiles.upload(config(), "Main.kt", "text/plain", byteArrayOf(1), transport)
+        val book = AiFiles.upload(config(), "book.mobi", "application/x-mobipocket-ebook", byteArrayOf(1), transport)
+
+        assertEquals("user_data", code.purpose)
+        assertEquals("user_data", book.purpose)
+    }
+
+    @Test
     fun `unsupported files and other models are rejected before upload`() {
         val unsupported = assertThrows(AiProviderException::class.java) {
             runBlocking { AiFiles.upload(config(), "archive.zip", "application/zip", byteArrayOf(1), FakeTransport()) }
