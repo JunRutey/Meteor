@@ -36,13 +36,35 @@ import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+private data class LunarDateSelection(
+    val year: Int,
+    val month: Int,
+    val day: Int,
+    val leapMonth: Boolean,
+)
+
+private data class LunarDateConversion(
+    val selection: LunarDateSelection,
+    val gregorianDate: LocalDate?,
+)
+
+/**
+ * A lunar year spans two Gregorian years, so a usable conversion has to land in
+ * the selected year or the one right after it; anything else means the ICU
+ * result does not belong to this selection.
+ */
+private fun isUsableLunarDate(date: LocalDate?, lunarYear: Int): Boolean =
+    date != null && (date.year == lunarYear || date.year == lunarYear + 1)
+
 /**
  * Shared birth-date editor for first launch and for Settings.
  *
  * The lunar conversion never runs on the main thread: enumerating a lunar year
  * reads one ICU field per Gregorian day, which is too slow for a composable
  * that reacts to every dropdown change. [onProfileChanged] receives `null`
- * while the current calendar has no valid, explicitly chosen date.
+ * while the current calendar has no valid, explicitly chosen date; it is not
+ * called while the conversion for the latest selection is still running, so
+ * callers keep the last settled profile instead of seeing a flash of `null`.
  */
 @Composable
 internal fun BirthDatePicker(
@@ -68,6 +90,7 @@ internal fun BirthDatePicker(
     var lunarDay by rememberSaveable { mutableStateOf(initialLunar?.day ?: 1) }
     var leapMonth by rememberSaveable { mutableStateOf(initialLunar?.leapMonth ?: false) }
     var lunarTouched by rememberSaveable { mutableStateOf(false) }
+    val lunarSelection = LunarDateSelection(lunarYear, lunarMonth, lunarDay, leapMonth)
 
     var lunarMonths by remember { mutableStateOf<List<LunarMonth>>(emptyList()) }
     LaunchedEffect(useLunar, lunarYear) {
@@ -78,16 +101,31 @@ internal fun BirthDatePicker(
         }
     }
 
-    var convertedLunarDate by remember { mutableStateOf<LocalDate?>(null) }
-    LaunchedEffect(useLunar, lunarYear, lunarMonth, lunarDay, leapMonth) {
-        convertedLunarDate = if (useLunar) {
+    var lunarConversion by remember { mutableStateOf<LunarDateConversion?>(null) }
+    LaunchedEffect(useLunar, lunarSelection) {
+        val date = if (useLunar) {
             withContext(Dispatchers.Default) {
-                calendar.toGregorian(lunarYear, lunarMonth, lunarDay, leapMonth)
+                calendar.toGregorian(
+                    lunarSelection.year,
+                    lunarSelection.month,
+                    lunarSelection.day,
+                    lunarSelection.leapMonth,
+                )
             }
         } else {
             null
         }
+        lunarConversion = LunarDateConversion(lunarSelection, date)
     }
+
+    // The conversion runs off the main thread, so right after a dropdown change
+    // the stored result still belongs to the previous selection. Publishing
+    // `null` for those frames would flicker the Save button and the "choose a
+    // date" hint; keep the last settled profile until the new result lands.
+    val conversionPending = useLunar && lunarConversion?.selection != lunarSelection
+    val settledLunarDate = lunarConversion
+        ?.takeIf { it.selection == lunarSelection }
+        ?.gregorianDate
 
     val selectedLunarMonth = lunarMonths.firstOrNull {
         it.month == lunarMonth && it.leapMonth == leapMonth
@@ -107,8 +145,8 @@ internal fun BirthDatePicker(
     }
 
     val computedProfile: BirthProfile? = if (useLunar) {
-        val date = convertedLunarDate
-        if (date != null && !date.isAfter(today)) {
+        val date = settledLunarDate
+        if (date != null && isUsableLunarDate(date, lunarYear) && !date.isAfter(today)) {
             BirthProfile.Lunar(
                 year = lunarYear,
                 month = lunarMonth,
@@ -131,12 +169,15 @@ internal fun BirthDatePicker(
         !useLunar && initialProfile is BirthProfile.Solar -> initialProfile
         else -> null
     }
-    SideEffect {
-        onProfileChanged(if (hasSelection) computedProfile else initialForCalendar)
+    if (!conversionPending) {
+        SideEffect {
+            onProfileChanged(if (hasSelection) computedProfile else initialForCalendar)
+        }
     }
 
     val invalidSelection = if (useLunar) {
-        convertedLunarDate?.isAfter(today) == true
+        val date = settledLunarDate
+        date != null && (date.isAfter(today) || !isUsableLunarDate(date, lunarYear))
     } else {
         solarDate?.isAfter(today) == true
     }
@@ -220,7 +261,7 @@ internal fun BirthDatePicker(
                         modifier = Modifier.weight(0.9f),
                     )
                 }
-                convertedLunarDate?.let { date ->
+                settledLunarDate?.let { date ->
                     Text(
                         text = stringResource(
                             R.string.birth_date_value,
