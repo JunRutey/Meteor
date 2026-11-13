@@ -2,6 +2,7 @@ package com.meteor.memory.feature.ai
 
 import org.json.JSONArray
 import org.json.JSONObject
+import java.time.Instant
 
 /**
  * `JSONObject.optString` renders a JSON `null` as the literal text `"null"`.
@@ -33,6 +34,8 @@ data class AiFileReference(
     val id: String,
     val fileName: String,
     val purpose: String = "user_data",
+    /** Set by the Files API upload; epoch means "unknown / already expired". */
+    val uploadedAt: Instant = Instant.EPOCH,
 )
 
 data class AiCitation(

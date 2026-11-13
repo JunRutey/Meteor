@@ -890,6 +890,7 @@ private fun aiErrorText(code: Int, detail: String?): String? {
             detail?.startsWith("web-tools-require-") == true -> stringResource(AiR.string.ai_web_unavailable)
         detail == "files-require-deepseek-flash" -> stringResource(AiR.string.ai_file_not_supported)
         detail == "file-delete-failed" -> stringResource(AiR.string.ai_file_delete_error)
+        detail == "file-limit" -> stringResource(AiR.string.ai_file_limit)
         detail == "unsupported-file-type" ||
             detail == "file-size-out-of-range" ||
             detail?.startsWith("file-") == true -> stringResource(AiR.string.ai_file_error)

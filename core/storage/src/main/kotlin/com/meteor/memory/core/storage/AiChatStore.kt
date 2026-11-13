@@ -12,7 +12,13 @@ import java.util.Base64
 /** One persisted AI chat turn. Content is plaintext only in memory. */
 data class StoredChatTurn(val fromUser: Boolean, val text: String, val at: Instant)
 
-data class StoredChatFile(val id: String, val fileName: String, val purpose: String)
+data class StoredChatFile(
+    val id: String,
+    val fileName: String,
+    val purpose: String,
+    /** Upload time; epoch means the record predates file timestamps. */
+    val uploadedAt: Instant = Instant.EPOCH,
+)
 
 data class StoredChatCitation(
     val url: String,
@@ -252,6 +258,7 @@ class EncryptedAiChatStore(
                         .put("id", file.id)
                         .put("fileName", file.fileName)
                         .put("purpose", file.purpose)
+                        .put("uploadedAt", file.uploadedAt.toEpochMilli())
                 }))
                 message.serverToolCallsJson?.let { put("serverToolCalls", it) }
                 put("citations", JSONArray(message.citations.map { citation ->
@@ -274,7 +281,12 @@ class EncryptedAiChatStore(
             val files = item.optJSONArray("files")?.let { array ->
                 (0 until array.length()).map { fileIndex ->
                     val file = array.getJSONObject(fileIndex)
-                    StoredChatFile(file.getString("id"), file.getString("fileName"), file.getString("purpose"))
+                    StoredChatFile(
+                        id = file.getString("id"),
+                        fileName = file.getString("fileName"),
+                        purpose = file.getString("purpose"),
+                        uploadedAt = Instant.ofEpochMilli(file.optLong("uploadedAt", 0L)),
+                    )
                 }
             }.orEmpty()
             val citations = item.optJSONArray("citations")?.let { array ->

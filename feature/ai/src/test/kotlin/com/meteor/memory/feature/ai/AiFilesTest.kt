@@ -3,6 +3,7 @@ package com.meteor.memory.feature.ai
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AiFilesTest {
@@ -51,6 +52,7 @@ class AiFilesTest {
 
         assertEquals("file-api-1", file.id)
         assertEquals("rich_layout_recognition", file.purpose)
+        assertTrue(file.uploadedAt.toEpochMilli() > 0)
         assertEquals(
             listOf(
                 "purpose" to "rich_layout_recognition",
@@ -81,6 +83,15 @@ class AiFilesTest {
         val transport = FakeTransport()
 
         AiFiles.delete(config(), "file-api-1", transport)
+
+        assertEquals("https://api.deepseek.com/files/file-api-1", transport.deletedUrl)
+    }
+
+    @Test
+    fun `delete still works after switching to another DeepSeek model`() = runBlocking {
+        val transport = FakeTransport()
+
+        AiFiles.delete(config("deepseek-chat"), "file-api-1", transport)
 
         assertEquals("https://api.deepseek.com/files/file-api-1", transport.deletedUrl)
     }

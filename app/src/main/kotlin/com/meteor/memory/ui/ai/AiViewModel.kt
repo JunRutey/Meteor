@@ -231,16 +231,33 @@ class AiViewModel @Inject constructor(
         ) return
         val skillName = current.selectedSkill ?: return
         val personId = current.selectedPersonId
-        val files = current.pendingFiles
-        val history = current.messages.map { bubble ->
-            ChatTurn(
-                fromUser = bubble.fromUser,
-                text = bubble.text,
-                files = bubble.files,
-                serverToolCallsJson = bubble.serverToolCallsJson,
-                citations = bubble.citations,
-            )
+        if (current.pendingFiles.size > MAX_FILES_PER_MESSAGE) {
+            _state.update { it.copy(errorCode = 0, errorDetail = "file-limit") }
+            return
         }
+        val now = Instant.now()
+        val files = current.pendingFiles.filter { isFresh(it, now) }
+        // The API accepts at most 20 document references per request, and an
+        // expired file_id makes every later turn fail. Keep only fresh files
+        // and charge the newest history first so an ongoing document is kept.
+        var fileBudget = (MAX_FILE_REFERENCES_PER_REQUEST - files.size).coerceAtLeast(0)
+        val history = buildList {
+            for (bubble in current.messages.asReversed()) {
+                val kept = bubble.files
+                    .filter { isFresh(it, now) }
+                    .take(fileBudget)
+                fileBudget -= kept.size
+                add(
+                    ChatTurn(
+                        fromUser = bubble.fromUser,
+                        text = bubble.text,
+                        files = kept,
+                        serverToolCallsJson = bubble.serverToolCallsJson,
+                        citations = bubble.citations,
+                    ),
+                )
+            }
+        }.asReversed()
 
         _state.update {
             val existingTitle = it.conversations.firstOrNull { item -> item.id == it.activeConversationId }?.title.orEmpty()
@@ -434,6 +451,10 @@ class AiViewModel @Inject constructor(
     fun addFiles(uris: List<Uri>) {
         val current = _state.value
         if (current.busy || current.fileUploading || !current.canUploadFiles || current.blocked != null) return
+        if (current.pendingFiles.size + uris.size > MAX_FILES_PER_MESSAGE) {
+            _state.update { it.copy(errorCode = 0, errorDetail = "file-limit") }
+            return
+        }
         _state.update { it.copy(fileUploading = true, errorCode = 0, errorDetail = null) }
         viewModelScope.launch {
             try {
@@ -479,6 +500,7 @@ class AiViewModel @Inject constructor(
         val index = state.messages.indexOfFirst { it.id == messageId && it.fromUser }
         if (index < 0 || state.busy || state.fileUploading) return
         val original = state.messages[index]
+        val dropped = state.messages.drop(index + 1)
         _state.update {
             it.copy(
                 messages = it.messages.take(index),
@@ -487,6 +509,7 @@ class AiViewModel @Inject constructor(
                 errorDetail = null,
             )
         }
+        cleanupDroppedFiles(dropped)
         send(text)
     }
 
@@ -497,6 +520,7 @@ class AiViewModel @Inject constructor(
         val userIndex = state.messages.subList(0, index).indexOfLast { it.fromUser }
         if (userIndex < 0) return
         val previousUser = state.messages[userIndex]
+        val dropped = state.messages.drop(userIndex + 1)
         _state.update {
             it.copy(
                 messages = it.messages.take(userIndex),
@@ -505,6 +529,7 @@ class AiViewModel @Inject constructor(
                 errorDetail = null,
             )
         }
+        cleanupDroppedFiles(dropped)
         send(previousUser.text)
     }
 
@@ -626,7 +651,7 @@ class AiViewModel @Inject constructor(
                 } ?: return@launch
                 val pending = if (_state.value.activeConversationId == id) _state.value.pendingFiles else emptyList()
                 val stored = conversation.messages.flatMap { it.files }.map {
-                    AiFileReference(it.id, it.fileName, it.purpose)
+                    AiFileReference(it.id, it.fileName, it.purpose, it.uploadedAt)
                 }
                 val filesDeleted = deleteRemoteFiles((stored + pending).distinctBy { it.id })
                 chatStoreMutex.withLock {
@@ -705,12 +730,16 @@ class AiViewModel @Inject constructor(
     private fun scopeKey(skill: String?, personId: String?) =
         "${skill ?: "none"}__${personId ?: "all"}"
 
+    private fun isFresh(file: AiFileReference, now: Instant): Boolean =
+        file.uploadedAt != Instant.EPOCH &&
+            file.uploadedAt.plusSeconds(FILE_HISTORY_TTL_SECONDS).isAfter(now)
+
     private fun toBubble(message: StoredChatMessage) = AiChatBubble(
         id = message.id,
         fromUser = message.fromUser,
         text = message.text,
         createdAt = message.at,
-        files = message.files.map { AiFileReference(it.id, it.fileName, it.purpose) },
+        files = message.files.map { AiFileReference(it.id, it.fileName, it.purpose, it.uploadedAt) },
         serverToolCallsJson = message.serverToolCallsJson,
         citations = message.citations.map {
             AiCitation(it.url, it.title, it.startIndex, it.endIndex)
@@ -728,6 +757,16 @@ class AiViewModel @Inject constructor(
             updatedAt = now,
             messages = emptyList(),
         )
+    }
+
+    private fun cleanupDroppedFiles(messages: List<AiChatBubble>) {
+        val files = messages.flatMap { it.files }.distinctBy { it.id }
+        if (files.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            if (!deleteRemoteFiles(files)) {
+                appLog.warn(TAG, "AI dropped-message file cleanup failed")
+            }
+        }
     }
 
     private suspend fun deleteRemoteFiles(files: List<AiFileReference>): Boolean {
@@ -765,7 +804,16 @@ class AiViewModel @Inject constructor(
             ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf(String::isNotBlank)
             ?: throw AiProviderException(0, "missing-file-name")
         val mimeType = resolver.getType(uri)?.takeUnless { it == "application/octet-stream" }.orEmpty()
-        val output = ByteArrayOutputStream()
+        if (!AiFiles.isSupported(name)) throw AiProviderException(0, "unsupported-file-type")
+        val limit = AiFiles.maxBytesFor(name)
+        val declaredSize = resolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)
+            ?.use { cursor ->
+                val column = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (column >= 0 && cursor.moveToFirst()) cursor.getLong(column) else -1L
+            } ?: -1L
+        if (declaredSize > limit) throw AiProviderException(0, "file-size-out-of-range")
+        val initialSize = declaredSize.takeIf { it in 1..limit.toLong() }?.toInt() ?: DEFAULT_BUFFER_SIZE
+        val output = ByteArrayOutputStream(initialSize)
         resolver.openInputStream(uri)?.use { input ->
             val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
             var total = 0
@@ -773,7 +821,7 @@ class AiViewModel @Inject constructor(
                 val count = input.read(buffer)
                 if (count < 0) break
                 if (count == 0) continue
-                if (count > MAX_AI_FILE_BYTES - total) {
+                if (count > limit - total) {
                     throw AiProviderException(0, "file-size-out-of-range")
                 }
                 output.write(buffer, 0, count)
@@ -840,7 +888,9 @@ class AiViewModel @Inject constructor(
                             fromUser = bubble.fromUser,
                             text = bubble.text,
                             at = bubble.createdAt,
-                            files = bubble.files.map { StoredChatFile(it.id, it.fileName, it.purpose) },
+                            files = bubble.files.map {
+                                StoredChatFile(it.id, it.fileName, it.purpose, it.uploadedAt)
+                            },
                             serverToolCallsJson = bubble.serverToolCallsJson,
                             citations = bubble.citations.map {
                                 StoredChatCitation(it.url, it.title, it.startIndex, it.endIndex)
@@ -885,7 +935,13 @@ class AiViewModel @Inject constructor(
         private const val MAX_TOOL_ARG_CHARS = 160
         private const val MAX_TOOL_RESULT_CHARS = 400
         private const val MAX_TITLE_CHARS = 32
-        private const val MAX_AI_FILE_BYTES = 100 * 1024 * 1024
+        private const val MAX_FILES_PER_MESSAGE = 10
+
+        /** DeepSeek accepts at most 20 document references per request. */
+        private const val MAX_FILE_REFERENCES_PER_REQUEST = 20
+
+        /** Keep a one-day margin before the provider's 30-day expiry. */
+        private const val FILE_HISTORY_TTL_SECONDS = AiFiles.FILE_EXPIRY_SECONDS - 24 * 60 * 60
     }
 
     private data class SelectedAiFile(val name: String, val mimeType: String, val bytes: ByteArray)

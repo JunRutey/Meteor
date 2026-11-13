@@ -2,6 +2,7 @@ package com.meteor.memory.feature.ai
 
 import org.json.JSONObject
 import java.net.URLEncoder
+import java.time.Instant
 
 object AiFiles {
 
@@ -12,7 +13,7 @@ object AiFiles {
         bytes: ByteArray,
         transport: HttpTransport = UrlConnectionTransport(),
     ): AiFileReference {
-        requireDeepSeekFlash(config)
+        requireOfficialDeepSeek(config, requireFlash = true)
         if (fileName.isBlank() || fileName.toByteArray(Charsets.UTF_8).size > MAX_FILE_NAME_BYTES) {
             throw AiProviderException(0, "invalid-file-name")
         }
@@ -41,7 +42,7 @@ object AiFiles {
             .getOrElse { throw AiProviderException(0, "invalid-file-response") }
         val id = root.optString("id").takeIf(String::isNotBlank)
             ?: throw AiProviderException(0, "missing-file-id")
-        return AiFileReference(id, fileName, purpose)
+        return AiFileReference(id, fileName, purpose, Instant.now())
     }
 
     suspend fun delete(
@@ -49,7 +50,9 @@ object AiFiles {
         fileId: String,
         transport: HttpTransport = UrlConnectionTransport(),
     ) {
-        requireDeepSeekFlash(config)
+        // Deleting a file is account-level and independent of the model. Only
+        // the endpoint/key are needed, so switching models must not strand it.
+        requireOfficialDeepSeek(config, requireFlash = false)
         if (!FILE_ID.matches(fileId)) throw AiProviderException(0, "invalid-file-id")
         val key = config.apiKey?.takeIf(String::isNotBlank)
             ?: throw AiProviderException(0, "missing-api-key")
@@ -65,13 +68,12 @@ object AiFiles {
         if (deleted != true) throw AiProviderException(0, "file-delete-not-confirmed")
     }
 
-    private fun requireDeepSeekFlash(config: AiConfig) {
+    private fun requireOfficialDeepSeek(config: AiConfig, requireFlash: Boolean) {
         if (!config.isConfigured()) throw AiProviderException(0, "not-configured")
-        if (
-            config.provider != AiPresets.DEEPSEEK ||
-            !config.officialDeepSeekEndpoint ||
-            config.resolvedModel != "deepseek-flash"
-        ) {
+        if (config.provider != AiPresets.DEEPSEEK || !config.officialDeepSeekEndpoint) {
+            throw AiProviderException(0, "files-require-deepseek-flash")
+        }
+        if (requireFlash && config.resolvedModel != "deepseek-flash") {
             throw AiProviderException(0, "files-require-deepseek-flash")
         }
     }
@@ -83,11 +85,13 @@ object AiFiles {
         else -> throw AiProviderException(0, "unsupported-file-type")
     }
 
-    private fun maxBytesFor(fileName: String): Int = when (fileName.substringAfterLast('.', "").lowercase()) {
+    fun maxBytesFor(fileName: String): Int = when (fileName.substringAfterLast('.', "").lowercase()) {
         "jpg", "jpeg", "png", "gif", "webp" -> MAX_IMAGE_BYTES
         "pdf", "doc", "docx", "ppt", "pptx", "bmp", "tif", "tiff" -> MAX_DOCUMENT_BYTES
         else -> MAX_OTHER_BYTES
     }
+
+    fun isSupported(fileName: String): Boolean = runCatching { purposeFor(fileName) }.isSuccess
 
     private fun mimeTypeFor(fileName: String): String = when (fileName.substringAfterLast('.', "").lowercase()) {
         "jpg", "jpeg" -> "image/jpeg"

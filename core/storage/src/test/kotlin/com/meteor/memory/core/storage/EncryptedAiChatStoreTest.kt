@@ -112,7 +112,9 @@ class EncryptedAiChatStoreTest {
                     fromUser = true,
                     text = "read this",
                     at = at,
-                    files = listOf(StoredChatFile("file-1", "report.pdf", "rich_layout_recognition")),
+                    files = listOf(
+                        StoredChatFile("file-1", "report.pdf", "rich_layout_recognition", at),
+                    ),
                 ),
                 StoredChatMessage(
                     id = "message_2",
@@ -178,5 +180,21 @@ class EncryptedAiChatStoreTest {
         assertEquals(1, conversations.size)
         assertEquals("first question", conversations.single().title)
         assertTrue(File(legacyDir, "broken_legacy.bin").exists())
+    }
+
+    @Test
+    fun `saving keeps only the newest messages`() {
+        val root = temp.newFolder("root")
+        val store = EncryptedAiChatStore(root, crypto())
+        val at = Instant.parse("2026-10-31T10:00:00Z")
+        val messages = (0 until 130).map { index ->
+            StoredChatMessage("message_$index", index % 2 == 0, "text $index", at)
+        }
+
+        store.saveConversation(StoredAiConversation("capped", "skill__all", "", at, at, messages))
+
+        val loaded = store.listConversations().single()
+        assertEquals(AiChatStore.MAX_TURNS * 2, loaded.messages.size)
+        assertEquals("text 129", loaded.messages.last().text)
     }
 }
