@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.map
 class SettingsRepository(private val store: DataStore<Preferences>) {
 
     val settings: Flow<AppSettings> = store.data.map { prefs ->
+        val appLockEnabled = prefs[KEY_APP_LOCK] ?: false
         AppSettings(
             darkMode = prefs[KEY_DARK_MODE]?.let { runCatching { DarkMode.valueOf(it) }.getOrNull() }
                 ?: DarkMode.FOLLOW_SYSTEM,
@@ -27,7 +28,13 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             animationsEnabled = prefs[KEY_ANIMATIONS] ?: true,
             fontScale = prefs[KEY_FONT_SCALE]?.let { runCatching { FontScale.valueOf(it) }.getOrNull() }
                 ?: FontScale.SYSTEM,
-            appLockEnabled = prefs[KEY_APP_LOCK] ?: false,
+            appLockEnabled = appLockEnabled,
+            // The app lock used to enable screen protection as a side effect.
+            // Until the independent switch is set explicitly, keep that
+            // behaviour so an upgrade never silently allows a locked diary to
+            // be captured. Once written, the stored value always wins.
+            screenshotProtectionEnabled =
+                prefs[KEY_SCREENSHOT_PROTECTION] ?: appLockEnabled,
             verboseLogging = prefs[KEY_VERBOSE_LOGGING] ?: false,
             autoBackupEnabled = prefs[KEY_AUTO_BACKUP] ?: true,
             backupRetention = prefs[KEY_BACKUP_RETENTION] ?: AppSettings.DEFAULT_BACKUP_RETENTION,
@@ -67,6 +74,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     suspend fun setFontScale(scale: FontScale) = store.edit { it[KEY_FONT_SCALE] = scale.name }
 
     suspend fun setAppLockEnabled(enabled: Boolean) = store.edit { it[KEY_APP_LOCK] = enabled }
+
+    suspend fun setScreenshotProtectionEnabled(enabled: Boolean) =
+        store.edit { it[KEY_SCREENSHOT_PROTECTION] = enabled }
 
     suspend fun setVerboseLogging(enabled: Boolean) = store.edit { it[KEY_VERBOSE_LOGGING] = enabled }
 
@@ -176,6 +186,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val KEY_ANIMATIONS = booleanPreferencesKey("animations_enabled")
         val KEY_FONT_SCALE = stringPreferencesKey("font_scale")
         val KEY_APP_LOCK = booleanPreferencesKey("app_lock_enabled")
+        val KEY_SCREENSHOT_PROTECTION = booleanPreferencesKey("screenshot_protection_enabled")
         val KEY_VERBOSE_LOGGING = booleanPreferencesKey("verbose_logging")
         val KEY_AUTO_BACKUP = booleanPreferencesKey("auto_backup_enabled")
         val KEY_BACKUP_RETENTION = intPreferencesKey("backup_retention")

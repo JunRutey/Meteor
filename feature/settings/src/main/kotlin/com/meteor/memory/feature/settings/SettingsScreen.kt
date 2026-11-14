@@ -66,6 +66,7 @@ fun SettingsScreen(
     onDynamicColorChanged: (Boolean) -> Unit,
     onAnimationsChanged: (Boolean) -> Unit,
     onAppLockChanged: (Boolean) -> Unit,
+    onScreenshotProtectionChanged: (Boolean) -> Unit,
     onVerboseLoggingChanged: (Boolean) -> Unit,
     onOpenAbout: () -> Unit,
     onOpenDonate: () -> Unit,
@@ -154,6 +155,13 @@ fun SettingsScreen(
                     subtitle = stringResource(R.string.settings_app_lock_desc),
                     checked = settings.appLockEnabled,
                     onCheckedChange = onAppLockChanged,
+                )
+                Hairline()
+                ToggleRow(
+                    title = stringResource(R.string.settings_screenshot_protection),
+                    subtitle = stringResource(R.string.settings_screenshot_protection_desc),
+                    checked = settings.screenshotProtectionEnabled,
+                    onCheckedChange = onScreenshotProtectionChanged,
                 )
             }
 

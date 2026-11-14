@@ -64,6 +64,8 @@
 
     <string name="settings_app_lock">应用锁</string>
     <string name="settings_app_lock_desc">用生物识别解锁，离开前台后重新上锁</string>
+    <string name="settings_screenshot_protection">禁止截屏</string>
+    <string name="settings_screenshot_protection_desc">阻止截屏与录屏；开启时最近任务也不会显示日记内容</string>
 
     <string name="settings_about_version">Meteor %1$s</string>
     <string name="settings_about_donate">打赏</string>
