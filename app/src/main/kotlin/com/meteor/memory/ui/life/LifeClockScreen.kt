@@ -47,8 +47,9 @@ import java.util.Locale
 /**
  * 生辰页：淡蓝晨光渐变 + 在线时长 + 大字号年龄 + 下次生日倒计时。
  *
- * 视觉按设计稿：76sp 整数部分与 32sp 小数部分同行、20dp 白色倒计时卡片、
- * 8dp 进度条与 13% 留白。年龄每秒刷新，直接复用 [LifePageState] 的指标。
+ * 视觉按设计稿：76sp 整数部分、32sp 小数部分与 14sp 右下角「岁了」同行、
+ * 20dp 白色倒计时卡片、8dp 进度条与 13% 留白。年龄每秒刷新，直接复用
+ * [LifePageState] 的指标。
  */
 @Composable
 fun LifeClockScreen(
@@ -264,10 +265,14 @@ private fun LifeClockContent(
                     color = MaterialTheme.colorScheme.primary,
                     maxLines = 1,
                 )
+                // The unit is a footnote to the number: bottom-aligned with the
+                // decimal digits and clearly smaller, so it reads as the
+                // bottom-right corner of the changing age instead of a peer.
                 Text(
                     text = stringResource(R.string.life_age_suffix),
-                    modifier = Modifier.padding(start = 6.dp, bottom = 6.dp),
-                    fontSize = 20.sp,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 3.dp),
+                    fontSize = 14.sp,
+                    lineHeight = 18.sp,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
