@@ -537,6 +537,8 @@ fun AiSettingsSummary(
     onEnabledChange: (Boolean) -> Unit,
     onConsentAccepted: () -> Unit,
     onOpenSettings: () -> Unit,
+    usageTotals: AiUsageTotals,
+    onOpenUsage: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val canOpen = enabled && consentAccepted
@@ -561,6 +563,7 @@ fun AiSettingsSummary(
             ),
             onClick = onOpenSettings,
         )
+        AiUsageSummaryCard(totals = usageTotals, onClick = onOpenUsage)
     }
 }
 

@@ -46,7 +46,7 @@ import com.meteor.memory.feature.ai.AiPersonChip
 import com.meteor.memory.feature.ai.AiScreen
 import com.meteor.memory.feature.ai.AiSettingsScreen
 import com.meteor.memory.feature.ai.AiSettingsSummary
-import com.meteor.memory.feature.ai.AiUsageTotals
+import com.meteor.memory.feature.ai.AiUsageScreen
 import com.meteor.memory.feature.ai.R as AiR
 import com.meteor.memory.feature.ai.AiSkillChip
 import com.meteor.memory.feature.ai.PersonaScreen
@@ -67,6 +67,7 @@ import com.meteor.memory.ui.about.DonateScreen
 import com.meteor.memory.ui.ai.AiBlocked
 import com.meteor.memory.ui.ai.AiViewModel
 import com.meteor.memory.ui.ai.PersonaViewModel
+import com.meteor.memory.ui.ai.aiUsageTotals
 import com.meteor.memory.ui.backup.BackupActions
 import com.meteor.memory.ui.chats.ChatsScreen
 import com.meteor.memory.ui.chats.ChatsViewModel
@@ -111,6 +112,7 @@ private const val SETTINGS_EXIT_MS = 120
 private const val SETTINGS_ENTER_SCALE = 0.97f
 private const val ROUTE_BIRTH_DATE = "settings/birth-date"
 private const val ROUTE_AI_SETTINGS = "settings/ai"
+private const val ROUTE_AI_USAGE = "settings/ai/usage"
 private const val ROUTE_DIARY_EDIT = "diary/edit"
 private const val ROUTE_DIARY_VIEW = "diary/view/{date}"
 private const val ROUTE_ABOUT = "about"
@@ -541,6 +543,7 @@ fun MeteorNavHost(
                 pendingToolApprovals = state.pendingToolApprovals,
                 chatMode = state.chatMode,
                 reasoning = state.reasoning,
+                usageTotals = state.usageTotals,
                 speechLoadingId = state.speechLoadingId,
                 speakingId = state.speakingId,
                 conversations = state.conversations,
@@ -555,6 +558,7 @@ fun MeteorNavHost(
                 onOpenPersona = { personId -> navController.navigate("ai/persona/$personId") },
                 onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
                 onOpenAiSettings = { navController.navigate(ROUTE_AI_SETTINGS) },
+                onOpenUsage = { navController.navigate(ROUTE_AI_USAGE) },
                 onClear = viewModel::clear,
                 onToolApproval = viewModel::decideToolApproval,
                 onBack = { navController.popBackStack() },
@@ -709,6 +713,8 @@ fun MeteorNavHost(
                         onEnabledChange = viewModel::setAiEnabled,
                         onConsentAccepted = viewModel::acceptAiConsent,
                         onOpenSettings = { navController.navigate(ROUTE_AI_SETTINGS) },
+                        usageTotals = settings.aiUsageTotals(),
+                        onOpenUsage = { navController.navigate(ROUTE_AI_USAGE) },
                     )
                 },
             )
@@ -748,14 +754,17 @@ fun MeteorNavHost(
                 onRequestApiKey = viewModel::apiKeyOnce,
                 onTestConnection = viewModel::testAiConnection,
                 onBack = { navController.popBackStack() },
-                usageTotals = AiUsageTotals(
-                    tokens = settings.aiTotalPromptTokens + settings.aiTotalCompletionTokens,
-                    requests = settings.aiTotalRequests,
-                    elapsedMs = settings.aiTotalElapsedMs,
-                    cacheHitTokens = settings.aiTotalCacheHitTokens,
-                    cacheTokens = settings.aiTotalCacheHitTokens + settings.aiTotalCacheMissTokens,
-                ),
                 animationsEnabled = animationsEnabled,
+            )
+        }
+
+        composable(ROUTE_AI_USAGE) {
+            val viewModel: SettingsViewModel = hiltViewModel()
+            val settings by viewModel.settings.collectAsStateWithLifecycle()
+
+            AiUsageScreen(
+                usageTotals = settings.aiUsageTotals(),
+                onBack = { navController.popBackStack() },
             )
         }
 

@@ -105,6 +105,7 @@ fun AiScreen(
     pendingToolApprovals: List<AiToolApproval> = emptyList(),
     chatMode: AiChatMode = AiChatMode.ARCHIVE,
     reasoning: String = ReasoningMode.AUTO.wire,
+    usageTotals: AiUsageTotals = AiUsageTotals(),
     speechLoadingId: String? = null,
     speakingId: String? = null,
     conversations: List<AiConversationItem> = emptyList(),
@@ -119,6 +120,7 @@ fun AiScreen(
     onOpenPersona: (String) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenAiSettings: () -> Unit = onOpenSettings,
+    onOpenUsage: () -> Unit = onOpenAiSettings,
     onClear: () -> Unit,
     onToolApproval: (Boolean) -> Unit = {},
     onBack: () -> Unit,
@@ -503,6 +505,7 @@ fun AiScreen(
             selectedPersonId = selectedPersonId,
             personaStatus = personaStatus,
             reasoning = reasoning,
+            usageTotals = usageTotals,
             enabled = canInteract,
             canUploadFiles = canUploadFiles,
             canUseWebTools = canUseWebTools,
@@ -516,6 +519,10 @@ fun AiScreen(
             onOpenSettings = {
                 showChatSettings = false
                 onOpenAiSettings()
+            },
+            onOpenUsage = {
+                showChatSettings = false
+                onOpenUsage()
             },
             onDismiss = { showChatSettings = false },
         )

@@ -69,6 +69,39 @@ import androidx.compose.ui.unit.sp
 private val SheetShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
 private const val TITLE_INPUT_LIMIT = 32
 
+/** Shared header for the AI settings and usage sub-pages. */
+@Composable
+internal fun AiSubPageHeader(title: String, onBack: () -> Unit) {
+    val backLabel = stringResource(R.string.ai_back)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(56.dp)
+            .padding(end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clickable(onClick = onBack)
+                .semantics { contentDescription = backLabel },
+            contentAlignment = Alignment.Center,
+        ) {
+            AiIcon(
+                AiIconKind.Back,
+                iconSize = 22.dp,
+                tint = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+        Text(
+            text = title,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
 /** Top bar: back, the current conversation / scope, new chat and chat settings. */
 @Composable
 internal fun AiHeader(
@@ -933,6 +966,7 @@ internal fun AiChatSettingsSheet(
     selectedPersonId: String?,
     personaStatus: String?,
     reasoning: String,
+    usageTotals: AiUsageTotals,
     enabled: Boolean,
     canUploadFiles: Boolean,
     canUseWebTools: Boolean,
@@ -941,6 +975,7 @@ internal fun AiChatSettingsSheet(
     onReasoningChange: (String) -> Unit,
     onOpenPersona: (String) -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenUsage: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -1100,6 +1135,7 @@ internal fun AiChatSettingsSheet(
                 }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 AiSettingsEntry(enabled = true, onClick = onOpenSettings)
+                AiUsageSummaryCard(totals = usageTotals, onClick = onOpenUsage)
                 Text(
                     text = stringResource(R.string.ai_sessions_note),
                     style = MaterialTheme.typography.bodySmall,

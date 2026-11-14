@@ -29,6 +29,7 @@ import com.meteor.memory.feature.ai.AiServerToolEvent
 import com.meteor.memory.feature.ai.AiSpeech
 import com.meteor.memory.feature.ai.AiToolApproval
 import com.meteor.memory.feature.ai.AiUsage
+import com.meteor.memory.feature.ai.AiUsageTotals
 import com.meteor.memory.feature.ai.ArchiveTools
 import com.meteor.memory.feature.ai.AiConversationItem
 import com.meteor.memory.feature.ai.ChatRequest
@@ -93,6 +94,7 @@ data class AiUiState(
     val blocked: AiBlocked? = null,
     val provider: String = AiPresets.DEEPSEEK,
     val reasoning: String = AppSettings.DEFAULT_AI_REASONING,
+    val usageTotals: AiUsageTotals = AiUsageTotals(),
     val sessionUsage: AiUsage = AiUsage(),
     val sessionElapsedMs: Long = 0,
     val streaming: Boolean = false,
@@ -163,6 +165,7 @@ class AiViewModel @Inject constructor(
                         blocked = blocked,
                         provider = AiPresets.DEEPSEEK,
                         reasoning = settings.aiReasoning,
+                        usageTotals = settings.aiUsageTotals(),
                         canUploadFiles = deepSeekFilesAvailable,
                         canUseWebTools = deepSeekFilesAvailable,
                         chatMode = if (deepSeekFilesAvailable) it.chatMode else AiChatMode.ARCHIVE,
@@ -1114,6 +1117,7 @@ class AiViewModel @Inject constructor(
                     blocked = blocked,
                     provider = AiPresets.DEEPSEEK,
                     reasoning = settings.aiReasoning,
+                    usageTotals = settings.aiUsageTotals(),
                     canUploadFiles = deepSeekFilesAvailable,
                     canUseWebTools = deepSeekFilesAvailable,
                     chatMode = if (deepSeekFilesAvailable) it.chatMode else AiChatMode.ARCHIVE,
