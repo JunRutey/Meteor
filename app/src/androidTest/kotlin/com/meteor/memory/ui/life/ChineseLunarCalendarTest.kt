@@ -52,6 +52,33 @@ class ChineseLunarCalendarTest {
     }
 
     @Test
+    fun lunar2011SecondMonth25ConvertsToMarch29() {
+        assertEquals(LocalDate.of(2011, 3, 29), calendar.toGregorian(2011, 2, 25, false))
+    }
+
+    @Test
+    fun nextLunarBirthdayFromAutumn2026IsAprilFirst2027() {
+        // Regression: a fixed lunar date maps to a different Gregorian date in
+        // 2011 and 2027, so the next-birthday date must come from the target
+        // year, not from the stored birth-year Gregorian date.
+        val profile = BirthProfile.Lunar(
+            year = 2011,
+            month = 2,
+            day = 25,
+            leapMonth = false,
+            gregorianDate = LocalDate.of(2011, 3, 29),
+        )
+
+        val birthday = calendar.nextBirthday(
+            birth = profile,
+            now = java.time.Instant.parse("2026-11-14T01:48:36Z"),
+            zone = java.time.ZoneId.of("Asia/Shanghai"),
+        )
+
+        assertEquals(LocalDate.of(2027, 4, 1), birthday)
+    }
+
+    @Test
     fun monthListIncludesRealLengthAndLeapEntry() {
         val months = calendar.monthsInYear(2023)
 
