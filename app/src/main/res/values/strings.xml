@@ -22,8 +22,8 @@
     <string name="life_online_status">地球 online · 在线</string>
     <string name="life_elapsed_hours">%1$dh</string>
     <string name="life_birthday_solar">生日 · 公历 %1$s</string>
-    <string name="life_birthday_lunar">生日 · 农历 %1$d年%2$d月%3$d日（公历 %4$s）</string>
-    <string name="life_birthday_lunar_leap">生日 · 农历 %1$d年闰%2$d月%3$d日（公历 %4$s）</string>
+    <string name="life_birthday_lunar">生日 · 农历 %1$d年%2$d月%3$d日</string>
+    <string name="life_birthday_lunar_leap">生日 · 农历 %1$d年闰%2$d月%3$d日</string>
     <string name="life_age_text">你已经 %1$s 岁了</string>
     <string name="life_age_prefix">你已经</string>
     <string name="life_age_suffix">岁了</string>

@@ -164,16 +164,22 @@ private fun LifeClockContent(
     val dateFormatter = remember(locale) {
         DateTimeFormatter.ofLocalizedDate(FormatStyle.LONG).withLocale(locale)
     }
-    val solarDate = dateFormatter.format(profile.gregorianDate)
+    // A lunar birthday only shows its lunar form: pairing it with the Gregorian
+    // date of the birth year invites a comparison against the next birthday's
+    // Gregorian date, and those two legitimately differ because a fixed lunar
+    // date drifts across Gregorian years.
     val birthday = when (profile) {
-        is BirthProfile.Solar -> stringResource(R.string.life_birthday_solar, solarDate)
+        is BirthProfile.Solar -> stringResource(
+            R.string.life_birthday_solar,
+            dateFormatter.format(profile.gregorianDate),
+        )
+
         is BirthProfile.Lunar -> if (profile.leapMonth) {
             stringResource(
                 R.string.life_birthday_lunar_leap,
                 profile.year,
                 profile.month,
                 profile.day,
-                solarDate,
             )
         } else {
             stringResource(
@@ -181,7 +187,6 @@ private fun LifeClockContent(
                 profile.year,
                 profile.month,
                 profile.day,
-                solarDate,
             )
         }
     }
@@ -276,14 +281,17 @@ private fun LifeClockContent(
         }
 
         Box(
+            // A fixed height clipped the chip once the label wrapped (long lunar
+            // dates and large font scales). Let it grow; single-line content
+            // still keeps the 36dp pill shape.
             modifier = Modifier
                 .padding(top = 12.dp)
-                .height(36.dp)
+                .heightIn(min = 36.dp)
                 .background(
                     MaterialTheme.colorScheme.primaryContainer,
                     RoundedCornerShape(18.dp),
                 )
-                .padding(horizontal = 14.dp),
+                .padding(horizontal = 14.dp, vertical = 6.dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(
