@@ -264,7 +264,10 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideLogExporter(@ApplicationContext context: Context): LogExporter = LogExporter(context)
+    fun provideLogExporter(
+        @ApplicationContext context: Context,
+        appLog: AppLog,
+    ): LogExporter = LogExporter(context, appLog)
 
     @Provides
     @Singleton

@@ -1,8 +1,10 @@
 package com.meteor.memory.ui.log
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meteor.memory.core.log.AppLog
+import com.meteor.memory.core.log.LogExportError
 import com.meteor.memory.core.log.LogExporter
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -16,8 +18,8 @@ import javax.inject.Inject
 sealed interface LogUiState {
     data object Idle : LogUiState
     data object Working : LogUiState
-    data class Done(val location: String) : LogUiState
-    data class Failed(val message: String) : LogUiState
+    data class Done(val fileName: String) : LogUiState
+    data class Failed(val error: LogExportError) : LogUiState
 }
 
 @HiltViewModel
@@ -29,20 +31,23 @@ class LogViewModel @Inject constructor(
     private val _state = MutableStateFlow<LogUiState>(LogUiState.Idle)
     val state: StateFlow<LogUiState> = _state.asStateFlow()
 
-    fun export() {
+    /** Offered to the system picker; the user still chooses the folder/name. */
+    fun suggestedFileName(): String = logExporter.suggestedFileName()
+
+    fun export(destination: Uri) {
         if (_state.value == LogUiState.Working) return
         _state.value = LogUiState.Working
 
         viewModelScope.launch {
-            val result = withContext(Dispatchers.IO) { logExporter.export() }
-            val location = result.location
-            if (result.success && location != null) {
-                appLog.info(TAG, "log exported to $location")
-                _state.value = LogUiState.Done(location)
+            val result = withContext(Dispatchers.IO) { logExporter.export(destination) }
+            val name = result.displayName
+            if (result.success && name != null) {
+                appLog.info(TAG, "log exported as $name")
+                _state.value = LogUiState.Done(name)
             } else {
-                val message = result.error ?: "unknown"
-                appLog.error(TAG, "log export failed: $message")
-                _state.value = LogUiState.Failed(message)
+                val error = result.error ?: LogExportError.WRITE_FAILED
+                appLog.error(TAG, "log export failed: $error")
+                _state.value = LogUiState.Failed(error)
             }
         }
     }
