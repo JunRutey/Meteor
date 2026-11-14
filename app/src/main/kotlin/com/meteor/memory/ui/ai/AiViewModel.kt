@@ -44,6 +44,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -993,10 +994,31 @@ class AiViewModel @Inject constructor(
         }
     }
 
-    /** Re-check the selected persona after returning from its screen. */
+    /** Re-check settings, key availability and the selected persona on return. */
     fun refresh() {
-        val personId = _state.value.selectedPersonId ?: return
         viewModelScope.launch {
+            val settings = repository.settings.first()
+            val blocked = blockedOf(settings)
+            val config = withContext(Dispatchers.IO) {
+                runCatching { reader.read().config }.getOrNull()
+            }
+            val deepSeekFilesAvailable = config?.let {
+                it.provider == AiPresets.DEEPSEEK &&
+                    it.officialDeepSeekEndpoint &&
+                    it.resolvedModel == "deepseek-flash" &&
+                    it.isConfigured()
+            } == true
+            _state.update {
+                it.copy(
+                    blocked = blocked,
+                    provider = settings.aiProvider,
+                    reasoning = settings.aiReasoning,
+                    canUploadFiles = deepSeekFilesAvailable,
+                    canUseWebTools = deepSeekFilesAvailable,
+                    chatMode = if (deepSeekFilesAvailable) it.chatMode else AiChatMode.ARCHIVE,
+                )
+            }
+            val personId = _state.value.selectedPersonId ?: return@launch
             runCatching { aiModule.persona(personId) }.onSuccess { persona ->
                 _state.update { it.copy(personaDistilled = persona.distilled) }
             }
