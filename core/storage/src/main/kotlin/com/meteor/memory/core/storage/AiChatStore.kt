@@ -37,6 +37,12 @@ data class StoredChatMessage(
     val serverToolCallsJson: String? = null,
     val citations: List<StoredChatCitation> = emptyList(),
     val isTruncated: Boolean = false,
+    /** Provider token accounting, persisted so the footer survives a restart. */
+    val promptTokens: Int = 0,
+    val completionTokens: Int = 0,
+    val cacheHitTokens: Int = 0,
+    val cacheMissTokens: Int = 0,
+    val elapsedMs: Long = 0,
 )
 
 data class StoredAiConversation(
@@ -304,6 +310,11 @@ class EncryptedAiChatStore(
                         .put("endIndex", citation.endIndex)
                 }))
                 put("isTruncated", message.isTruncated)
+                put("promptTokens", message.promptTokens)
+                put("completionTokens", message.completionTokens)
+                put("cacheHitTokens", message.cacheHitTokens)
+                put("cacheMissTokens", message.cacheMissTokens)
+                put("elapsedMs", message.elapsedMs)
             }
         }))
     }.toString()
@@ -344,6 +355,11 @@ class EncryptedAiChatStore(
                 serverToolCallsJson = item.optString("serverToolCalls").takeIf(String::isNotBlank),
                 citations = citations,
                 isTruncated = item.optBoolean("isTruncated"),
+                promptTokens = item.optInt("promptTokens", 0),
+                completionTokens = item.optInt("completionTokens", 0),
+                cacheHitTokens = item.optInt("cacheHitTokens", 0),
+                cacheMissTokens = item.optInt("cacheMissTokens", 0),
+                elapsedMs = item.optLong("elapsedMs", 0L),
             )
         }
         return StoredAiConversation(

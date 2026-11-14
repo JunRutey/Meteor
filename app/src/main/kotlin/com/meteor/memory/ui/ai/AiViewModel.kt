@@ -26,13 +26,17 @@ import com.meteor.memory.feature.ai.AiProviderException
 import com.meteor.memory.feature.ai.AiSkill
 import com.meteor.memory.feature.ai.AiProcessStep
 import com.meteor.memory.feature.ai.AiServerToolEvent
+import com.meteor.memory.feature.ai.AiSpeech
 import com.meteor.memory.feature.ai.AiToolApproval
 import com.meteor.memory.feature.ai.AiUsage
+import com.meteor.memory.feature.ai.AiUsageTotals
 import com.meteor.memory.feature.ai.ArchiveTools
 import com.meteor.memory.feature.ai.AiConversationItem
 import com.meteor.memory.feature.ai.ChatRequest
 import com.meteor.memory.feature.ai.ChatTurn
+import com.meteor.memory.feature.ai.ReasoningMode
 import com.meteor.memory.feature.ai.SkillStage
+import com.meteor.memory.feature.ai.TtsVoice
 import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.SettingsRepository
 import com.meteor.memory.ui.search.SearchService
@@ -40,9 +44,11 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -90,6 +96,8 @@ data class AiUiState(
     val errorDetail: String? = null,
     val blocked: AiBlocked? = null,
     val provider: String = AiPresets.DEEPSEEK,
+    val reasoning: String = AppSettings.DEFAULT_AI_REASONING,
+    val usageTotals: AiUsageTotals = AiUsageTotals(),
     val sessionUsage: AiUsage = AiUsage(),
     val sessionElapsedMs: Long = 0,
     val streaming: Boolean = false,
@@ -99,6 +107,8 @@ data class AiUiState(
     val conversations: List<AiConversationItem> = emptyList(),
     val activeConversationId: String? = null,
     val chatMode: AiChatMode = AiChatMode.ARCHIVE,
+    val speechLoadingId: String? = null,
+    val speakingId: String? = null,
     val pendingFiles: List<AiFileReference> = emptyList(),
     val fileUploading: Boolean = false,
     val canUploadFiles: Boolean = false,
@@ -129,6 +139,9 @@ class AiViewModel @Inject constructor(
     /** Blocks sending while a conversation-level operation is still running. */
     private val conversationOp = AtomicBoolean(false)
 
+    private val speechPlayer = SpeechPlayer(context)
+    private var speechJob: Job? = null
+
     @Volatile
     private var toolApprovalDecision: CompletableDeferred<Boolean>? = null
 
@@ -153,7 +166,9 @@ class AiViewModel @Inject constructor(
                 _state.update {
                     it.copy(
                         blocked = blocked,
-                        provider = settings.aiProvider,
+                        provider = AiPresets.DEEPSEEK,
+                        reasoning = settings.aiReasoning,
+                        usageTotals = settings.aiUsageTotals(),
                         canUploadFiles = deepSeekFilesAvailable,
                         canUseWebTools = deepSeekFilesAvailable,
                         chatMode = if (deepSeekFilesAvailable) it.chatMode else AiChatMode.ARCHIVE,
@@ -251,6 +266,7 @@ class AiViewModel @Inject constructor(
             _state.update { it.copy(errorCode = 0, errorDetail = "file-limit") }
             return
         }
+        stopSpeaking()
         val now = Instant.now()
         val files = current.pendingFiles.filter { isFresh(it, now) }
         val hasExpiredPending = files.size != current.pendingFiles.size
@@ -437,6 +453,13 @@ class AiViewModel @Inject constructor(
                         sessionElapsedMs = state.sessionElapsedMs + reply.elapsedMs,
                     )
                 }
+                repository.addAiUsage(
+                    promptTokens = usage.promptTokens,
+                    completionTokens = usage.completionTokens,
+                    cacheHitTokens = usage.cacheHitTokens,
+                    cacheMissTokens = usage.cacheMissTokens,
+                    elapsedMs = reply.elapsedMs,
+                )
                 persistHistory()
             }.onFailure { error ->
                 appLog.warn(TAG, "chat failed", error)
@@ -463,6 +486,74 @@ class AiViewModel @Inject constructor(
             return
         }
         _state.update { it.copy(chatMode = mode, errorCode = 0, errorDetail = null) }
+    }
+
+    /** Thinking effort is a global AI preference, also editable from chat settings. */
+    fun setReasoning(reasoning: String) {
+        val wire = ReasoningMode.fromWire(reasoning).wire
+        _state.update { it.copy(reasoning = wire) }
+        viewModelScope.launch { repository.setAiReasoning(wire) }
+    }
+
+    /** Generates and plays one answer, or stops the current one. */
+    fun toggleSpeech(messageId: String) {
+        val current = _state.value
+        if (current.speechLoadingId == messageId || current.speakingId == messageId) {
+            stopSpeaking()
+            return
+        }
+        val bubble = current.messages.firstOrNull { it.id == messageId && !it.fromUser } ?: return
+        if (bubble.text.isBlank()) return
+        stopSpeaking()
+        _state.update {
+            it.copy(speechLoadingId = messageId, errorCode = 0, errorDetail = null)
+        }
+        speechJob = viewModelScope.launch {
+            try {
+                val readiness = withContext(Dispatchers.IO) { reader.read() }
+                if (!readiness.config.isConfigured()) {
+                    throw AiProviderException(0, "not-configured")
+                }
+                val voice = TtsVoice.fromWire(readiness.settings.aiTtsVoice)
+                val pcm = withContext(Dispatchers.IO) {
+                    AiSpeech.synthesize(readiness.config, bubble.text, voice)
+                }
+                _state.update { it.copy(speechLoadingId = null, speakingId = messageId) }
+                speechPlayer.play(
+                    pcm = pcm,
+                    onDone = { _state.update { it.copy(speakingId = null) } },
+                    onError = {
+                        _state.update {
+                            it.copy(
+                                speakingId = null,
+                                errorCode = 0,
+                                errorDetail = "tts-failed",
+                            )
+                        }
+                    },
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                appLog.warn(TAG, "AI speech failed", failure)
+                val code = (failure as? AiProviderException)?.code
+                _state.update {
+                    it.copy(
+                        speechLoadingId = null,
+                        speakingId = null,
+                        errorCode = 0,
+                        errorDetail = if (code == 400) "tts-unavailable" else "tts-failed",
+                    )
+                }
+            }
+        }
+    }
+
+    fun stopSpeaking() {
+        speechJob?.cancel()
+        speechJob = null
+        speechPlayer.stop()
+        _state.update { it.copy(speechLoadingId = null, speakingId = null) }
     }
 
     fun addFiles(uris: List<Uri>) {
@@ -532,6 +623,7 @@ class AiViewModel @Inject constructor(
         val state = _state.value
         val index = state.messages.indexOfFirst { it.id == messageId && it.fromUser }
         if (index < 0 || state.busy || state.fileUploading || conversationOp.get()) return
+        stopSpeaking()
         val original = state.messages[index]
         val dropped = state.messages.drop(index + 1)
         _state.update {
@@ -550,6 +642,7 @@ class AiViewModel @Inject constructor(
         val state = _state.value
         val index = state.messages.indexOfFirst { it.id == messageId && !it.fromUser }
         if (index < 0 || state.busy || state.fileUploading || conversationOp.get()) return
+        stopSpeaking()
         val userIndex = state.messages.subList(0, index).indexOfLast { it.fromUser }
         if (userIndex < 0) return
         val previousUser = state.messages[userIndex]
@@ -579,6 +672,7 @@ class AiViewModel @Inject constructor(
     fun newConversation() {
         if (_state.value.busy || _state.value.fileUploading || conversationOp.get()) return
         if (!beginConversationOp()) return
+        stopSpeaking()
         val state = _state.value
         val unusedFiles = state.pendingFiles
         val conversation = newStoredConversation(scopeKey(state.selectedSkill, state.selectedPersonId))
@@ -615,6 +709,7 @@ class AiViewModel @Inject constructor(
     fun selectConversation(id: String) {
         if (_state.value.busy || _state.value.fileUploading || conversationOp.get()) return
         if (!beginConversationOp()) return
+        stopSpeaking()
         val unusedFiles = _state.value.pendingFiles
         val currentScope = scopeKey(_state.value.selectedSkill, _state.value.selectedPersonId)
         viewModelScope.launch(Dispatchers.IO) {
@@ -695,6 +790,7 @@ class AiViewModel @Inject constructor(
     fun deleteConversation(id: String) {
         if (_state.value.busy || _state.value.fileUploading || conversationOp.get()) return
         if (!beginConversationOp()) return
+        stopSpeaking()
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val conversation = chatStoreMutex.withLock {
@@ -745,6 +841,7 @@ class AiViewModel @Inject constructor(
 
     fun clear() {
         if (_state.value.busy || _state.value.fileUploading || conversationOp.get()) return
+        stopSpeaking()
         decideToolApproval(approved = false)
         val files = (
             _state.value.messages.flatMap { it.files } + _state.value.pendingFiles
@@ -776,6 +873,7 @@ class AiViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        stopSpeaking()
         decideToolApproval(approved = false)
         super.onCleared()
     }
@@ -804,7 +902,19 @@ class AiViewModel @Inject constructor(
             AiCitation(it.url, it.title, it.startIndex, it.endIndex)
         },
         isTruncated = message.isTruncated,
+        usage = message.usageOrNull(),
+        elapsedMs = message.elapsedMs,
     )
+
+    private fun StoredChatMessage.usageOrNull(): AiUsage? {
+        if (promptTokens == 0 && completionTokens == 0) return null
+        return AiUsage(
+            promptTokens = promptTokens,
+            completionTokens = completionTokens,
+            cacheHitTokens = cacheHitTokens,
+            cacheMissTokens = cacheMissTokens,
+        )
+    }
 
     private fun newStoredConversation(scope: String): StoredAiConversation {
         val now = Instant.now()
@@ -977,6 +1087,11 @@ class AiViewModel @Inject constructor(
                                 StoredChatCitation(it.url, it.title, it.startIndex, it.endIndex)
                             },
                             isTruncated = bubble.isTruncated,
+                            promptTokens = bubble.usage?.promptTokens ?: 0,
+                            completionTokens = bubble.usage?.completionTokens ?: 0,
+                            cacheHitTokens = bubble.usage?.cacheHitTokens ?: 0,
+                            cacheMissTokens = bubble.usage?.cacheMissTokens ?: 0,
+                            elapsedMs = bubble.elapsedMs,
                         )
                     },
                 )
@@ -986,10 +1101,32 @@ class AiViewModel @Inject constructor(
         }
     }
 
-    /** Re-check the selected persona after returning from its screen. */
+    /** Re-check settings, key availability and the selected persona on return. */
     fun refresh() {
-        val personId = _state.value.selectedPersonId ?: return
         viewModelScope.launch {
+            val settings = repository.settings.first()
+            val blocked = blockedOf(settings)
+            val config = withContext(Dispatchers.IO) {
+                runCatching { reader.read().config }.getOrNull()
+            }
+            val deepSeekFilesAvailable = config?.let {
+                it.provider == AiPresets.DEEPSEEK &&
+                    it.officialDeepSeekEndpoint &&
+                    it.resolvedModel == "deepseek-flash" &&
+                    it.isConfigured()
+            } == true
+            _state.update {
+                it.copy(
+                    blocked = blocked,
+                    provider = AiPresets.DEEPSEEK,
+                    reasoning = settings.aiReasoning,
+                    usageTotals = settings.aiUsageTotals(),
+                    canUploadFiles = deepSeekFilesAvailable,
+                    canUseWebTools = deepSeekFilesAvailable,
+                    chatMode = if (deepSeekFilesAvailable) it.chatMode else AiChatMode.ARCHIVE,
+                )
+            }
+            val personId = _state.value.selectedPersonId ?: return@launch
             runCatching { aiModule.persona(personId) }.onSuccess { persona ->
                 _state.update { it.copy(personaDistilled = persona.distilled) }
             }

@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import kotlinx.coroutines.flow.Flow
@@ -46,6 +47,13 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             aiWriteDiary = prefs[KEY_AI_WRITE_DIARY] ?: true,
             aiWritePeople = prefs[KEY_AI_WRITE_PEOPLE] ?: true,
             peopleTags = prefs[KEY_PEOPLE_TAGS].orEmpty(),
+            aiTtsVoice = prefs[KEY_AI_TTS_VOICE] ?: AppSettings.DEFAULT_AI_TTS_VOICE,
+            aiTotalPromptTokens = prefs[KEY_AI_TOTAL_PROMPT_TOKENS] ?: 0L,
+            aiTotalCompletionTokens = prefs[KEY_AI_TOTAL_COMPLETION_TOKENS] ?: 0L,
+            aiTotalCacheHitTokens = prefs[KEY_AI_TOTAL_CACHE_HIT_TOKENS] ?: 0L,
+            aiTotalCacheMissTokens = prefs[KEY_AI_TOTAL_CACHE_MISS_TOKENS] ?: 0L,
+            aiTotalElapsedMs = prefs[KEY_AI_TOTAL_ELAPSED_MS] ?: 0L,
+            aiTotalRequests = prefs[KEY_AI_TOTAL_REQUESTS] ?: 0,
             onboardingCompleted = prefs[KEY_ONBOARDING_COMPLETED] ?: false,
         )
     }
@@ -102,6 +110,28 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     suspend fun setAiWritePeople(enabled: Boolean) =
         store.edit { it[KEY_AI_WRITE_PEOPLE] = enabled }
 
+    suspend fun setAiTtsVoice(voice: String) =
+        store.edit { it[KEY_AI_TTS_VOICE] = voice.trim() }
+
+    /** Adds one completed chat turn to the lifetime counters. */
+    suspend fun addAiUsage(
+        promptTokens: Int,
+        completionTokens: Int,
+        cacheHitTokens: Int,
+        cacheMissTokens: Int,
+        elapsedMs: Long,
+    ) = store.edit { prefs ->
+        prefs[KEY_AI_TOTAL_PROMPT_TOKENS] = (prefs[KEY_AI_TOTAL_PROMPT_TOKENS] ?: 0L) + promptTokens
+        prefs[KEY_AI_TOTAL_COMPLETION_TOKENS] =
+            (prefs[KEY_AI_TOTAL_COMPLETION_TOKENS] ?: 0L) + completionTokens
+        prefs[KEY_AI_TOTAL_CACHE_HIT_TOKENS] =
+            (prefs[KEY_AI_TOTAL_CACHE_HIT_TOKENS] ?: 0L) + cacheHitTokens
+        prefs[KEY_AI_TOTAL_CACHE_MISS_TOKENS] =
+            (prefs[KEY_AI_TOTAL_CACHE_MISS_TOKENS] ?: 0L) + cacheMissTokens
+        prefs[KEY_AI_TOTAL_ELAPSED_MS] = (prefs[KEY_AI_TOTAL_ELAPSED_MS] ?: 0L) + elapsedMs
+        prefs[KEY_AI_TOTAL_REQUESTS] = (prefs[KEY_AI_TOTAL_REQUESTS] ?: 0) + 1
+    }
+
     suspend fun setOnboardingCompleted(completed: Boolean) =
         store.edit { it[KEY_ONBOARDING_COMPLETED] = completed }
 
@@ -110,6 +140,20 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val current = prefs[KEY_PEOPLE_TAGS].orEmpty()
         if (tag in current || current.size >= MAX_PEOPLE_TAGS) return@edit
         prefs[KEY_PEOPLE_TAGS] = current + tag
+    }
+
+    /**
+     * DeepSeek-only release: legacy OpenAI/custom preferences are reset to the
+     * DeepSeek preset so an upgrade cannot send requests with an incompatible
+     * base URL or model id.
+     */
+    suspend fun migrateAiToDeepSeekOnly() = store.edit { prefs ->
+        val provider = prefs[KEY_AI_PROVIDER]
+        if (provider != null && provider != AppSettings.DEFAULT_AI_PROVIDER) {
+            prefs[KEY_AI_PROVIDER] = AppSettings.DEFAULT_AI_PROVIDER
+            prefs[KEY_AI_BASE_URL] = ""
+            prefs[KEY_AI_MODEL] = ""
+        }
     }
 
     /**
@@ -148,6 +192,13 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val KEY_AI_WRITE_DIARY = booleanPreferencesKey("ai_write_diary")
         val KEY_AI_WRITE_PEOPLE = booleanPreferencesKey("ai_write_people")
         val KEY_PEOPLE_TAGS = stringSetPreferencesKey("people_tags")
+        val KEY_AI_TTS_VOICE = stringPreferencesKey("ai_tts_voice")
+        val KEY_AI_TOTAL_PROMPT_TOKENS = longPreferencesKey("ai_total_prompt_tokens")
+        val KEY_AI_TOTAL_COMPLETION_TOKENS = longPreferencesKey("ai_total_completion_tokens")
+        val KEY_AI_TOTAL_CACHE_HIT_TOKENS = longPreferencesKey("ai_total_cache_hit_tokens")
+        val KEY_AI_TOTAL_CACHE_MISS_TOKENS = longPreferencesKey("ai_total_cache_miss_tokens")
+        val KEY_AI_TOTAL_ELAPSED_MS = longPreferencesKey("ai_total_elapsed_ms")
+        val KEY_AI_TOTAL_REQUESTS = intPreferencesKey("ai_total_requests")
         val KEY_ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
         const val MAX_PEOPLE_TAGS = 32
     }

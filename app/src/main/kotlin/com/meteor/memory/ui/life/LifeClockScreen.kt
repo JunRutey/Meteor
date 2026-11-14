@@ -47,8 +47,9 @@ import java.util.Locale
 /**
  * 生辰页：淡蓝晨光渐变 + 在线时长 + 大字号年龄 + 下次生日倒计时。
  *
- * 视觉按设计稿：76sp 整数部分与 32sp 小数部分同行、20dp 白色倒计时卡片、
- * 8dp 进度条与 13% 留白。年龄每秒刷新，直接复用 [LifePageState] 的指标。
+ * 视觉按设计稿：76sp 整数部分、32sp 小数部分与 14sp 右下角「岁了」同行、
+ * 20dp 白色倒计时卡片、8dp 进度条与 13% 留白。年龄每秒刷新，直接复用
+ * [LifePageState] 的指标。
  */
 @Composable
 fun LifeClockScreen(
@@ -164,16 +165,22 @@ private fun LifeClockContent(
     val dateFormatter = remember(locale) {
         DateTimeFormatter.ofLocalizedDate(FormatStyle.LONG).withLocale(locale)
     }
-    val solarDate = dateFormatter.format(profile.gregorianDate)
+    // A lunar birthday only shows its lunar form: pairing it with the Gregorian
+    // date of the birth year invites a comparison against the next birthday's
+    // Gregorian date, and those two legitimately differ because a fixed lunar
+    // date drifts across Gregorian years.
     val birthday = when (profile) {
-        is BirthProfile.Solar -> stringResource(R.string.life_birthday_solar, solarDate)
+        is BirthProfile.Solar -> stringResource(
+            R.string.life_birthday_solar,
+            dateFormatter.format(profile.gregorianDate),
+        )
+
         is BirthProfile.Lunar -> if (profile.leapMonth) {
             stringResource(
                 R.string.life_birthday_lunar_leap,
                 profile.year,
                 profile.month,
                 profile.day,
-                solarDate,
             )
         } else {
             stringResource(
@@ -181,7 +188,6 @@ private fun LifeClockContent(
                 profile.year,
                 profile.month,
                 profile.day,
-                solarDate,
             )
         }
     }
@@ -259,10 +265,14 @@ private fun LifeClockContent(
                     color = MaterialTheme.colorScheme.primary,
                     maxLines = 1,
                 )
+                // The unit is a footnote to the number: bottom-aligned with the
+                // decimal digits and clearly smaller, so it reads as the
+                // bottom-right corner of the changing age instead of a peer.
                 Text(
                     text = stringResource(R.string.life_age_suffix),
-                    modifier = Modifier.padding(start = 6.dp, bottom = 6.dp),
-                    fontSize = 20.sp,
+                    modifier = Modifier.padding(start = 4.dp, bottom = 3.dp),
+                    fontSize = 14.sp,
+                    lineHeight = 18.sp,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -276,14 +286,17 @@ private fun LifeClockContent(
         }
 
         Box(
+            // A fixed height clipped the chip once the label wrapped (long lunar
+            // dates and large font scales). Let it grow; single-line content
+            // still keeps the 36dp pill shape.
             modifier = Modifier
                 .padding(top = 12.dp)
-                .height(36.dp)
+                .heightIn(min = 36.dp)
                 .background(
                     MaterialTheme.colorScheme.primaryContainer,
                     RoundedCornerShape(18.dp),
                 )
-                .padding(horizontal = 14.dp),
+                .padding(horizontal = 14.dp, vertical = 6.dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(

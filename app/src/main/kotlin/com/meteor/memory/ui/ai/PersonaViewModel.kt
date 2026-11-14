@@ -66,7 +66,7 @@ class PersonaViewModel @Inject constructor(
         viewModelScope.launch {
             repository.settings.collect { settings ->
                 val blocked = gate.blocked(settings)
-                _state.update { it.copy(provider = settings.aiProvider, blocked = blocked) }
+                _state.update { it.copy(provider = AiPresets.DEEPSEEK, blocked = blocked) }
             }
         }
     }
