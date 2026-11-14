@@ -264,7 +264,10 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideLogExporter(@ApplicationContext context: Context): LogExporter = LogExporter(context)
+    fun provideLogExporter(
+        @ApplicationContext context: Context,
+        appLog: AppLog,
+    ): LogExporter = LogExporter(context, appLog)
 
     @Provides
     @Singleton
@@ -306,6 +309,7 @@ object AppModule {
     fun provideUpdateService(
         @ApplicationContext context: Context,
         notificationFeature: NotificationFeature,
-    ): UpdateService = UpdateService(context, BuildConfig.VERSION_NAME, notificationFeature)
+        appLog: AppLog,
+    ): UpdateService = UpdateService(context, BuildConfig.VERSION_NAME, notificationFeature, appLog)
 
 }

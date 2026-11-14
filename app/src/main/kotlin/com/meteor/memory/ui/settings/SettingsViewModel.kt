@@ -83,27 +83,45 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun setDarkMode(mode: DarkMode) {
-        viewModelScope.launch { repository.setDarkMode(mode) }
+        viewModelScope.launch {
+            repository.setDarkMode(mode)
+            appLog.info(TAG, "dark mode=${mode.name}")
+        }
     }
 
     fun setDynamicColor(enabled: Boolean) {
-        viewModelScope.launch { repository.setDynamicColor(enabled) }
+        viewModelScope.launch {
+            repository.setDynamicColor(enabled)
+            appLog.info(TAG, "dynamic color=$enabled")
+        }
     }
 
     fun setFontScale(scale: FontScale) {
-        viewModelScope.launch { repository.setFontScale(scale) }
+        viewModelScope.launch {
+            repository.setFontScale(scale)
+            appLog.info(TAG, "font scale=${scale.name}")
+        }
     }
 
     fun setAnimationsEnabled(enabled: Boolean) {
-        viewModelScope.launch { repository.setAnimationsEnabled(enabled) }
+        viewModelScope.launch {
+            repository.setAnimationsEnabled(enabled)
+            appLog.info(TAG, "animations=$enabled")
+        }
     }
 
     fun setAppLockEnabled(enabled: Boolean) {
-        viewModelScope.launch { repository.setAppLockEnabled(enabled) }
+        viewModelScope.launch {
+            repository.setAppLockEnabled(enabled)
+            appLog.info(TAG, "app lock requested=$enabled")
+        }
     }
 
     fun setScreenshotProtectionEnabled(enabled: Boolean) {
-        viewModelScope.launch { repository.setScreenshotProtectionEnabled(enabled) }
+        viewModelScope.launch {
+            repository.setScreenshotProtectionEnabled(enabled)
+            appLog.info(TAG, "screenshot protection=$enabled")
+        }
     }
 
     fun setDiaryReminderEnabled(enabled: Boolean) {
@@ -111,6 +129,7 @@ class SettingsViewModel @Inject constructor(
             repository.setDiaryReminderEnabled(enabled)
             notificationFeature.syncReminder()
             refreshNotificationPermissions()
+            appLog.info(TAG, "daily reminder=$enabled")
         }
     }
 
@@ -118,6 +137,7 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             repository.setDiaryReminderTimeMinutes(minutes)
             notificationFeature.syncReminder()
+            appLog.info(TAG, "daily reminder time=${minutes}min")
         }
     }
 
@@ -128,29 +148,37 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun openNotificationSettings() {
+        appLog.info(TAG, "opened notification settings")
         notificationFeature.openNotificationSettings()
     }
 
     fun openExactAlarmSettings() {
+        appLog.info(TAG, "opened exact alarm settings")
         notificationFeature.openExactAlarmSettings()
     }
 
     fun setVerboseLogging(enabled: Boolean) {
         viewModelScope.launch {
             repository.setVerboseLogging(enabled)
+            appLog.info(TAG, "verbose logging=$enabled")
             withContext(Dispatchers.IO) { appLog.setVerbose(enabled) }
         }
     }
 
     fun setAutoCheckForUpdates(enabled: Boolean) {
-        viewModelScope.launch { repository.setAutoCheckForUpdates(enabled) }
+        viewModelScope.launch {
+            repository.setAutoCheckForUpdates(enabled)
+            appLog.info(TAG, "auto update check=$enabled")
+        }
     }
 
     fun checkForUpdates() {
+        appLog.info(TAG, "manual update check")
         updateService.checkAndDownload()
     }
 
     fun installUpdate() {
+        appLog.info(TAG, "install update requested")
         updateService.installDownloadedUpdate()
     }
 
@@ -160,36 +188,60 @@ class SettingsViewModel @Inject constructor(
 
     /** Hides the entry and stops every request; never touches archive data. */
     fun setAiEnabled(enabled: Boolean) {
-        viewModelScope.launch { repository.setAiEnabled(enabled) }
+        viewModelScope.launch {
+            repository.setAiEnabled(enabled)
+            appLog.info(TAG, "AI enabled=$enabled")
+        }
     }
 
     /** Only ever called from the consent dialog's confirm button. */
     fun acceptAiConsent() {
-        viewModelScope.launch { repository.setAiConsentAccepted(true) }
+        viewModelScope.launch {
+            repository.setAiConsentAccepted(true)
+            appLog.info(TAG, "AI consent accepted")
+        }
     }
 
     fun setAiModel(model: String) {
-        viewModelScope.launch { repository.setAiModel(model) }
+        viewModelScope.launch {
+            repository.setAiModel(model)
+            appLog.info(TAG, "AI model=$model")
+        }
     }
 
     fun setAiReasoning(reasoning: String) {
-        viewModelScope.launch { repository.setAiReasoning(reasoning) }
+        viewModelScope.launch {
+            repository.setAiReasoning(reasoning)
+            appLog.info(TAG, "AI reasoning=$reasoning")
+        }
     }
 
     fun setAiTtsVoice(voice: String) {
-        viewModelScope.launch { repository.setAiTtsVoice(voice) }
+        viewModelScope.launch {
+            repository.setAiTtsVoice(voice)
+            appLog.info(TAG, "AI TTS voice=$voice")
+        }
     }
 
     fun setAiWriteEnabled(enabled: Boolean) {
-        viewModelScope.launch { repository.setAiWriteEnabled(enabled) }
+        viewModelScope.launch {
+            repository.setAiWriteEnabled(enabled)
+            appLog.info(TAG, "AI writes=$enabled")
+        }
     }
 
     fun setAiWriteDiary(enabled: Boolean) {
-        viewModelScope.launch { repository.setAiWriteDiary(enabled) }
+        viewModelScope.launch {
+            repository.setAiWriteDiary(enabled)
+            appLog.info(TAG, "AI diary writes=$enabled")
+        }
     }
 
     fun setAiWritePeople(enabled: Boolean) {
-        viewModelScope.launch { repository.setAiWritePeople(enabled) }
+        viewModelScope.launch {
+            repository.setAiWritePeople(enabled)
+            appLog.info(TAG, "AI people writes=$enabled")
+        }
     }
 
     /**
@@ -202,7 +254,10 @@ class SettingsViewModel @Inject constructor(
         withContext(Dispatchers.IO) {
             reader.saveApiKey(key)
             reader.hasApiKey()
-        }.also { _apiKeyPresent.value = it }
+        }.also {
+            _apiKeyPresent.value = it
+            appLog.info(TAG, "AI API key saved")
+        }
     }
 
     suspend fun clearApiKey() {
@@ -210,6 +265,7 @@ class SettingsViewModel @Inject constructor(
             reader.clearApiKey()
         }
         _apiKeyPresent.value = false
+        appLog.info(TAG, "AI API key cleared")
     }
 
     fun testAiConnection() {
@@ -218,10 +274,15 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val readiness = withContext(Dispatchers.IO) { runCatching { reader.read() }.getOrNull() }
             if (readiness == null || !readiness.config.isConfigured()) {
+                appLog.info(TAG, "AI connection test skipped: not configured")
                 _aiTest.value = AiTestState(finished = true, ok = false, code = 0)
                 return@launch
             }
             val result = runCatching { aiModule.probe(readiness.config) }.getOrNull()
+            appLog.info(
+                TAG,
+                "AI connection test ok=${result?.ok == true} code=${result?.code ?: 0}",
+            )
             _aiTest.value = AiTestState(
                 finished = true,
                 ok = result?.ok == true,
@@ -237,17 +298,31 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             val readiness = withContext(Dispatchers.IO) { runCatching { reader.read() }.getOrNull() }
             if (readiness == null || !readiness.config.isConfigured()) {
+                appLog.info(TAG, "AI model fetch skipped: not configured")
                 _aiModels.value = AiModelsState(failed = true)
                 return@launch
             }
-            val models = runCatching { AiModels.fetch(readiness.config) }.getOrNull().orEmpty()
+            val fetched = runCatching { AiModels.fetch(readiness.config) }
+            val models = fetched.getOrNull().orEmpty()
+            val failure = fetched.exceptionOrNull()
+            if (failure == null) {
+                appLog.info(TAG, "AI models fetched count=${models.size}")
+            } else {
+                appLog.warn(TAG, "AI model fetch failed", failure)
+            }
             _aiModels.value = AiModelsState(items = models, failed = models.isEmpty())
         }
     }
 
     fun refreshLogSize() {
         viewModelScope.launch {
-            _logSizeBytes.value = withContext(Dispatchers.IO) { appLog.sizeBytes() }
+            val bytes = withContext(Dispatchers.IO) { appLog.sizeBytes() }
+            _logSizeBytes.value = bytes
+            appLog.debug(TAG, "log size=$bytes")
         }
+    }
+
+    private companion object {
+        const val TAG = "Settings"
     }
 }

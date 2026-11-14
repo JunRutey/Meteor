@@ -148,6 +148,10 @@ class AttachmentImportCoordinator @Inject constructor(
             }
             onProgress(index + 1, uris.size)
         }
+        appLog.info(
+            TAG,
+            "attachment import finished: imported=$imported failed=$failed skipped=$skipped",
+        )
 
         val indexFailed = if (imported == 0) {
             false

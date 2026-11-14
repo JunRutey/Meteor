@@ -1,5 +1,6 @@
 package com.meteor.memory
 
+import android.content.ComponentCallbacks2
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.compose.setContent
@@ -64,6 +65,27 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    override fun onStart() {
+        super.onStart()
+        appLog.info(LIFECYCLE_TAG, "activity started")
+    }
+
+    override fun onStop() {
+        appLog.info(LIFECYCLE_TAG, "activity stopped")
+        super.onStop()
+    }
+
+    /**
+     * Low-memory events explain later image/AI failures that otherwise look
+     * random in a bug report.
+     */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) {
+            appLog.debug(LIFECYCLE_TAG, "onTrimMemory level=$level")
+        }
+    }
+
     /**
      * `FLAG_SECURE` blocks screenshots and recording, and the platform also
      * blanks the recent-tasks preview. Applied from the settings flow so a
@@ -79,5 +101,6 @@ class MainActivity : FragmentActivity() {
 
     private companion object {
         const val TAG = "ScreenPrivacy"
+        const val LIFECYCLE_TAG = "Lifecycle"
     }
 }

@@ -49,4 +49,40 @@ class LogFilesTest {
         val unknown = tempFile("notes.txt")
         assertTrue(LogFiles.expired(listOf(unknown), today, retentionDays = 1).isEmpty())
     }
+
+    @Test
+    fun `deletes the oldest files until the budget fits`() {
+        val oldest = tempFile("meteor-2025-03-01.log").apply { writeText("1234567890") }
+        val middle = tempFile("meteor-2025-03-02.log").apply { writeText("1234567890") }
+        val newest = tempFile("meteor-2025-03-03.log").apply { writeText("1234567890") }
+
+        val doomed = LogFiles.overBudget(listOf(oldest, middle, newest), maxTotalBytes = 15)
+
+        assertEquals(listOf(oldest, middle), doomed)
+    }
+
+    @Test
+    fun `keeps the active file even when it is over budget`() {
+        val old = tempFile("meteor-2025-03-01.log").apply { writeText("1234567890") }
+        val current = tempFile("meteor-2025-03-02.log").apply { writeText("1234567890") }
+
+        val doomed = LogFiles.overBudget(
+            listOf(old, current),
+            maxTotalBytes = 1,
+            keep = current,
+        )
+
+        assertEquals(listOf(old), doomed)
+    }
+
+    @Test
+    fun `never deletes files it cannot parse to satisfy the budget`() {
+        val unknown = tempFile("notes.txt").apply { writeText("1234567890") }
+        val log = tempFile("meteor-2025-03-01.log").apply { writeText("1234567890") }
+
+        val doomed = LogFiles.overBudget(listOf(unknown, log), maxTotalBytes = 1)
+
+        assertEquals(listOf(log), doomed)
+        assertTrue(unknown.exists())
+    }
 }

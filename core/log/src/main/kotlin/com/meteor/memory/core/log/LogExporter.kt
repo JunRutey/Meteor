@@ -1,109 +1,119 @@
 package com.meteor.memory.core.log
 
-import android.content.ContentValues
 import android.content.Context
+import android.content.pm.ApplicationInfo
+import android.net.Uri
 import android.os.Build
-import android.os.Environment
-import android.provider.MediaStore
+import android.provider.OpenableColumns
 import java.io.File
+import java.io.OutputStream
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
+import java.util.TimeZone
+
+/** Why an export failed; the UI owns the localized wording. */
+enum class LogExportError {
+    OPEN_FAILED,
+    WRITE_FAILED,
+    READ_FAILED,
+}
 
 /**
- * Writes the collected logs into the device's shared Downloads folder.
+ * Bundles the collected logs into one text document and writes it to the
+ * destination the user picked in the system file picker.
  *
- * API 29+ goes through MediaStore, which needs no permission at all. Older
- * releases would need `WRITE_EXTERNAL_STORAGE`, so there we fall back to the
- * app-specific external directory and report the real path instead of failing.
+ * The picker (SAF) is the only writer path: the app touches no shared storage
+ * directly and needs no storage permission on any API level. The caller is
+ * responsible for launching `ActivityResultContracts.CreateDocument` and
+ * passing the returned `content://` URI.
  */
 class LogExporter(
     private val context: Context,
+    private val appLog: AppLog,
     private val clock: () -> Instant = Instant::now,
 ) {
 
     data class Result(
         val success: Boolean,
-        val location: String?,
-        val error: String?,
+        val displayName: String?,
+        val error: LogExportError?,
     )
 
-    fun export(): Result = runCatching {
-        val payload = buildPayload()
-        val fileName = "meteor-log-${FILE_STAMP.format(clock().atZone(ZoneId.systemDefault()))}.txt"
+    /** File name offered to the system picker; the user may rename it there. */
+    fun suggestedFileName(): String =
+        "meteor-log-${FILE_STAMP.format(clock().atZone(ZoneId.systemDefault()))}.txt"
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            writeToDownloadsViaMediaStore(fileName, payload)
-        } else {
-            writeToLegacyDownloads(fileName, payload)
-        }
-    }.getOrElse { throwable ->
-        Result(success = false, location = null, error = throwable.message ?: throwable::class.java.simpleName)
+    fun export(destination: Uri): Result {
+        val payload = runCatching { buildPayload() }
+            .getOrElse { return Result(false, null, LogExportError.READ_FAILED) }
+
+        val stream = openDestination(destination)
+            ?: return Result(false, null, LogExportError.OPEN_FAILED)
+
+        return runCatching {
+            stream.use { output ->
+                output.write(payload.toByteArray(Charsets.UTF_8))
+                output.flush()
+            }
+            Result(true, displayName(destination), null)
+        }.getOrElse { Result(false, null, LogExportError.WRITE_FAILED) }
     }
 
-    @androidx.annotation.RequiresApi(Build.VERSION_CODES.Q)
-    private fun writeToDownloadsViaMediaStore(fileName: String, payload: String): Result {
-        val resolver = context.contentResolver
-        val values = ContentValues().apply {
-            put(MediaStore.Downloads.DISPLAY_NAME, fileName)
-            put(MediaStore.Downloads.MIME_TYPE, "text/plain")
-            put(MediaStore.Downloads.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/$FOLDER")
-        }
-
-        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
-            ?: return Result(false, null, "无法在下载目录创建文件")
-
-        resolver.openOutputStream(uri)?.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
-            ?: return Result(false, null, "无法写入下载目录")
-
-        return Result(true, "Download/$FOLDER/$fileName", null)
-    }
-
-    @Suppress("DEPRECATION")
-    private fun writeToLegacyDownloads(fileName: String, payload: String): Result {
-        return try {
-            val dir = File(
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                FOLDER,
-            )
-            if (!dir.exists()) dir.mkdirs()
-            File(dir, fileName).writeText(payload, Charsets.UTF_8)
-            Result(true, "Download/$FOLDER/$fileName", null)
-        } catch (security: SecurityException) {
-            // No permission on API < 29: keep the log reachable via USB instead of losing it.
-            val fallbackDir = File(context.getExternalFilesDir(null), "logs-export")
-            if (!fallbackDir.exists()) fallbackDir.mkdirs()
-            val target = File(fallbackDir, fileName)
-            target.writeText(payload, Charsets.UTF_8)
-            Result(true, target.absolutePath, null)
-        }
-    }
+    /**
+     * Some document providers reject the truncating `wt` mode even though they
+     * can still open a normal write stream. Never silently append to an older
+     * export, though: `w` is the fallback, not the first choice.
+     */
+    private fun openDestination(uri: Uri): OutputStream? =
+        runCatching { context.contentResolver.openOutputStream(uri, "wt") }.getOrNull()
+            ?: runCatching { context.contentResolver.openOutputStream(uri, "w") }.getOrNull()
 
     private fun buildPayload(): String {
-        val header = buildString {
-            appendLine("Meteor diagnostic log")
-            appendLine("exported: ${clock()}")
-            appendLine("app: ${appVersion()}")
-            appendLine("device: ${Build.MANUFACTURER} ${Build.MODEL} (API ${Build.VERSION.SDK_INT})")
-            appendLine("---")
-        }
-
-        val logDir = File(context.filesDir, "logs")
+        val logDir = File(context.filesDir, LOG_DIR)
         val files = (logDir.listFiles() ?: emptyArray())
             .filter { it.isFile && it.name.endsWith(LogFiles.EXTENSION) }
             .sortedBy { it.name }
-
-        if (files.isEmpty()) return header + "（还没有任何日志）\n"
-
-        val body = buildString {
-            files.forEach { file ->
-                appendLine("## ${file.name}")
-                appendLine(file.readText(Charsets.UTF_8).takeLast(MAX_CHARS_PER_FILE))
+            .map { file ->
+                LogFileContent(
+                    name = file.name,
+                    text = runCatching { LogFileTail.read(file) }
+                        .getOrElse { "<unreadable: ${it::class.java.simpleName}>" },
+                )
             }
-        }
+        return LogExportFormat.document(header(files), files)
+    }
 
-        // Keep the tail: the newest lines are the ones that explain a failure.
-        return header + body.takeLast(MAX_TOTAL_CHARS)
+    private fun header(files: List<LogFileContent>): String = buildString {
+        appendLine("Meteor diagnostic log")
+        appendLine("exported: ${clock()}")
+        appendLine("app: ${appVersion()}")
+        appendLine("build: ${if (isDebuggable()) "debug" else "release"}")
+        appendLine("package: ${context.packageName}")
+        appendLine(
+            "device: ${Build.MANUFACTURER} ${Build.MODEL} (${Build.PRODUCT}), " +
+                "API ${Build.VERSION.SDK_INT} (${Build.VERSION.RELEASE})",
+        )
+        appendLine("abi: ${Build.SUPPORTED_ABIS.firstOrNull() ?: "unknown"}")
+        appendLine("locale: ${Locale.getDefault().toLanguageTag()}")
+        appendLine("timezone: ${TimeZone.getDefault().id}")
+        appendLine("verbose logging: ${appLog.isVerbose()}")
+        appendLine("log files: ${files.size}")
+        appendLine("---")
+    }
+
+    private fun displayName(uri: Uri): String {
+        val queried = runCatching {
+            context.contentResolver
+                .query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor ->
+                    val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (cursor.moveToFirst() && index >= 0) cursor.getString(index) else null
+                }
+        }.getOrNull()
+
+        return queried?.takeIf { it.isNotBlank() } ?: suggestedFileName()
     }
 
     private fun appVersion(): String = runCatching {
@@ -117,10 +127,11 @@ class LogExporter(
         "${info.versionName} ($code)"
     }.getOrDefault("unknown")
 
+    private fun isDebuggable(): Boolean =
+        (context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+
     private companion object {
-        const val FOLDER = "Meteor"
-        const val MAX_CHARS_PER_FILE = 200_000
-        const val MAX_TOTAL_CHARS = 500_000
+        const val LOG_DIR = "logs"
         val FILE_STAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
     }
 }

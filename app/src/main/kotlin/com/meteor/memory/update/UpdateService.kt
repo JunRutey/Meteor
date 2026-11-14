@@ -7,9 +7,11 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import androidx.core.content.FileProvider
+import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.system.NotificationFeature
 import com.meteor.memory.system.UpdateNotificationProgress
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,15 +31,24 @@ class UpdateService(
     context: Context,
     currentVersionName: String,
     private val notificationFeature: NotificationFeature,
+    private val appLog: AppLog,
 ) {
     private val appContext = context.applicationContext
     private val currentVersion = requireNotNull(ReleaseVersion.parse(currentVersionName))
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val checkMutex = Mutex()
-    private val launchCheckStarted = AtomicBoolean(false)
     private val _state = MutableStateFlow<UpdateState>(UpdateState.Idle)
 
     internal val state: StateFlow<UpdateState> = _state.asStateFlow()
+
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, failure ->
+            // A bug in the updater must never take down the diary: log it and
+            // surface a normal download failure instead.
+            appLog.error(TAG, "unexpected update coroutine failure", failure)
+            _state.value = UpdateState.Failed(UpdateError.DOWNLOAD)
+        },
+    )
+    private val checkMutex = Mutex()
+    private val launchCheckStarted = AtomicBoolean(false)
 
     @Volatile
     private var downloadedUpdate: Pair<String, File>? = null
@@ -48,29 +59,38 @@ class UpdateService(
 
     fun checkAndDownload() {
         scope.launch {
-            if (!checkMutex.tryLock()) return@launch
+            if (!checkMutex.tryLock()) {
+                appLog.debug(TAG, "update check already running")
+                return@launch
+            }
             try {
                 notificationFeature.hideUpdateNotification()
                 _state.value = UpdateState.Checking
+                appLog.info(TAG, "update check started, current=$currentVersion")
                 val release = withContext(Dispatchers.IO) { fetchLatestRelease() }
                 if (release.version <= currentVersion) {
+                    appLog.info(TAG, "up to date, latest=${release.version}")
                     _state.value = UpdateState.UpToDate
                     return@launch
                 }
 
                 val versionName = release.version.toString()
+                appLog.info(TAG, "update available: $versionName")
                 _state.value = UpdateState.Downloading(versionName)
                 notificationFeature.showUpdateDownload(
                     UpdateNotificationProgress(versionName, downloadedBytes = 0, totalBytes = 0),
                 )
                 val apk = withContext(Dispatchers.IO) { downloadApk(release) }
                 downloadedUpdate = versionName to apk
+                appLog.info(TAG, "update downloaded: $versionName ${apk.length()} bytes")
                 _state.value = UpdateState.ReadyToInstall(versionName)
                 notificationFeature.showUpdateReady(versionName)
             } catch (failure: UpdateException) {
+                appLog.warn(TAG, "update check failed: ${failure.reason}", failure.cause ?: failure)
                 notificationFeature.hideUpdateNotification()
                 _state.value = UpdateState.Failed(failure.reason)
             } catch (failure: SecurityException) {
+                appLog.warn(TAG, "update check blocked by security policy", failure)
                 notificationFeature.hideUpdateNotification()
                 _state.value = UpdateState.Failed(UpdateError.DOWNLOAD)
             } finally {
@@ -81,10 +101,12 @@ class UpdateService(
 
     fun installDownloadedUpdate() {
         val (versionName, apk) = downloadedUpdate ?: run {
+            appLog.warn(TAG, "install requested without a downloaded update")
             _state.value = UpdateState.Failed(UpdateError.DOWNLOAD)
             return
         }
         if (!apk.isFile || apk.length() == 0L || !looksLikeApk(apk)) {
+            appLog.warn(TAG, "downloaded update is invalid, deleting it")
             downloadedUpdate = null
             runCatching { apk.delete() }
             notificationFeature.hideUpdateNotification()
@@ -94,6 +116,7 @@ class UpdateService(
 
         try {
             if (!appContext.packageManager.canRequestPackageInstalls()) {
+                appLog.info(TAG, "install permission required for $versionName")
                 appContext.startActivity(
                     Intent(
                         Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
@@ -118,12 +141,16 @@ class UpdateService(
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
                 },
             )
+            appLog.info(TAG, "installer opened for $versionName")
             notificationFeature.hideUpdateNotification()
         } catch (failure: ActivityNotFoundException) {
+            appLog.warn(TAG, "install failed: no package installer", failure)
             _state.value = UpdateState.Failed(UpdateError.INSTALL)
         } catch (failure: IllegalArgumentException) {
+            appLog.warn(TAG, "install failed: invalid apk uri", failure)
             _state.value = UpdateState.Failed(UpdateError.INSTALL)
         } catch (failure: SecurityException) {
+            appLog.warn(TAG, "install failed: security policy", failure)
             _state.value = UpdateState.Failed(UpdateError.INSTALL)
         }
     }
@@ -134,11 +161,13 @@ class UpdateService(
             current is UpdateState.InstallPermissionRequired &&
             appContext.packageManager.canRequestPackageInstalls()
         ) {
+            appLog.info(TAG, "install permission granted for ${current.versionName}")
             _state.value = UpdateState.ReadyToInstall(current.versionName)
         }
     }
 
     private fun fetchLatestRelease(): ReleaseMetadata {
+        appLog.debug(TAG, "fetching latest release metadata")
         val connection = try {
             (URL(LATEST_RELEASE_URL).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
@@ -154,6 +183,7 @@ class UpdateService(
 
         try {
             if (connection.responseCode !in 200..299) {
+                appLog.warn(TAG, "release metadata returned HTTP ${connection.responseCode}")
                 throw UpdateException(UpdateError.NETWORK)
             }
             val body = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
@@ -169,6 +199,7 @@ class UpdateService(
 
     private fun downloadApk(release: ReleaseMetadata): File {
         val versionName = release.version.toString()
+        appLog.debug(TAG, "downloading apk $versionName")
         var partialFile: File? = null
         val connection = try {
             (URL(release.apkUrl).openConnection() as HttpURLConnection).apply {
@@ -184,15 +215,18 @@ class UpdateService(
 
         try {
             if (connection.responseCode !in 200..299) {
+                appLog.warn(TAG, "apk download returned HTTP ${connection.responseCode}")
                 throw UpdateException(UpdateError.DOWNLOAD)
             }
             val contentLength = connection.contentLengthLong
             if (contentLength == 0L || contentLength > MAX_APK_BYTES) {
+                appLog.warn(TAG, "apk download has invalid size: $contentLength")
                 throw UpdateException(UpdateError.DOWNLOAD)
             }
 
             val updateDirectory = File(appContext.cacheDir, UPDATE_CACHE_DIRECTORY)
             if (!updateDirectory.isDirectory && !updateDirectory.mkdirs()) {
+                appLog.warn(TAG, "could not create update cache directory")
                 throw UpdateException(UpdateError.DOWNLOAD)
             }
             val fileName = "$UPDATE_FILE_PREFIX$versionName.apk"
@@ -205,6 +239,7 @@ class UpdateService(
                 apkFile.length() == contentLength &&
                 looksLikeApk(apkFile)
             ) {
+                appLog.info(TAG, "reused cached apk $versionName")
                 pruneOtherUpdates(updateDirectory, keep = apkFile)
                 return apkFile
             }
@@ -213,6 +248,7 @@ class UpdateService(
             val temporaryFile = File(updateDirectory, "$fileName.part")
             partialFile = temporaryFile
             if (temporaryFile.exists() && !temporaryFile.delete()) {
+                appLog.warn(TAG, "could not replace partial apk")
                 throw UpdateException(UpdateError.DOWNLOAD)
             }
 
@@ -264,6 +300,7 @@ class UpdateService(
                 downloadedBytes == 0L ||
                 (contentLength > 0 && downloadedBytes != contentLength)
             ) {
+                appLog.warn(TAG, "apk download incomplete: $downloadedBytes/$contentLength bytes")
                 throw UpdateException(UpdateError.DOWNLOAD)
             }
             if (apkFile.exists() && !apkFile.delete()) {
@@ -273,6 +310,7 @@ class UpdateService(
                 throw UpdateException(UpdateError.DOWNLOAD)
             }
             partialFile = null
+            appLog.info(TAG, "apk saved $versionName: $downloadedBytes bytes")
             notificationFeature.showUpdateDownload(
                 UpdateNotificationProgress(
                     versionName = versionName,
@@ -319,6 +357,7 @@ class UpdateService(
     }.getOrDefault(false)
 
     private companion object {
+        const val TAG = "AppUpdate"
         const val LATEST_RELEASE_URL = "https://api.github.com/repos/JunRutey/Meteor/releases/latest"
         const val USER_AGENT = "Meteor-Android"
         const val GITHUB_API_VERSION = "2022-11-28"

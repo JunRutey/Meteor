@@ -129,10 +129,12 @@
     <string name="diagnostics_index_error">重建失败：%1$s</string>
     <string name="home_open_diagnostics">存储诊断（调试）</string>
 
-    <string name="log_export">导出日志</string>
+    <string name="log_export">导出日志…</string>
     <string name="log_export_working">正在导出…</string>
-    <string name="log_export_done">已导出到 %1$s</string>
-    <string name="log_export_failed">导出失败：%1$s</string>
+    <string name="log_export_done">已保存到「%1$s」</string>
+    <string name="log_export_failed_open">导出失败：无法打开所选位置</string>
+    <string name="log_export_failed_write">导出失败：写入所选位置失败</string>
+    <string name="log_export_failed_read">导出失败：读取本机日志失败</string>
 
     <string name="search_title">搜索</string>
     <string name="search_back">返回</string>
