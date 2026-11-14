@@ -104,7 +104,7 @@ internal fun PersonTagEditor(
                 role = Role.RadioButton,
                 onClick = { applySelection(emptyList()) },
             )
-            relationChoices.forEach { (candidate, label) ->
+            relationChoices.forEach { (_, label) ->
                 val selected = label in selectedTags
                 TagChip(
                     label = label,
