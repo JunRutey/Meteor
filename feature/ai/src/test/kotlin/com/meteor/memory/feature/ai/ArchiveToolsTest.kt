@@ -7,6 +7,7 @@ import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.storage.Document
 import com.meteor.memory.core.storage.Mood
 import com.meteor.memory.core.storage.MoodQueries
+import com.meteor.memory.core.storage.PersonDeleteResult
 import com.meteor.memory.core.storage.PersonEntry
 import com.meteor.memory.core.storage.PersonProfile
 import com.meteor.memory.core.storage.PersonQueries
@@ -98,6 +99,7 @@ class ArchiveToolsTest {
             relation: Relation?,
             note: String,
             notes: String,
+            tags: List<String>,
         ): String = "p-new"
 
         override fun update(
@@ -106,22 +108,32 @@ class ArchiveToolsTest {
             relation: Relation?,
             note: String,
             notes: String,
+            tags: List<String>,
         ) = Unit
+
+        override fun delete(personId: String): PersonDeleteResult = PersonDeleteResult.NOT_FOUND
     }
 
     private class ExistingPerson : PersonQueries {
         var updatedPersonId: String? = null
+        var updatedTags: List<String>? = null
+        var deletedPersonId: String? = null
 
         override fun list(): List<PersonEntry> = emptyList()
 
         override fun read(personId: String): PersonProfile? =
-            if (personId == "p1") PersonProfile("Existing", Relation.FRIEND) else null
+            if (personId == "p1") {
+                PersonProfile("Existing", Relation.FRIEND, tags = listOf("同事"))
+            } else {
+                null
+            }
 
         override fun create(
             displayName: String,
             relation: Relation?,
             note: String,
             notes: String,
+            tags: List<String>,
         ): String = error("not used")
 
         override fun update(
@@ -130,8 +142,15 @@ class ArchiveToolsTest {
             relation: Relation?,
             note: String,
             notes: String,
+            tags: List<String>,
         ) {
             updatedPersonId = personId
+            updatedTags = tags
+        }
+
+        override fun delete(personId: String): PersonDeleteResult {
+            deletedPersonId = personId
+            return PersonDeleteResult.DELETED
         }
     }
 
@@ -193,6 +212,7 @@ class ArchiveToolsTest {
 
         val peopleOnly = tools(permissions = AiToolPermissions(writePeople = true)).specs().map { it.name }
         assertTrue(peopleOnly.toString(), peopleOnly.contains(ArchiveTools.TOOL_CREATE_PERSON))
+        assertTrue(peopleOnly.toString(), peopleOnly.contains(ArchiveTools.TOOL_DELETE_PERSON))
         assertFalse(peopleOnly.toString(), peopleOnly.contains(ArchiveTools.TOOL_SAVE_DIARY))
     }
 
@@ -229,6 +249,7 @@ class ArchiveToolsTest {
 
         assertTrue(archiveTools.requiresApproval(ArchiveTools.TOOL_SAVE_DIARY))
         assertTrue(archiveTools.requiresApproval(ArchiveTools.TOOL_UPDATE_PERSON))
+        assertTrue(archiveTools.requiresApproval(ArchiveTools.TOOL_DELETE_PERSON))
         assertTrue(archiveTools.requiresApproval(ArchiveTools.TOOL_DELETE_RECORD))
         assertFalse(archiveTools.requiresApproval(ArchiveTools.TOOL_APPEND_DIARY))
         assertFalse(archiveTools.requiresApproval(ArchiveTools.TOOL_SET_MOOD))
@@ -357,6 +378,16 @@ class ArchiveToolsTest {
                 ),
             ),
         )
+        assertEquals(
+            "not-allowed",
+            errorOf(
+                tools(permissions = AiToolPermissions(writePeople = true)).execute(
+                    ArchiveTools.TOOL_DELETE_PERSON,
+                    """{"person_id":"p1"}""",
+                    allowedPersonId = "p1",
+                ),
+            ),
+        )
         assertNull(diaries.saved)
         assertNull(deleter.deletedDiary)
     }
@@ -380,6 +411,62 @@ class ArchiveToolsTest {
         )
         assertEquals("not-allowed", errorOf(otherPerson))
         assertEquals("p1", people.updatedPersonId)
+    }
+
+    @Test
+    fun `delete person only runs with the people grant`() {
+        val people = ExistingPerson()
+        val ungranted = tools(people = people).execute(
+            ArchiveTools.TOOL_DELETE_PERSON,
+            """{"person_id":"p1"}""",
+            allowedPersonId = null,
+        )
+        assertEquals("permission-denied", errorOf(ungranted))
+        assertNull(people.deletedPersonId)
+
+        val granted = tools(
+            permissions = AiToolPermissions(writePeople = true),
+            people = people,
+        ).execute(
+            ArchiveTools.TOOL_DELETE_PERSON,
+            """{"person_id":"p1"}""",
+            allowedPersonId = null,
+        )
+        assertTrue(granted, JSONObject(granted).optBoolean("deleted"))
+        assertEquals("p1", people.deletedPersonId)
+    }
+
+    @Test
+    fun `update person keeps tags when omitted and replaces them when provided`() {
+        val people = ExistingPerson()
+        val scoped = tools(permissions = AiToolPermissions(writePeople = true), people = people)
+
+        scoped.execute(
+            ArchiveTools.TOOL_UPDATE_PERSON,
+            """{"person_id":"p1","name":"Updated"}""",
+            allowedPersonId = null,
+        )
+        assertEquals(listOf("同事"), people.updatedTags)
+
+        scoped.execute(
+            ArchiveTools.TOOL_UPDATE_PERSON,
+            """{"person_id":"p1","tags":["大学同学","大学同学"]}""",
+            allowedPersonId = null,
+        )
+        assertEquals(listOf("大学同学"), people.updatedTags)
+    }
+
+    @Test
+    fun `read person exposes custom tags`() {
+        val result = tools(people = ExistingPerson()).execute(
+            ArchiveTools.TOOL_READ_PERSON,
+            """{"person_id":"p1"}""",
+            allowedPersonId = null,
+        )
+
+        val array = JSONObject(result).getJSONArray("tags")
+        val tags = (0 until array.length()).map(array::getString)
+        assertEquals(listOf("同事"), tags)
     }
 
     @Test

@@ -21,6 +21,13 @@ class AiSearchIndexRefreshTest {
     }
 
     @Test
+    fun `successful person writes request an index refresh`() {
+        assertTrue(isSuccessfulSearchableWrite(ArchiveTools.TOOL_CREATE_PERSON, """{"created":true}"""))
+        assertTrue(isSuccessfulSearchableWrite(ArchiveTools.TOOL_UPDATE_PERSON, """{"updated":true}"""))
+        assertTrue(isSuccessfulSearchableWrite(ArchiveTools.TOOL_DELETE_PERSON, """{"deleted":true}"""))
+    }
+
+    @Test
     fun `failed or unrelated tool results do not request an index refresh`() {
         assertFalse(isSuccessfulSearchableWrite(ArchiveTools.TOOL_SAVE_DIARY, """{"error":"tool-failed"}"""))
         assertFalse(isSuccessfulSearchableWrite(ArchiveTools.TOOL_SET_MOOD, "not-json"))

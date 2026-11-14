@@ -1,5 +1,7 @@
 # ADR-032 · AI 写操作确认规则与受限删除
 
+> 人物档案的删除能力与标签参数由 [ADR-034](ADR-034-person-deletion-custom-tags-and-detail-redesign.md) 补充。
+
 - 状态：已接受
 - 日期：2026-11-06
 - 关联：ADR-027（联网 AI 与隐私边界）、ADR-030（工具权限与调用规范化）

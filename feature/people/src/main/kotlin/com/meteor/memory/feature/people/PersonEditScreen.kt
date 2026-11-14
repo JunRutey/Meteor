@@ -1,6 +1,5 @@
 package com.meteor.memory.feature.people
 
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -12,7 +11,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -51,6 +49,7 @@ import com.meteor.memory.feature.editor.MarkdownField
 fun PersonEditScreen(
     displayName: String,
     relation: Relation?,
+    tags: List<String>,
     note: String,
     notes: String,
     saving: Boolean,
@@ -59,6 +58,7 @@ fun PersonEditScreen(
     error: String?,
     onNameChanged: (String) -> Unit,
     onRelationChanged: (Relation?) -> Unit,
+    onTagsChanged: (List<String>) -> Unit,
     onNoteChanged: (String) -> Unit,
     onNotesChanged: (String) -> Unit,
     onInsertLink: (String, String?) -> Unit,
@@ -104,22 +104,13 @@ fun PersonEditScreen(
                     placeholder = { Text(text = stringResource(R.string.people_name_hint)) },
                 )
 
-                Row(
+                PersonTagEditor(
+                    relation = relation,
+                    tags = tags,
+                    onRelationChanged = onRelationChanged,
+                    onTagsChanged = onTagsChanged,
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.people_label_relation),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    RelationPicker(
-                        selected = relation,
-                        onSelect = onRelationChanged,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
+                )
 
                 OutlinedTextField(
                     value = note,
@@ -212,46 +203,6 @@ private fun Header(
             TextButton(onClick = onBack) {
                 Text(text = stringResource(R.string.people_back))
             }
-        }
-    }
-}
-
-/**
- * 家人 / 朋友 / 绝交的朋友 / 未分类.
- *
- * Scrolls horizontally instead of wrapping: the longest label alone is wide
- * enough to overflow a narrow screen, and clipping "未分类" would hide the only
- * way to clear a relationship.
- */
-@Composable
-private fun RelationPicker(
-    selected: Relation?,
-    onSelect: (Relation?) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier.horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RelationChip(label = relationLabel(null), selected = selected == null) { onSelect(null) }
-        Relation.entries.forEach { candidate ->
-            RelationChip(label = relationLabel(candidate), selected = candidate == selected) {
-                onSelect(candidate)
-            }
-        }
-    }
-}
-
-@Composable
-private fun RelationChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    if (selected) {
-        Button(onClick = onClick) {
-            Text(text = label, style = MaterialTheme.typography.labelLarge)
-        }
-    } else {
-        TextButton(onClick = onClick) {
-            Text(text = label, style = MaterialTheme.typography.labelLarge)
         }
     }
 }

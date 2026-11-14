@@ -35,6 +35,8 @@ data class PersonEditState(
     val note: String = "",
     /** Markdown body (正文) — the part that can carry images. */
     val notes: String = "",
+    /** Free-form labels shown beside the structured relation. */
+    val tags: List<String> = emptyList(),
     val images: Map<String, ImageBitmap> = emptyMap(),
     /** Referenced images whose bytes exist but produced no bitmap. */
     val missingImages: Set<String> = emptySet(),
@@ -85,6 +87,7 @@ class PersonEditViewModel @Inject constructor(
                     relation = profile?.relation,
                     note = profile?.note.orEmpty(),
                     notes = profile?.notes.orEmpty(),
+                    tags = profile?.tags.orEmpty(),
                 )
             }
             refreshImages(_state.value.notes)
@@ -97,6 +100,10 @@ class PersonEditViewModel @Inject constructor(
 
     fun onRelationChanged(value: Relation?) {
         _state.update { it.copy(relation = value, saved = false) }
+    }
+
+    fun onTagsChanged(value: List<String>) {
+        _state.update { it.copy(tags = value, saved = false, error = null) }
     }
 
     fun onNoteChanged(value: String) {
@@ -182,6 +189,7 @@ class PersonEditViewModel @Inject constructor(
                         relation = current.relation,
                         note = current.note.trim(),
                         notes = current.notes,
+                        tags = current.tags,
                     )
                 }
             }

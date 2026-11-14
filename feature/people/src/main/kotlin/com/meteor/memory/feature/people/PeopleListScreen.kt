@@ -2,17 +2,21 @@ package com.meteor.memory.feature.people
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -36,6 +40,7 @@ data class PeopleRow(
     val displayName: String,
     val relation: Relation?,
     val secondary: String,
+    val tags: List<String> = emptyList(),
 )
 
 @Composable
@@ -51,7 +56,7 @@ fun relationLabel(relation: Relation?): String = stringResource(
 @Composable
 fun PeopleListScreen(
     people: List<PeopleRow>,
-    onCreate: (String, Relation?) -> Unit,
+    onCreate: (String, Relation?, List<String>) -> Unit,
     onOpen: (String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -110,13 +115,24 @@ fun PeopleListScreen(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             Text(text = row.displayName, style = MaterialTheme.typography.titleMedium)
                             Text(
                                 text = relationLabel(row.relation),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary,
                             )
+                            row.tags.forEach { tag ->
+                                Text(
+                                    text = tag,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
                         Text(
                             text = row.secondary,
@@ -132,9 +148,9 @@ fun PeopleListScreen(
     if (showCreate) {
         CreatePersonDialog(
             onDismiss = { showCreate = false },
-            onConfirm = { name, relation ->
+            onConfirm = { name, relation, tags ->
                 showCreate = false
-                onCreate(name, relation)
+                onCreate(name, relation, tags)
             },
         )
     }
@@ -143,36 +159,43 @@ fun PeopleListScreen(
 @Composable
 private fun CreatePersonDialog(
     onDismiss: () -> Unit,
-    onConfirm: (String, Relation?) -> Unit,
+    onConfirm: (String, Relation?, List<String>) -> Unit,
 ) {
     var name by remember { mutableStateOf("") }
     var relation by remember { mutableStateOf<Relation?>(Relation.FRIEND) }
+    var tags by remember { mutableStateOf(emptyList<String>()) }
 
-    androidx.compose.material3.AlertDialog(
+    AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(text = stringResource(R.string.people_create_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
+                    modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
                     label = { Text(text = stringResource(R.string.people_name)) },
+                    placeholder = { Text(text = stringResource(R.string.people_name_hint)) },
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Relation.entries.forEach { candidate ->
-                        if (candidate == relation) {
-                            Button(onClick = { relation = candidate }) { Text(relationLabel(candidate)) }
-                        } else {
-                            TextButton(onClick = { relation = candidate }) { Text(relationLabel(candidate)) }
-                        }
-                    }
-                }
+                PersonTagEditor(
+                    relation = relation,
+                    tags = tags,
+                    onRelationChanged = { relation = it },
+                    onTagsChanged = { tags = it },
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(name.trim(), relation) },
+                onClick = { onConfirm(name.trim(), relation, tags) },
                 enabled = name.isNotBlank(),
             ) {
                 Text(stringResource(R.string.people_confirm))

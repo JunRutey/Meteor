@@ -70,6 +70,10 @@ class IndexSearchService @Inject constructor(
         index.upsert(document)
     }
 
+    override suspend fun removeRecord(sourcePath: String) {
+        index.remove(sourcePath)
+    }
+
     override suspend fun recordsForPerson(personId: String): List<PersonRecord> =
         index.queryByPerson(personId).map { record ->
             PersonRecord(

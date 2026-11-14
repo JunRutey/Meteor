@@ -19,6 +19,7 @@ import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -350,6 +351,7 @@ fun MeteorNavHost(
                                 R.string.people_secondary_missing
                             },
                         ),
+                        tags = entry.tags,
                     )
                 },
                 onCreate = viewModel::create,
@@ -378,9 +380,14 @@ fun MeteorNavHost(
 
             RefreshOnResume { viewModel.load() }
 
+            LaunchedEffect(state.deleted) {
+                if (state.deleted) navController.popBackStack()
+            }
+
             PersonDetailScreen(
                 displayName = state.displayName,
                 relation = state.relation,
+                tags = state.tags,
                 note = state.note,
                 notes = state.notes,
                 records = state.records.map {
@@ -418,6 +425,9 @@ fun MeteorNavHost(
                     }
                 },
                 exportFailed = state.exportFailed,
+                onDelete = viewModel::delete,
+                deleting = state.deleting,
+                deleteFailed = state.deleteFailed,
             )
         }
 
@@ -432,6 +442,7 @@ fun MeteorNavHost(
             PersonEditScreen(
                 displayName = state.displayName,
                 relation = state.relation,
+                tags = state.tags,
                 note = state.note,
                 notes = state.notes,
                 saving = state.saving,
@@ -440,6 +451,7 @@ fun MeteorNavHost(
                 error = state.error,
                 onNameChanged = viewModel::onNameChanged,
                 onRelationChanged = viewModel::onRelationChanged,
+                onTagsChanged = viewModel::onTagsChanged,
                 onNoteChanged = viewModel::onNoteChanged,
                 onNotesChanged = viewModel::onNotesChanged,
                 onInsertLink = viewModel::insertLink,

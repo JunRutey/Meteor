@@ -1309,6 +1309,7 @@ private fun toolLabel(name: String): String = stringResource(
         "set_mood" -> R.string.ai_tool_set_mood
         "create_person" -> R.string.ai_tool_create_person
         "update_person" -> R.string.ai_tool_update_person
+        "delete_person" -> R.string.ai_tool_delete_person
         "delete_record" -> R.string.ai_tool_delete_record
         else -> R.string.ai_tool_unknown
     },

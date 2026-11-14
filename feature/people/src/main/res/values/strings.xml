@@ -48,4 +48,21 @@
     <string name="people_relation_friend">朋友</string>
     <string name="people_relation_former">绝交的朋友</string>
     <string name="people_relation_none">未分类</string>
+
+    <string name="people_tags_label">标签</string>
+    <string name="people_tag_input_label">自定义标签</string>
+    <string name="people_tag_hint">比如「同事」</string>
+    <string name="people_tag_add">添加</string>
+    <string name="people_tag_limit">最多 %1$d 个标签</string>
+    <string name="people_tag_remove">移除标签「%1$s」</string>
+
+    <string name="people_detail_title">人物档案</string>
+    <string name="people_detail_unnamed">未命名</string>
+    <string name="people_more_actions">更多操作</string>
+    <string name="people_delete">删除人物</string>
+    <string name="people_deleting">删除中…</string>
+    <string name="people_delete_failed">删除失败，请重试。</string>
+    <string name="people_delete_confirm_title">删除人物档案？</string>
+    <string name="people_delete_confirm_body">将删除「%1$s」的称呼、标签、备注和正文。相关日记和已导入的文件不会被删除。此操作不可撤销。</string>
+    <string name="people_delete_confirm_action">删除</string>
 </resources>

@@ -11,7 +11,7 @@ enum class AiToolCapability {
     /** Create or overwrite diary entries and moods. */
     WRITE_DIARY,
 
-    /** Create or update person profiles. */
+    /** Create, update or delete person profiles. */
     WRITE_PEOPLE,
 }
 

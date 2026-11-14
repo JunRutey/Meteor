@@ -229,12 +229,14 @@ class MeteorAiModule(
                         add("delete_record")
                     }
                 }
-                if (permissions.writePeople) addAll(listOf("create_person", "update_person"))
+                if (permissions.writePeople) {
+                    addAll(listOf("create_person", "update_person", "delete_person"))
+                }
             }
             if (granted.isNotEmpty()) {
                 append("\n\nWrite tools granted this run: ").append(granted.joinToString(", "))
-                append(". Never overwrite a diary, update a person, or delete a diary or mood unless ")
-                append("the user explicitly asked. The app will request confirmation for those operations. ")
+                append(". Never overwrite a diary, update or delete a person, or delete a diary or mood ")
+                append("unless the user explicitly asked. The app will request confirmation for those operations. ")
                 append("Appending a diary, setting a mood, and creating a person do not require confirmation. ")
                 append("Anything not on this list is unavailable.")
             } else {

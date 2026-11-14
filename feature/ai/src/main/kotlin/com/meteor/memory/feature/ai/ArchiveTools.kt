@@ -7,6 +7,8 @@ import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.storage.Document
 import com.meteor.memory.core.storage.Mood
 import com.meteor.memory.core.storage.MoodQueries
+import com.meteor.memory.core.storage.PersonDeleteResult
+import com.meteor.memory.core.storage.PersonProfileCodec
 import com.meteor.memory.core.storage.PersonQueries
 import com.meteor.memory.core.storage.RecordScanner
 import com.meteor.memory.core.storage.RecordType
@@ -126,6 +128,7 @@ class ArchiveTools(
                 relation = args.str("relation"),
                 note = args.str("note"),
                 notes = args.str("notes"),
+                tags = args.tagList("tags").orEmpty(),
             )
 
             TOOL_UPDATE_PERSON -> updatePerson(
@@ -134,8 +137,15 @@ class ArchiveTools(
                 relation = args.str("relation"),
                 note = args.str("note"),
                 notes = args.str("notes"),
+                tags = args.tagList("tags"),
                 allowedPersonId = allowedPersonId,
             )
+
+            TOOL_DELETE_PERSON -> deletePerson(
+                personId = args.str("person_id"),
+                allowedPersonId = allowedPersonId,
+            )
+
             TOOL_DELETE_RECORD -> deleteRecord(
                 recordType = args.str("record_type"),
                 date = args.str("date"),
@@ -272,6 +282,7 @@ class ArchiveTools(
                         put("person_id", entry.personId)
                         put("name", entry.displayName.orEmpty())
                         put("relation", entry.relation?.code.orEmpty())
+                        put("tags", JSONArray(entry.tags))
                     },
                 )
             }
@@ -288,6 +299,7 @@ class ArchiveTools(
             put("relation", profile.relation?.code.orEmpty())
             put("note", profile.note)
             put("notes", profile.notes.take(MAX_BODY_CHARS))
+            put("tags", JSONArray(profile.tags))
         }.toString()
     }
 
@@ -518,7 +530,13 @@ class ArchiveTools(
         }
     }
 
-    private fun createPerson(name: String, relation: String, note: String, notes: String): String {
+    private fun createPerson(
+        name: String,
+        relation: String,
+        note: String,
+        notes: String,
+        tags: List<String>,
+    ): String {
         val displayName = name.trim()
         if (displayName.isBlank()) return errorJson("empty-name")
         val id = personQueries.create(
@@ -526,6 +544,7 @@ class ArchiveTools(
             relation = relation.trim().takeIf { it.isNotBlank() }?.let { Relation.fromCode(it) },
             note = note.trim().take(MAX_NOTE_CHARS),
             notes = notes.trim().take(MAX_WRITE_CHARS),
+            tags = PersonProfileCodec.normalizeTags(tags),
         )
         return JSONObject().put("created", true).put("person_id", id).toString()
     }
@@ -536,6 +555,7 @@ class ArchiveTools(
         relation: String,
         note: String,
         notes: String,
+        tags: List<String>?,
         allowedPersonId: String?,
     ): String {
         if (personId.isBlank()) return errorJson("missing-person-id")
@@ -549,8 +569,24 @@ class ArchiveTools(
             relation = chosenRelation,
             note = note.trim().ifBlank { existing.note }.take(MAX_NOTE_CHARS),
             notes = notes.trim().ifBlank { existing.notes }.take(MAX_WRITE_CHARS),
+            // Absent `tags` keeps the stored list; an explicit empty array clears it.
+            tags = tags?.let(PersonProfileCodec::normalizeTags) ?: existing.tags,
         )
         return JSONObject().put("updated", true).put("person_id", personId).toString()
+    }
+
+    private fun deletePerson(personId: String, allowedPersonId: String?): String {
+        if (personId.isBlank()) return errorJson("missing-person-id")
+        if (!personAllowed(personId, allowedPersonId)) return errorJson("not-allowed")
+        return when (personQueries.delete(personId)) {
+            PersonDeleteResult.DELETED -> JSONObject()
+                .put("deleted", true)
+                .put("person_id", personId)
+                .toString()
+
+            PersonDeleteResult.NOT_FOUND -> errorJson("not-found")
+            PersonDeleteResult.FAILED -> errorJson("delete-failed")
+        }
     }
 
     // --- guards ------------------------------------------------------------
@@ -575,6 +611,21 @@ class ArchiveTools(
         if (value !is Number) return default
         val intValue = value.toInt()
         return if (value.toDouble() == intValue.toDouble()) intValue else default
+    }
+
+    /**
+     * Tag list argument: accepts the declared JSON array, and also a
+     * comma-separated string for models that flatten arrays. Returns null when
+     * the key is absent (keep the stored tags) or has a non-list type.
+     */
+    private fun JSONObject.tagList(name: String): List<String>? {
+        if (!has(name)) return null
+        val raw = when (val value = opt(name)) {
+            is JSONArray -> (0 until value.length()).mapNotNull { index -> value.opt(index) as? String }
+            is String -> value.split(',', '，', '、')
+            else -> return null
+        }
+        return PersonProfileCodec.normalizeTags(raw)
     }
 
     private fun hasOversizedString(args: JSONObject): Boolean {
@@ -631,6 +682,7 @@ class ArchiveTools(
         const val TOOL_SET_MOOD = "set_mood"
         const val TOOL_CREATE_PERSON = "create_person"
         const val TOOL_UPDATE_PERSON = "update_person"
+        const val TOOL_DELETE_PERSON = "delete_person"
         const val TOOL_DELETE_RECORD = "delete_record"
 
         private const val MAX_PEOPLE = 100
@@ -653,13 +705,19 @@ class ArchiveTools(
 
         /** Tools that need an [AttachmentStore]; hidden when none was wired. */
         private val ATTACHMENT_TOOLS = setOf(TOOL_LIST_ATTACHMENTS, TOOL_READ_ATTACHMENT_TEXT)
-        private val APPROVAL_REQUIRED_TOOLS = setOf(TOOL_SAVE_DIARY, TOOL_UPDATE_PERSON, TOOL_DELETE_RECORD)
+        private val APPROVAL_REQUIRED_TOOLS = setOf(
+            TOOL_SAVE_DIARY,
+            TOOL_UPDATE_PERSON,
+            TOOL_DELETE_PERSON,
+            TOOL_DELETE_RECORD,
+        )
         private val PERSON_SCOPE_DENIED_TOOLS = setOf(
             TOOL_READ_MOODS,
             TOOL_SAVE_DIARY,
             TOOL_APPEND_DIARY,
             TOOL_SET_MOOD,
             TOOL_CREATE_PERSON,
+            TOOL_DELETE_PERSON,
             TOOL_DELETE_RECORD,
         )
 
@@ -685,18 +743,19 @@ class ArchiveTools(
             TOOL_SET_MOOD to AiToolCapability.WRITE_DIARY,
             TOOL_CREATE_PERSON to AiToolCapability.WRITE_PEOPLE,
             TOOL_UPDATE_PERSON to AiToolCapability.WRITE_PEOPLE,
+            TOOL_DELETE_PERSON to AiToolCapability.WRITE_PEOPLE,
             TOOL_DELETE_RECORD to AiToolCapability.WRITE_DIARY,
         )
 
         private val READ_SPECS = listOf(
             AiToolSpec(
                 name = TOOL_LIST_PEOPLE,
-                description = "列出档案里的人物（person_id、称呼、关系）。",
+                description = "列出档案里的人物（person_id、称呼、关系、自定义标签）。",
                 parametersJson = """{"type":"object","properties":{},"required":[]}""",
             ),
             AiToolSpec(
                 name = TOOL_READ_PERSON,
-                description = "读取一个人物的档案：称呼、关系、备注。",
+                description = "读取一个人物的档案：称呼、关系、自定义标签、备注与正文。",
                 parametersJson = """{"type":"object","properties":{"person_id":{"type":"string"}},"required":["person_id"]}""",
             ),
             AiToolSpec(
@@ -767,13 +826,18 @@ class ArchiveTools(
             ),
             AiToolSpec(
                 name = TOOL_CREATE_PERSON,
-                description = "新建一个人物档案：称呼必填，关系（family/friend/former_friend）可选；note 是一句话备注，notes 是正文。",
-                parametersJson = """{"type":"object","properties":{"name":{"type":"string"},"relation":{"type":"string"},"note":{"type":"string"},"notes":{"type":"string"}},"required":["name"]}""",
+                description = "新建一个人物档案：称呼必填，关系（family/friend/former_friend）可选；note 是一句话备注，notes 是正文，tags 是自定义标签数组。",
+                parametersJson = """{"type":"object","properties":{"name":{"type":"string"},"relation":{"type":"string"},"note":{"type":"string"},"notes":{"type":"string"},"tags":{"type":"array","items":{"type":"string"}}},"required":["name"]}""",
             ),
             AiToolSpec(
                 name = TOOL_UPDATE_PERSON,
-                description = "更新一个人物档案：只改你给出的字段（note 备注、notes 正文），其余保持不变。",
-                parametersJson = """{"type":"object","properties":{"person_id":{"type":"string"},"name":{"type":"string"},"relation":{"type":"string"},"note":{"type":"string"},"notes":{"type":"string"}},"required":["person_id"]}""",
+                description = "更新一个人物档案：只改你给出的字段（称呼、关系、note 备注、notes 正文、tags 标签），其余保持不变；不提供 tags 时保留原标签。",
+                parametersJson = """{"type":"object","properties":{"person_id":{"type":"string"},"name":{"type":"string"},"relation":{"type":"string"},"note":{"type":"string"},"notes":{"type":"string"},"tags":{"type":"array","items":{"type":"string"}}},"required":["person_id"]}""",
+            ),
+            AiToolSpec(
+                name = TOOL_DELETE_PERSON,
+                description = "永久删除一个人物档案（称呼、标签、备注、正文）。不会删除相关日记或已导入的文件；删除前应用会要求用户确认，且只能在整份档案对话中调用。",
+                parametersJson = """{"type":"object","properties":{"person_id":{"type":"string"}},"required":["person_id"]}""",
             ),
             AiToolSpec(
                 name = TOOL_DELETE_RECORD,

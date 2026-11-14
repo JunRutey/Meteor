@@ -33,10 +33,12 @@ class PeopleViewModel @Inject constructor(
         }
     }
 
-    fun create(displayName: String, relation: Relation?) {
+    fun create(displayName: String, relation: Relation?, tags: List<String>) {
         if (displayName.isBlank()) return
         viewModelScope.launch {
-            val id = withContext(Dispatchers.IO) { personQueries.create(displayName.trim(), relation) }
+            val id = withContext(Dispatchers.IO) {
+                personQueries.create(displayName.trim(), relation, tags = tags)
+            }
             appLog.info(TAG, "person created: $id")
             refresh()
         }

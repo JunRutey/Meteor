@@ -62,6 +62,7 @@
     <string name="ai_tool_set_mood">设置心情</string>
     <string name="ai_tool_create_person">新建人物</string>
     <string name="ai_tool_update_person">更新人物</string>
+    <string name="ai_tool_delete_person">删除人物</string>
     <string name="ai_tool_delete_record">删除日记或心情</string>
     <string name="ai_mode_archive">档案工具</string>
     <string name="ai_mode_web">联网搜索</string>
@@ -128,7 +129,7 @@
     <string name="ai_settings_write_diary">允许写日记与心情</string>
     <string name="ai_settings_write_diary_desc">可写入/覆盖或追加日记、设置心情，也可按日期删除日记或心情。覆盖与删除需确认；追加和设置心情无需确认。</string>
     <string name="ai_settings_write_people">允许新建/更新人物</string>
-    <string name="ai_settings_write_people_desc">可新建人物档案，或修改称呼、关系与备注。新建无需确认，修改已有档案需确认。</string>
+    <string name="ai_settings_write_people_desc">可新建人物档案，或修改称呼、关系、标签与备注，也可以删除人物。新建无需确认，修改或删除已有档案需确认。</string>
     <string name="ai_settings_key">API Key</string>
     <string name="ai_settings_key_new">新密钥</string>
     <string name="ai_settings_key_new_hint">粘贴后点保存；留空不会改动已保存的密钥</string>
