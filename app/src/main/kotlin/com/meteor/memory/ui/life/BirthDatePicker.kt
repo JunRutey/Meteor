@@ -452,17 +452,34 @@ private fun <T> DateWheelColumn(
     onSelect: (T) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val listState = rememberLazyListState()
     val centerOffsetPx = with(LocalDensity.current) { DateWheelCenterPadding.roundToPx() }
     val settledIndex = selectedIndex.coerceIn(0, (options.size - 1).coerceAtLeast(0))
-    val currentOptions by rememberUpdatedState(options)
-    val currentOnSelect by rememberUpdatedState(onSelect)
-
     fun restOffset(index: Int): Int = if (index == 0) 0 else -centerOffsetPx
 
+    // Start the wheel on the selected row instead of index 0: the first frame
+    // is already in place, so opening the picker never flashes the top value.
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = settledIndex,
+        initialFirstVisibleItemScrollOffset = restOffset(settledIndex),
+    )
+    val currentOptions by rememberUpdatedState(options)
+    val currentOnSelect by rememberUpdatedState(onSelect)
+    var lastOptions by remember { mutableStateOf(options) }
+    var placedOnce by remember { mutableStateOf(false) }
+
     LaunchedEffect(options, selectedIndex) {
-        if (options.isNotEmpty()) {
-            listState.scrollToItem(index = settledIndex, scrollOffset = restOffset(settledIndex))
+        if (options.isEmpty()) return@LaunchedEffect
+        val optionsChanged = options != lastOptions
+        lastOptions = options
+        val targetOffset = restOffset(settledIndex)
+        if (!placedOnce || optionsChanged) {
+            // First open and list rebuilds are placed instantly: animating from
+            // index 0 through decades of years would just be a long blur.
+            placedOnce = true
+            listState.scrollToItem(index = settledIndex, scrollOffset = targetOffset)
+        } else {
+            // A tap glides the chosen row to the middle instead of jumping.
+            listState.animateScrollToItem(index = settledIndex, scrollOffset = targetOffset)
         }
     }
 
