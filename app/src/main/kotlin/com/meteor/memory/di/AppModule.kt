@@ -306,6 +306,7 @@ object AppModule {
     fun provideUpdateService(
         @ApplicationContext context: Context,
         notificationFeature: NotificationFeature,
-    ): UpdateService = UpdateService(context, BuildConfig.VERSION_NAME, notificationFeature)
+        appLog: AppLog,
+    ): UpdateService = UpdateService(context, BuildConfig.VERSION_NAME, notificationFeature, appLog)
 
 }

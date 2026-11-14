@@ -27,7 +27,10 @@ interface AppLog {
     fun error(tag: String, message: String, throwable: Throwable? = null)
 
     /**
-     * Verbose mode records every level; otherwise only WARN/ERROR reach the file.
+     * Verbose mode additionally records DEBUG. INFO/WARN/ERROR always reach the
+     * file, so a normal session still explains what the user did before a
+     * failure; verbose only adds high-frequency detail.
+     *
      * Logcat is always written regardless, so `adb logcat` stays complete.
      */
     fun setVerbose(enabled: Boolean)
@@ -36,6 +39,15 @@ interface AppLog {
 
     /** Bytes currently occupied by the on-disk log files. */
     fun sizeBytes(): Long
+}
+
+/**
+ * Which levels are persisted on disk. Kept pure so the policy can be tested
+ * without Android's Context/Log.
+ */
+object LogPolicy {
+    fun persists(level: LogLevel, verbose: Boolean): Boolean =
+        verbose || level != LogLevel.DEBUG
 }
 
 /** Pure line formatting, kept out of the logger so it can be unit-tested. */

@@ -396,9 +396,16 @@ class AiViewModel @Inject constructor(
             }
         }
 
+        appLog.debug(
+            TAG,
+            "chat start skill=$skillName person=${personId != null} mode=${current.chatMode.name} " +
+                "files=${files.size} history=${history.size}",
+        )
+
         viewModelScope.launch {
             val readiness = withContext(Dispatchers.IO) { runCatching { reader.read() }.getOrNull() }
             if (readiness == null || !readiness.config.isConfigured()) {
+                appLog.warn(TAG, "chat skipped: provider is not configured")
                 _state.update {
                     it.copy(
                         busy = false,
@@ -431,6 +438,12 @@ class AiViewModel @Inject constructor(
             }
             chatResult.onSuccess { reply ->
                 val usage = reply.usage
+                appLog.info(
+                    TAG,
+                    "chat ok skill=$skillName model=${readiness.config.resolvedModel} " +
+                        "steps=${reply.steps} elapsedMs=${reply.elapsedMs} " +
+                        "tokens=${usage.totalTokens} finish=${reply.finishReason ?: "stop"}",
+                )
                 _state.update { state ->
                     state.copy(
                         busy = false,
@@ -519,6 +532,7 @@ class AiViewModel @Inject constructor(
                     AiSpeech.synthesize(readiness.config, bubble.text, voice)
                 }
                 _state.update { it.copy(speechLoadingId = null, speakingId = messageId) }
+                appLog.info(TAG, "AI speech synthesized")
                 speechPlayer.play(
                     pcm = pcm,
                     onDone = { _state.update { it.copy(speakingId = null) } },
@@ -584,6 +598,7 @@ class AiViewModel @Inject constructor(
                         selected.file.delete()
                     }
                 }
+                appLog.info(TAG, "AI files uploaded count=${uris.size}")
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -695,6 +710,7 @@ class AiViewModel @Inject constructor(
                         )
                     }
                 }
+                appLog.info(TAG, "AI conversation created")
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Exception) {
@@ -766,6 +782,7 @@ class AiViewModel @Inject constructor(
                     val conversation = chatStore.listConversations(scope).firstOrNull { it.id == id }
                         ?: return@withLock
                     chatStore.saveConversation(conversation.copy(title = cleaned, updatedAt = Instant.now()))
+                    appLog.info(TAG, "AI conversation renamed")
                     // Update the in-memory title inside the lock as well, so the
                     // next queued persist cannot write the old title back.
                     _state.update { state ->
@@ -803,6 +820,7 @@ class AiViewModel @Inject constructor(
                 val filesDeleted = deleteRemoteFiles((stored + pending).distinctBy { it.id })
                 chatStoreMutex.withLock {
                     chatStore.deleteConversation(id)
+                    appLog.info(TAG, "AI conversation deleted")
                     val remaining = chatStore.listConversations(conversation.scope)
                     val next = remaining.firstOrNull() ?: newStoredConversation(conversation.scope)
                     if (remaining.isEmpty()) chatStore.saveConversation(next)

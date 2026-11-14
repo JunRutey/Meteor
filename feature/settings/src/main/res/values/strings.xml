@@ -48,8 +48,8 @@
     <string name="settings_notification_permission_dismiss">知道了</string>
 
     <string name="settings_verbose_logging">调试日志</string>
-    <string name="settings_verbose_logging_desc">记录全部日志（含调试细节）。关闭时仅记录警告与错误，可显著减小日志体积。Logcat 不受影响。</string>
-    <string name="settings_verbose_logging_desc_short">记录详细日志；关闭时仅记录警告与错误</string>
+    <string name="settings_verbose_logging_desc">开启后额外记录调试细节。关闭时仍会记录关键操作、警告与错误。Logcat 不受影响。</string>
+    <string name="settings_verbose_logging_desc_short">记录调试细节；关闭时仍保留关键操作与错误</string>
     <string name="settings_log_size">当前日志占用：%1$s</string>
 
     <string name="settings_dark_mode">暗色模式</string>

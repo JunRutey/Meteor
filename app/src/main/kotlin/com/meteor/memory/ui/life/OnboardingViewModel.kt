@@ -39,6 +39,7 @@ class OnboardingViewModel @Inject constructor(
             try {
                 withContext(Dispatchers.IO) { profileStore.save(profile) }
                 settingsRepository.setOnboardingCompleted(true)
+                appLog.info(TAG, "onboarding completed with birth profile")
                 _saveState.value = OnboardingSaveState()
             } catch (cancelled: CancellationException) {
                 throw cancelled
@@ -59,6 +60,7 @@ class OnboardingViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 settingsRepository.setOnboardingCompleted(true)
+                appLog.info(TAG, "onboarding completed without birth profile")
                 _saveState.value = OnboardingSaveState()
             } catch (cancelled: CancellationException) {
                 throw cancelled

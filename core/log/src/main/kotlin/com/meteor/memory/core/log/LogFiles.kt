@@ -31,4 +31,35 @@ object LogFiles {
             date.isBefore(cutoff)
         }
     }
+
+    /**
+     * Oldest log files to delete so the directory fits [maxTotalBytes].
+     *
+     * [keep] (the file currently being appended to) is never returned: dropping
+     * today's only log line is exactly the moment a bug report would need it.
+     * Unparseable names and non-log files count toward the total but are never
+     * deleted, matching [expired].
+     */
+    fun overBudget(
+        files: List<File>,
+        maxTotalBytes: Long,
+        keep: File? = null,
+    ): List<File> {
+        if (maxTotalBytes <= 0) return emptyList()
+
+        var total = files.filter { it.isFile }.sumOf { it.length() }
+        if (total <= maxTotalBytes) return emptyList()
+
+        val candidates = files
+            .filter { it.isFile && it != keep && dateOf(it.name) != null }
+            .sortedWith(compareBy<File> { dateOf(it.name) }.thenBy { it.name })
+
+        val doomed = mutableListOf<File>()
+        for (file in candidates) {
+            if (total <= maxTotalBytes) break
+            total -= file.length()
+            doomed += file
+        }
+        return doomed
+    }
 }

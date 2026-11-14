@@ -1,6 +1,7 @@
 package com.meteor.memory
 
 import android.app.Application
+import android.os.Process
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.system.NotificationFeature
 import dagger.hilt.android.HiltAndroidApp
@@ -17,6 +18,7 @@ class MeteorApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        appLog.info(START_TAG, "process started pid=${Process.myPid()}")
         notificationFeature.initialize()
         installCrashHandler()
     }
@@ -43,5 +45,6 @@ class MeteorApp : Application() {
 
     private companion object {
         const val TAG = "Crash"
+        const val START_TAG = "AppStart"
     }
 }
