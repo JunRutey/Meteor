@@ -37,10 +37,14 @@ Meteor 的实现和发布流程依赖以下开源项目。这里列出直接依�
 | [nuwa-skill](https://github.com/alchaincyf/nuwa-skill) | 人格蒸馏技能格式 | MIT |
 | [distilly](https://github.com/titanwings/distilly) | 人格蒸馏与档案问答技能格式 | MIT |
 | [ex-skill](https://github.com/therealXiaomanChu/ex-skill) | 人物对话技能格式 | MIT |
+| [chat-demo](https://github.com/deepseek-ai/chat-demo) | AI 对话界面的布局与交互参考 | MIT |
 
 ## 说明
 
 - Android、Android SDK、Google Play 与 Material Design 是 Google LLC 的商标或作品；
   Android SDK 不属于上述开源许可范围。
 - DeepSeek、OpenAI 等 AI 服务由各自提供方运营，不包含在本仓库的开源许可中。
+- 联网搜索、链接阅读、文件输入、语音合成等 AI 能力由 DeepSeek 开放平台的
+  「全家桶应用 API」提供，接口依据 [DeepSeek API 文档](https://api-docs.deepseek.com/) 实现，
+  不属于本仓库的开源许可范围。
 - 如果发现遗漏或许可证标注有误，请提交 Issue 或 PR 更正。
