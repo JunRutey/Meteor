@@ -5,9 +5,19 @@
     <string name="ai_clear">清空</string>
     <string name="ai_clear_confirm_title">清空这段对话？</string>
     <string name="ai_clear_confirm_body">当前对话对象与技能下的历史消息将被删除，且无法恢复。</string>
+    <string name="ai_clear_current">清空当前对话</string>
     <string name="ai_open_settings">去设置</string>
+    <string name="ai_settings_entry">AI 设置</string>
+    <string name="ai_conversations">对话记录</string>
+    <string name="ai_open_conversations">打开对话记录</string>
+    <string name="ai_open_chat_settings">打开对话设置</string>
+    <string name="ai_close_sheet">关闭</string>
+    <string name="ai_more_actions">更多操作</string>
+    <string name="ai_current_conversation">当前对话</string>
     <string name="ai_header_provider">连接到 %1$s</string>
     <string name="ai_context_heading">对话设置</string>
+    <string name="ai_skill_requires_person">先选择对话对象</string>
+    <string name="ai_sessions_note">对话按技能与对话对象分别保存，本机加密。</string>
     <string name="ai_welcome_title">让记忆成为对话</string>
     <string name="ai_welcome_body">从你的档案、日记与人物记忆出发，提问、回顾，或继续一段熟悉的对话。</string>
     <string name="ai_suggestions_heading">试着这样开始</string>
@@ -29,6 +39,7 @@
     <string name="ai_persona_missing">这个人还没有蒸馏人格，对话会只依据档案回答。</string>
     <string name="ai_persona_open">查看人格档案</string>
     <string name="ai_send_to">内容会发送到 %1$s</string>
+    <string name="ai_composer_disclaimer">内容会发送到 %1$s · AI 生成内容请甄别</string>
     <string name="ai_question_hint">说点什么…</string>
     <string name="ai_send">发送</string>
     <string name="ai_busy">思考中…</string>
@@ -36,6 +47,7 @@
     <string name="ai_process_group">思考与工具调用（%1$d）</string>
     <string name="ai_composer_collapse">收起输入</string>
     <string name="ai_composer_expand">展开输入</string>
+    <string name="ai_edit_banner">正在编辑这条提问</string>
     <string name="ai_tool_line">%1$s %2$s · %3$s</string>
     <string name="ai_tool_approval_title">确认 AI 修改</string>
     <string name="ai_tool_approval_message">AI 请求执行「%1$s」。以下是本次操作的完整参数。请核对内容；拒绝或关闭将不会执行。</string>
@@ -74,6 +86,7 @@
     <string name="ai_web_working">正在联网处理</string>
     <string name="ai_citation_link">来源 %1$d · %2$s</string>
     <string name="ai_file_add">添加文件</string>
+    <string name="ai_file_remove">移除附件</string>
     <string name="ai_file_uploading">正在上传并解析…</string>
     <string name="ai_file_attached">附件：%1$s</string>
     <string name="ai_file_not_supported">文件输入仅支持 DeepSeek deepseek-flash；请切换模型或移除附件。</string>

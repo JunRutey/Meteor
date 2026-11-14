@@ -1,43 +1,34 @@
 package com.meteor.memory.feature.ai
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -46,16 +37,19 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import java.time.Instant
@@ -137,17 +131,20 @@ fun AiScreen(
 ) {
     var input by remember { mutableStateOf("") }
     var editingMessageId by remember { mutableStateOf<String?>(null) }
-    var personMenuExpanded by remember { mutableStateOf(false) }
     var confirmClear by remember { mutableStateOf(false) }
+    var showConversations by remember { mutableStateOf(false) }
+    var showChatSettings by remember { mutableStateOf(false) }
     val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
+    var followTail by remember { mutableStateOf(true) }
 
-    // Switching conversations must not leave an edit target from the old one.
+    // Switching conversations must not leave an edit target or draft behind.
     LaunchedEffect(activeConversationId) {
         editingMessageId = null
+        input = ""
+        followTail = true
     }
-    val coroutineScope = rememberCoroutineScope()
     val bottomSlackPx = with(LocalDensity.current) { BOTTOM_SLACK_DP.dp.roundToPx() }
-    var followTail by remember { mutableStateOf(true) }
 
     LaunchedEffect(listState) {
         var lastIndex = listState.firstVisibleItemIndex
@@ -280,69 +277,55 @@ fun AiScreen(
         )
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
-        WorkspaceHeader(
-            providerLabel = providerLabel,
-            canClear = messages.isNotEmpty() && !busy && !fileUploading,
-            onBack = onBack,
-            onClear = { confirmClear = true },
-            onOpenSettings = onOpenSettings,
-        )
+    val canInteract = !busy && !fileUploading
+    val activeTitle = conversations.firstOrNull { it.id == activeConversationId }?.title.orEmpty()
+    val screenTitle = if (activeTitle.isBlank()) {
+        stringResource(R.string.ai_title)
+    } else {
+        activeTitle
+    }
+    val skillLabel = skills.firstOrNull { it.id == selectedSkillId }?.label
+    val personLabel = if (selectedPersonId == null) {
+        stringResource(R.string.ai_scope_archive)
+    } else {
+        people.firstOrNull { it.personId == selectedPersonId }?.label
+            ?: selectedPersonId.take(8)
+    }
+    val scopeLabel = if (blockedMessage == null) {
+        listOfNotNull(skillLabel, personLabel).joinToString(" · ")
+    } else {
+        null
+    }
 
-        HorizontalDivider()
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background),
+    ) {
+        AiHeader(
+            title = screenTitle,
+            scopeLabel = scopeLabel,
+            conversationEnabled = canInteract && blockedMessage == null,
+            scopeEnabled = canInteract && blockedMessage == null,
+            newEnabled = canInteract && blockedMessage == null,
+            onBack = onBack,
+            onOpenConversations = { showConversations = true },
+            onOpenChatSettings = {
+                if (blockedMessage != null) {
+                    onOpenSettings()
+                } else {
+                    showChatSettings = true
+                }
+            },
+            onNewConversation = {
+                followTail = true
+                onNewConversation()
+            },
+        )
 
         if (blockedMessage != null) {
             BlockedPanel(message = blockedMessage, onOpenSettings = onOpenSettings)
         } else {
-            ConversationToolbar(
-                title = conversations.firstOrNull { it.id == activeConversationId }?.title.orEmpty(),
-                conversations = conversations,
-                activeConversationId = activeConversationId,
-                enabled = !busy && !fileUploading,
-                onNew = onNewConversation,
-                onSelect = onSelectConversation,
-                onRename = onRenameConversation,
-                onDelete = onDeleteConversation,
-            )
-            ConversationContext(
-                skills = skills,
-                selectedSkillId = selectedSkillId,
-                people = people,
-                selectedPersonId = selectedPersonId,
-                personaStatus = personaStatus,
-                enabled = !busy && !fileUploading,
-                personMenuExpanded = personMenuExpanded,
-                onPersonMenuExpandedChange = { personMenuExpanded = it },
-                onSkillSelect = onSkillSelect,
-                onPersonSelect = onPersonSelect,
-                onOpenPersona = onOpenPersona,
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                FilterChip(
-                    selected = chatMode == AiChatMode.ARCHIVE,
-                    onClick = { onChatModeSelect(AiChatMode.ARCHIVE) },
-                    enabled = !busy && !fileUploading,
-                    label = { Text(stringResource(R.string.ai_mode_archive)) },
-                )
-                FilterChip(
-                    selected = chatMode == AiChatMode.WEB,
-                    onClick = { onChatModeSelect(AiChatMode.WEB) },
-                    enabled = !busy && !fileUploading && canUseWebTools,
-                    label = { Text(stringResource(R.string.ai_mode_web)) },
-                )
-            }
-            if (chatMode == AiChatMode.WEB && !canUseWebTools) {
-                Text(
-                    text = stringResource(R.string.ai_web_unavailable),
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-
             val showLive = streaming || liveContent.isNotBlank() || liveSteps.isNotEmpty()
             val continuePrompt = stringResource(R.string.ai_continue_prompt)
             val itemCount = (if (messages.isEmpty()) 1 else messages.size) +
@@ -350,8 +333,14 @@ fun AiScreen(
                 (if (busy && !showLive) 1 else 0) +
                 (if (error != null) 1 else 0)
 
-            LaunchedEffect(itemCount, liveContent.length, liveSteps.size, followTail) {
-                if (followTail && itemCount > 0) {
+            LaunchedEffect(
+                itemCount,
+                liveContent.length,
+                liveSteps.size,
+                followTail,
+                messages.isEmpty(),
+            ) {
+                if (followTail && messages.isNotEmpty() && itemCount > 0) {
                     listState.scrollToItem(itemCount - 1, SCROLL_TO_END_OFFSET)
                 }
             }
@@ -361,12 +350,13 @@ fun AiScreen(
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     state = listState,
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     if (messages.isEmpty()) {
                         item(key = "welcome") {
-                            WelcomePanel(
-                                enabled = !busy && !fileUploading,
+                            AiWelcome(
+                                enabled = canInteract,
                                 onSend = { text -> submit(text) },
                             )
                         }
@@ -377,7 +367,7 @@ fun AiScreen(
                         ) { index, bubble ->
                             ChatMessage(
                                 bubble = bubble,
-                                enabled = !busy && !fileUploading,
+                                enabled = canInteract,
                                 canContinue = index == messages.lastIndex,
                                 onEdit = {
                                     editingMessageId = bubble.id
@@ -399,7 +389,9 @@ fun AiScreen(
                         }
                     } else if (busy) {
                         item(key = "busy") {
-                            ThinkingIndicator()
+                            Box(modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                ThinkingIndicator()
+                            }
                         }
                     }
 
@@ -409,493 +401,111 @@ fun AiScreen(
                 }
 
                 if (!followTail && listState.canScrollForward) {
-                    SmallFloatingActionButton(
-                        onClick = {
-                            followTail = true
-                            coroutineScope.launch {
-                                listState.animateScrollToItem(
-                                    index = listState.layoutInfo.totalItemsCount - 1,
-                                    scrollOffset = SCROLL_TO_END_OFFSET,
-                                )
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(16.dp)
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .clickable(role = Role.Button) {
+                                followTail = true
+                                coroutineScope.launch {
+                                    listState.animateScrollToItem(
+                                        index = listState.layoutInfo.totalItemsCount - 1,
+                                        scrollOffset = SCROLL_TO_END_OFFSET,
+                                    )
+                                }
                             }
-                        },
-                        modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
+                            .semantics { contentDescription = jumpLatestDescription },
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        shadowElevation = 4.dp,
                     ) {
-                        Text(
-                            text = "↓",
-                            modifier = Modifier.semantics {
-                                contentDescription = jumpLatestDescription
-                            },
-                            style = MaterialTheme.typography.titleLarge,
-                        )
+                        Box(contentAlignment = Alignment.Center) {
+                            AiIcon(
+                                AiIconKind.ChevronDown,
+                                iconSize = 18.dp,
+                                tint = MaterialTheme.colorScheme.primary,
+                            )
+                        }
                     }
                 }
             }
 
-            if (pendingFiles.isNotEmpty() || canUploadFiles || fileUploading) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    if (canUploadFiles) {
-                        TextButton(onClick = onPickFiles, enabled = !busy && !fileUploading) {
-                            Text(stringResource(R.string.ai_file_add))
-                        }
-                    }
-                    if (fileUploading) Text(stringResource(R.string.ai_file_uploading))
-                    pendingFiles.forEach { file ->
-                        TextButton(
-                            onClick = { onRemovePendingFile(file.id) },
-                            enabled = !busy && !fileUploading,
-                        ) {
-                            Text("${file.fileName} ×")
-                        }
-                    }
-                }
-            }
-            if (editingMessageId != null) {
-                TextButton(
-                    onClick = {
-                        editingMessageId = null
-                        input = ""
-                    },
-                    enabled = !busy && !fileUploading,
-                ) {
-                    Text(stringResource(R.string.ai_edit_cancel))
-                }
-            }
-            ChatComposer(
+            AiComposer(
                 input = input,
                 onInputChange = { input = it },
                 onSend = { submit() },
-                busy = busy || fileUploading,
-                blocked = blockedMessage != null,
+                busy = busy,
+                editing = editingMessageId != null,
+                onCancelEdit = {
+                    editingMessageId = null
+                    input = ""
+                },
                 providerLabel = providerLabel,
                 sessionUsage = sessionUsage,
                 sessionElapsedMs = sessionElapsedMs,
+                pendingFiles = pendingFiles,
+                fileUploading = fileUploading,
+                canUploadFiles = canUploadFiles,
+                chatMode = chatMode,
+                canUseWebTools = canUseWebTools,
+                onChatModeSelect = onChatModeSelect,
+                onPickFiles = onPickFiles,
+                onRemovePendingFile = onRemovePendingFile,
             )
         }
     }
-}
 
-@Composable
-private fun WorkspaceHeader(
-    providerLabel: String,
-    canClear: Boolean,
-    onBack: () -> Unit,
-    onClear: () -> Unit,
-    onOpenSettings: () -> Unit,
-) {
-    val backDescription = stringResource(R.string.ai_back)
-    val clearDescription = stringResource(R.string.ai_clear)
-    val settingsDescription = stringResource(R.string.ai_open_settings)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 72.dp)
-            .background(MaterialTheme.colorScheme.background)
-            .padding(start = 4.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        IconButton(
-            onClick = onBack,
-            modifier = Modifier.semantics { contentDescription = backDescription },
-        ) {
-            Text("‹", style = MaterialTheme.typography.headlineMedium)
-        }
-        Surface(
-            color = MaterialTheme.colorScheme.primaryContainer,
-            shape = CircleShape,
-        ) {
-            Text(
-                text = "✦",
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(12.dp),
-            )
-        }
-        Column(
-            modifier = Modifier.weight(1f).padding(start = 2.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(stringResource(R.string.ai_title), style = MaterialTheme.typography.titleSmall)
-            Text(
-                text = stringResource(R.string.ai_header_provider, providerLabel),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        IconButton(
-            onClick = onClear,
-            enabled = canClear,
-            modifier = Modifier.semantics { contentDescription = clearDescription },
-        ) {
-            Text("↺", style = MaterialTheme.typography.titleMedium)
-        }
-        IconButton(
-            onClick = onOpenSettings,
-            modifier = Modifier.semantics { contentDescription = settingsDescription },
-        ) {
-            Text("⚙", style = MaterialTheme.typography.titleMedium)
-        }
-    }
-}
-
-@Composable
-private fun ConversationContext(
-    skills: List<AiSkillChip>,
-    selectedSkillId: String?,
-    people: List<AiPersonChip>,
-    selectedPersonId: String?,
-    personaStatus: String?,
-    enabled: Boolean,
-    personMenuExpanded: Boolean,
-    onPersonMenuExpandedChange: (Boolean) -> Unit,
-    onSkillSelect: (String) -> Unit,
-    onPersonSelect: (String?) -> Unit,
-    onOpenPersona: (String) -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp)
-            .background(
-                color = MaterialTheme.colorScheme.surface,
-                shape = RoundedCornerShape(22.dp),
-            )
-            .border(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant,
-                shape = RoundedCornerShape(22.dp),
-            )
-            .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(
-            text = stringResource(R.string.ai_context_heading),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-        )
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            skills.forEach { skill ->
-                item(key = skill.id) {
-                    FilterChip(
-                        selected = skill.id == selectedSkillId,
-                        onClick = { onSkillSelect(skill.id) },
-                        enabled = enabled,
-                        label = { Text(skill.label) },
-                    )
-                }
-            }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.ai_scope),
-                modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Box {
-                val personLabel = if (selectedPersonId == null) {
-                    stringResource(R.string.ai_scope_archive)
-                } else {
-                    people.firstOrNull { it.personId == selectedPersonId }?.label
-                        ?: selectedPersonId.take(8)
-                }
-                FilterChip(
-                    selected = selectedPersonId != null,
-                    onClick = { onPersonMenuExpandedChange(true) },
-                    enabled = enabled,
-                    label = { Text(personLabel) },
-                )
-                DropdownMenu(
-                    expanded = personMenuExpanded,
-                    onDismissRequest = { onPersonMenuExpandedChange(false) },
-                ) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.ai_scope_archive)) },
-                        enabled = enabled,
-                        onClick = {
-                            onPersonSelect(null)
-                            onPersonMenuExpandedChange(false)
-                        },
-                    )
-                    people.forEach { person ->
-                        DropdownMenuItem(
-                            text = { Text(person.label) },
-                            enabled = enabled,
-                            onClick = {
-                                onPersonSelect(person.personId)
-                                onPersonMenuExpandedChange(false)
-                            },
-                        )
-                    }
-                }
-            }
-        }
-
-        val status = personaStatus
-        val personId = selectedPersonId
-        if (status != null && personId != null) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = status,
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                TextButton(onClick = { onOpenPersona(personId) }, enabled = enabled) {
-                    Text(stringResource(R.string.ai_persona_open))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun WelcomePanel(enabled: Boolean, onSend: (String) -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 28.dp),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
-    ) {
-        Surface(
-            color = MaterialTheme.colorScheme.primaryContainer,
-            shape = RoundedCornerShape(24.dp),
-            border = BorderStroke(
-                1.dp,
-                MaterialTheme.colorScheme.outlineVariant,
-            ),
-        ) {
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(22.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Text(
-                    text = "✦",
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                Text(
-                    text = stringResource(R.string.ai_welcome_title),
-                    style = MaterialTheme.typography.headlineSmall,
-                )
-                Text(
-                    text = stringResource(R.string.ai_welcome_body),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        Text(
-            text = stringResource(R.string.ai_suggestions_heading),
-            style = MaterialTheme.typography.titleSmall,
-        )
-        listOf(
-            R.string.ai_suggestion_archive,
-            R.string.ai_suggestion_diary,
-            R.string.ai_suggestion_person,
-        ).forEach { promptId ->
-            val prompt = stringResource(promptId)
-            Surface(
-                modifier = Modifier.fillMaxWidth().clickable(enabled = enabled) { onSend(prompt) },
-                color = MaterialTheme.colorScheme.surface,
-                shape = RoundedCornerShape(18.dp),
-                border = BorderStroke(
-                    1.dp,
-                    MaterialTheme.colorScheme.outlineVariant,
-                ),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Text(
-                        text = "↗",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                    Text(
-                        text = prompt,
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun BlockedPanel(message: String, onOpenSettings: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Surface(
-            color = MaterialTheme.colorScheme.errorContainer,
-            shape = MaterialTheme.shapes.extraLarge,
-        ) {
-            Text(
-                text = "!",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onErrorContainer,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-            )
-        }
-        Text(
-            text = message,
-            modifier = Modifier.padding(top = 18.dp, bottom = 12.dp),
-            style = MaterialTheme.typography.bodyLarge,
-        )
-        Button(onClick = onOpenSettings) {
-            Text(stringResource(R.string.ai_open_settings))
-        }
-    }
-}
-
-@Composable
-private fun ThinkingIndicator() {
-    Row(
-        modifier = Modifier.padding(horizontal = 20.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-        Text(
-            text = stringResource(R.string.ai_busy),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-}
-
-@Composable
-private fun ConversationToolbar(
-    title: String,
-    conversations: List<AiConversationItem>,
-    activeConversationId: String?,
-    enabled: Boolean,
-    onNew: () -> Unit,
-    onSelect: (String) -> Unit,
-    onRename: (String, String) -> Unit,
-    onDelete: (String) -> Unit,
-) {
-    var menuExpanded by remember { mutableStateOf(false) }
-    var renameDialog by remember { mutableStateOf(false) }
-    var deleteDialog by remember { mutableStateOf(false) }
-    var titleDraft by remember(title) { mutableStateOf(title) }
-    val current = conversations.firstOrNull { it.id == activeConversationId }
-
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Box(modifier = Modifier.weight(1f)) {
-            TextButton(onClick = { menuExpanded = true }, enabled = enabled) {
-                Text(
-                    text = title.ifBlank { stringResource(R.string.ai_session_untitled) },
-                    maxLines = 1,
-                )
-            }
-            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
-                conversations.forEach { conversation ->
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                conversation.title.ifBlank {
-                                    stringResource(R.string.ai_session_untitled)
-                                },
-                                maxLines = 1,
-                            )
-                        },
-                        onClick = {
-                            menuExpanded = false
-                            onSelect(conversation.id)
-                        },
-                    )
-                }
-            }
-        }
-        TextButton(onClick = onNew, enabled = enabled) {
-            Text(stringResource(R.string.ai_session_new))
-        }
-        TextButton(
-            onClick = {
-                titleDraft = title
-                renameDialog = true
+    if (showConversations && blockedMessage == null) {
+        AiConversationSheet(
+            conversations = conversations,
+            activeConversationId = activeConversationId,
+            enabled = canInteract,
+            canClear = messages.isNotEmpty() && canInteract,
+            hasMessages = messages.isNotEmpty(),
+            onDismiss = { showConversations = false },
+            onNew = {
+                showConversations = false
+                followTail = true
+                onNewConversation()
             },
-            enabled = enabled && current != null,
-        ) {
-            Text(stringResource(R.string.ai_session_rename))
-        }
-        TextButton(
-            onClick = { deleteDialog = true },
-            enabled = enabled && current != null,
-        ) {
-            Text(stringResource(R.string.ai_session_delete))
-        }
-    }
-
-    if (renameDialog && current != null) {
-        AlertDialog(
-            onDismissRequest = { renameDialog = false },
-            title = { Text(stringResource(R.string.ai_session_rename)) },
-            text = {
-                OutlinedTextField(
-                    value = titleDraft,
-                    onValueChange = { titleDraft = it.take(32) },
-                    singleLine = true,
-                )
+            onSelect = { id ->
+                showConversations = false
+                followTail = true
+                onSelectConversation(id)
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onRename(current.id, titleDraft.trim())
-                        renameDialog = false
-                    },
-                ) {
-                    Text(stringResource(R.string.ai_session_rename_confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { renameDialog = false }) {
-                    Text(stringResource(R.string.ai_settings_cancel))
-                }
+            onRename = onRenameConversation,
+            onDelete = onDeleteConversation,
+            onClear = {
+                showConversations = false
+                confirmClear = true
             },
         )
     }
-    if (deleteDialog && current != null) {
-        AlertDialog(
-            onDismissRequest = { deleteDialog = false },
-            title = { Text(stringResource(R.string.ai_session_delete)) },
-            text = { Text(stringResource(R.string.ai_session_delete_confirm)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        onDelete(current.id)
-                        deleteDialog = false
-                    },
-                ) {
-                    Text(stringResource(R.string.ai_session_delete))
-                }
+
+    if (showChatSettings && blockedMessage == null) {
+        AiChatSettingsSheet(
+            skills = skills,
+            selectedSkillId = selectedSkillId,
+            people = people,
+            selectedPersonId = selectedPersonId,
+            personaStatus = personaStatus,
+            enabled = canInteract,
+            canUploadFiles = canUploadFiles,
+            canUseWebTools = canUseWebTools,
+            onSkillSelect = onSkillSelect,
+            onPersonSelect = onPersonSelect,
+            onOpenPersona = { personId ->
+                showChatSettings = false
+                onOpenPersona(personId)
             },
-            dismissButton = {
-                TextButton(onClick = { deleteDialog = false }) {
-                    Text(stringResource(R.string.ai_settings_cancel))
-                }
+            onOpenSettings = {
+                showChatSettings = false
+                onOpenSettings()
             },
+            onDismiss = { showChatSettings = false },
         )
     }
 }
@@ -910,98 +520,119 @@ private fun ChatMessage(
     onContinue: () -> Unit,
 ) {
     if (bubble.fromUser) {
-        Row(
+        Column(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.End,
-            verticalAlignment = Alignment.Bottom,
+            horizontalAlignment = Alignment.End,
         ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                horizontalAlignment = Alignment.End,
+            Surface(
+                modifier = Modifier.widthIn(max = 460.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                shape = RoundedCornerShape(
+                    topStart = 20.dp,
+                    topEnd = 20.dp,
+                    bottomEnd = 6.dp,
+                    bottomStart = 20.dp,
+                ),
             ) {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(0.94f),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    shape = RoundedCornerShape(
-                        topStart = 20.dp,
-                        topEnd = 20.dp,
-                        bottomEnd = 6.dp,
-                        bottomStart = 20.dp,
-                    ),
-                ) {
-                    SelectionContainer {
-                        Text(
-                            text = bubble.text,
-                            modifier = Modifier.padding(horizontal = 17.dp, vertical = 13.dp),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        )
-                    }
-                }
-                bubble.files.forEach { file ->
+                SelectionContainer {
                     Text(
-                        text = stringResource(R.string.ai_file_attached, file.fileName),
-                        style = MaterialTheme.typography.labelSmall,
+                        text = bubble.text,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
                     )
                 }
-                TextButton(onClick = onEdit, enabled = enabled) {
-                    Text(stringResource(R.string.ai_message_edit))
-                }
             }
-            AvatarBadge(assistant = false, modifier = Modifier.padding(start = 8.dp))
+            bubble.files.forEach { file ->
+                Text(
+                    text = stringResource(R.string.ai_file_attached, file.fileName),
+                    modifier = Modifier.padding(top = 4.dp, end = 4.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            TextButton(
+                onClick = onEdit,
+                enabled = enabled,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.ai_message_edit),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
         }
     } else {
         Row(
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.Start,
             verticalAlignment = Alignment.Top,
         ) {
-            AvatarBadge(assistant = true, modifier = Modifier.padding(end = 8.dp))
+            AssistantAvatar()
+            Spacer(Modifier.width(10.dp))
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 ProcessSteps(steps = bubble.steps, initiallyExpanded = false)
-                Surface(
-                    color = MaterialTheme.colorScheme.surface,
-                    shape = RoundedCornerShape(
-                        topStart = 20.dp,
-                        topEnd = 20.dp,
-                        bottomEnd = 20.dp,
-                        bottomStart = 6.dp,
-                    ),
-                    border = BorderStroke(
-                        1.dp,
-                        MaterialTheme.colorScheme.outlineVariant,
-                    ),
-                ) {
+                if (bubble.text.isNotBlank()) {
                     SelectionContainer {
                         Text(
                             text = bubble.text,
-                            modifier = Modifier.padding(horizontal = 17.dp, vertical = 13.dp),
+                            modifier = Modifier.padding(top = 2.dp),
                             style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
                         )
                     }
                 }
                 if (bubble.citations.isNotEmpty()) {
                     CitationList(bubble.citations)
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = onRegenerate, enabled = enabled) {
-                        Text(stringResource(R.string.ai_message_regenerate))
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    TextButton(
+                        onClick = onRegenerate,
+                        enabled = enabled,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    ) {
+                        Text(
+                            text = stringResource(R.string.ai_message_regenerate),
+                            style = MaterialTheme.typography.labelMedium,
+                        )
                     }
                     if (bubble.isTruncated && bubble.serverToolCallsJson == null && canContinue) {
-                        TextButton(onClick = onContinue, enabled = enabled) {
-                            Text(stringResource(R.string.ai_message_continue))
+                        TextButton(
+                            onClick = onContinue,
+                            enabled = enabled,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.ai_message_continue),
+                                style = MaterialTheme.typography.labelMedium,
+                            )
                         }
                     }
                 }
                 val usage = bubble.usage
                 if (usage != null && usage.totalTokens > 0 && bubble.elapsedMs > 0) {
-                    UsageSummary(usage, bubble.elapsedMs, compact = true)
+                    AiUsageSummary(usage, bubble.elapsedMs, compact = true)
                 }
-
             }
+        }
+    }
+}
+
+@Composable
+private fun AssistantAvatar() {
+    Surface(
+        modifier = Modifier.size(28.dp),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        shape = CircleShape,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            AiIcon(
+                AiIconKind.Sparkle,
+                iconSize = 15.dp,
+                tint = MaterialTheme.colorScheme.primary,
+            )
         }
     }
 }
@@ -1015,39 +646,30 @@ private fun openWebUrl(uriHandler: androidx.compose.ui.platform.UriHandler, url:
 @Composable
 private fun CitationList(citations: List<AiCitation>) {
     val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
         citations.distinctBy(AiCitation::url).forEachIndexed { index, citation ->
-            TextButton(onClick = { openWebUrl(uriHandler, citation.url) }) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { openWebUrl(uriHandler, citation.url) }
+                    .padding(horizontal = 4.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                AiIcon(
+                    AiIconKind.ChevronRight,
+                    iconSize = 12.dp,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
                 Text(
                     text = stringResource(R.string.ai_citation_link, index + 1, citation.title),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
                     maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun AvatarBadge(assistant: Boolean, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier.size(32.dp),
-        color = if (assistant) {
-            MaterialTheme.colorScheme.primaryContainer
-        } else {
-            MaterialTheme.colorScheme.secondaryContainer
-        },
-        shape = MaterialTheme.shapes.large,
-    ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(
-                text = if (assistant) "✦" else "•",
-                color = if (assistant) {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onSecondaryContainer
-                },
-                style = MaterialTheme.typography.titleSmall,
-            )
         }
     }
 }
@@ -1062,20 +684,18 @@ private fun LiveTurn(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         verticalAlignment = Alignment.Top,
     ) {
-        AvatarBadge(assistant = true, modifier = Modifier.padding(end = 8.dp))
+        AssistantAvatar()
+        Spacer(Modifier.width(10.dp))
         Column(
             modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             ProcessSteps(steps = steps, initiallyExpanded = true)
             if (content.isNotBlank()) {
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    shape = MaterialTheme.shapes.extraLarge,
-                ) {
+                SelectionContainer {
                     Text(
                         text = content + if (streaming) "▍" else "",
-                        modifier = Modifier.padding(horizontal = 17.dp, vertical = 13.dp),
+                        modifier = Modifier.padding(top = 2.dp),
                         style = MaterialTheme.typography.bodyLarge,
                     )
                 }
@@ -1093,23 +713,36 @@ private fun ProcessSteps(steps: List<AiProcessStep>, initiallyExpanded: Boolean)
     var expanded by remember(steps, initiallyExpanded) {
         mutableStateOf(initiallyExpanded)
     }
-    Surface(
-        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f),
-        shape = MaterialTheme.shapes.large,
-    ) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)) {
-            TextButton(
-                onClick = { expanded = !expanded },
-                modifier = Modifier.fillMaxWidth(),
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+            border = BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f),
+            ),
+        ) {
+            Row(
+                modifier = Modifier
+                    .clickable(role = Role.Button) { expanded = !expanded }
+                    .padding(horizontal = 10.dp, vertical = 7.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
+                AiIcon(
+                    if (expanded) AiIconKind.ChevronDown else AiIconKind.ChevronRight,
+                    iconSize = 13.dp,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Text(
-                    text = (if (expanded) "▾ " else "▸ ") +
-                        stringResource(R.string.ai_process_group, steps.size),
-                    modifier = Modifier.fillMaxWidth(),
-                    style = MaterialTheme.typography.labelLarge,
+                    text = stringResource(R.string.ai_process_group, steps.size),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            if (expanded) {
+        }
+        if (expanded) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 steps.forEach { step ->
                     when (step) {
                         is AiProcessStep.Reasoning -> ReasoningStep(step.text)
@@ -1133,8 +766,8 @@ private fun WebToolStep(event: AiServerToolEvent) {
         else -> stringResource(R.string.ai_web_working)
     }
     Column(
-        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, bottom = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(3.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(
             text = "$action${event.url?.let { " · $it" }.orEmpty()}",
@@ -1149,10 +782,26 @@ private fun WebToolStep(event: AiServerToolEvent) {
             )
         }
         event.sources.forEach { source ->
-            TextButton(onClick = { openWebUrl(uriHandler, source.url) }) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { openWebUrl(uriHandler, source.url) }
+                    .padding(horizontal = 4.dp, vertical = 3.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                AiIcon(
+                    AiIconKind.ChevronRight,
+                    iconSize = 11.dp,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
                 Text(
                     text = source.siteName?.let { "$it · ${source.title}" } ?: source.title,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
                     maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -1163,18 +812,33 @@ private fun WebToolStep(event: AiServerToolEvent) {
 private fun ReasoningStep(text: String) {
     var open by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxWidth()) {
-        TextButton(onClick = { open = !open }) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .clickable(role = Role.Button) { open = !open }
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            AiIcon(
+                if (open) AiIconKind.ChevronDown else AiIconKind.ChevronRight,
+                iconSize = 12.dp,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Text(
-                text = (if (open) "▾ " else "▸ ") + stringResource(R.string.ai_thinking_process),
-                modifier = Modifier.fillMaxWidth(),
+                text = stringResource(R.string.ai_thinking_process),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         if (open) {
             SelectionContainer {
                 Text(
                     text = text,
+                    modifier = Modifier.padding(start = 22.dp, end = 8.dp, bottom = 6.dp),
                     style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(start = 12.dp, end = 12.dp, bottom = 8.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -1184,8 +848,8 @@ private fun ReasoningStep(text: String) {
 @Composable
 private fun ToolStep(step: AiProcessStep.Tool) {
     Column(
-        modifier = Modifier.fillMaxWidth().padding(start = 8.dp, bottom = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(3.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Text(
             text = stringResource(
@@ -1210,76 +874,85 @@ private fun ToolStep(step: AiProcessStep.Tool) {
 }
 
 @Composable
-private fun ErrorCard(message: String) {
-    Surface(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-        color = MaterialTheme.colorScheme.errorContainer,
-        shape = MaterialTheme.shapes.large,
+private fun ThinkingIndicator() {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(16.dp),
+            strokeWidth = 2.dp,
+            color = MaterialTheme.colorScheme.primary,
+        )
         Text(
-            text = message,
-            modifier = Modifier.padding(16.dp),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onErrorContainer,
+            text = stringResource(R.string.ai_busy),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
 
 @Composable
-private fun ChatComposer(
-    input: String,
-    onInputChange: (String) -> Unit,
-    onSend: () -> Unit,
-    busy: Boolean,
-    blocked: Boolean,
-    providerLabel: String,
-    sessionUsage: AiUsage,
-    sessionElapsedMs: Long,
-) {
-    HorizontalDivider()
-    val sendDescription = stringResource(R.string.ai_send)
+private fun BlockedPanel(message: String, onOpenSettings: () -> Unit) {
     Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.fillMaxSize().padding(28.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        if (sessionUsage.totalTokens > 0) {
-            UsageSummary(sessionUsage, sessionElapsedMs)
+        Surface(
+            modifier = Modifier.size(64.dp),
+            color = MaterialTheme.colorScheme.primaryContainer,
+            shape = CircleShape,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                AiIcon(
+                    AiIconKind.Alert,
+                    iconSize = 28.dp,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+            }
         }
-        OutlinedTextField(
-            value = input,
-            onValueChange = onInputChange,
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text(stringResource(R.string.ai_question_hint)) },
-            shape = RoundedCornerShape(26.dp),
-            minLines = 1,
-            maxLines = 4,
-            colors = OutlinedTextFieldDefaults.colors(
-                unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                focusedContainerColor = MaterialTheme.colorScheme.surface,
-            ),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-            keyboardActions = KeyboardActions(onSend = { onSend() }),
-            trailingIcon = {
-                Button(
-                    onClick = onSend,
-                    enabled = input.isNotBlank() && !busy && !blocked,
-                    modifier = Modifier
-                        .padding(end = 6.dp)
-                        .semantics { contentDescription = sendDescription },
-                ) {
-                    Text("↑", style = MaterialTheme.typography.titleLarge)
-                }
-            },
-        )
         Text(
-            text = stringResource(R.string.ai_send_to, providerLabel),
-            modifier = Modifier.fillMaxWidth().padding(start = 4.dp),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            text = message,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 18.dp, bottom = 16.dp),
+            style = MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center,
         )
+        Button(
+            onClick = onOpenSettings,
+            shape = RoundedCornerShape(24.dp),
+            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 12.dp),
+        ) {
+            Text(stringResource(R.string.ai_open_settings))
+        }
+    }
+}
+
+@Composable
+private fun ErrorCard(message: String) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        color = MaterialTheme.colorScheme.errorContainer,
+        shape = RoundedCornerShape(16.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            AiIcon(
+                AiIconKind.Alert,
+                iconSize = 18.dp,
+                tint = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+        }
     }
 }
 
@@ -1313,34 +986,3 @@ private fun toolLabel(name: String): String = stringResource(
         else -> R.string.ai_tool_unknown
     },
 )
-
-@Composable
-private fun UsageSummary(usage: AiUsage, elapsedMs: Long, compact: Boolean = false) {
-    if (usage.totalTokens <= 0 || elapsedMs <= 0) return
-    val seconds = elapsedMs / 1000.0
-    val rate = (usage.totalTokens / seconds).toInt()
-    val cache = if (usage.cacheTokens > 0) {
-        usage.cacheHitTokens * 100 / usage.cacheTokens
-    } else {
-        null
-    }
-    val text = when {
-        compact && cache != null ->
-            stringResource(R.string.ai_usage_line_cache, seconds, usage.totalTokens, rate, cache)
-
-        compact ->
-            stringResource(R.string.ai_usage_line, seconds, usage.totalTokens, rate)
-
-        cache != null ->
-            stringResource(R.string.ai_usage_session_cache, usage.totalTokens, rate, cache)
-
-        else ->
-            stringResource(R.string.ai_usage_session, usage.totalTokens, rate)
-    }
-    Text(
-        text = text,
-        modifier = Modifier.widthIn(max = 520.dp).padding(horizontal = 4.dp),
-        style = MaterialTheme.typography.labelSmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-}
