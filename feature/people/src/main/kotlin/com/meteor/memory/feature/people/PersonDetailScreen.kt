@@ -78,8 +78,6 @@ fun PersonDetailScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     onEdit: () -> Unit = {},
-    onEditNote: () -> Unit = onEdit,
-    onEditBody: () -> Unit = onEdit,
     resolveImage: (String) -> ImageBitmap? = { null },
     onActivate: (String) -> Unit = {},
     onAddRecord: () -> Unit = {},
@@ -130,13 +128,7 @@ fun PersonDetailScreen(
             }
 
             item {
-                SectionCard(
-                    title = stringResource(R.string.people_note_section),
-                    action = stringResource(
-                        if (note.isBlank()) R.string.people_note_add else R.string.people_note_edit,
-                    ),
-                    onAction = onEditNote,
-                ) {
+                SectionCard(title = stringResource(R.string.people_note_section)) {
                     if (note.isBlank()) {
                         Placeholder(stringResource(R.string.people_note_empty))
                     } else {
@@ -146,13 +138,7 @@ fun PersonDetailScreen(
             }
 
             item {
-                SectionCard(
-                    title = stringResource(R.string.people_body_section),
-                    action = stringResource(
-                        if (notes.isBlank()) R.string.people_body_add else R.string.people_body_edit,
-                    ),
-                    onAction = onEditBody,
-                ) {
+                SectionCard(title = stringResource(R.string.people_body_section)) {
                     if (notes.isBlank()) {
                         Placeholder(stringResource(R.string.people_body_empty))
                     } else {
@@ -441,8 +427,6 @@ private fun TagPill(label: String, emphasized: Boolean) {
 @Composable
 private fun SectionCard(
     title: String,
-    action: String,
-    onAction: () -> Unit,
     content: @Composable () -> Unit,
 ) {
     Surface(
@@ -455,23 +439,11 @@ private fun SectionCard(
             modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                )
-                TextButton(
-                    onClick = onAction,
-                    contentPadding = PaddingValues(horizontal = 8.dp),
-                ) {
-                    Text(text = action, style = MaterialTheme.typography.labelLarge)
-                }
-            }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+            )
             content()
         }
     }

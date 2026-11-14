@@ -24,7 +24,7 @@ internal enum class PersonIconKind {
     Back,
     Edit,
     More,
-    Close,
+    Plus,
 }
 
 @Composable
@@ -94,9 +94,9 @@ private fun DrawScope.drawPersonIcon(kind: PersonIconKind, color: Color) {
             dot(17.5f, 12f)
         }
 
-        PersonIconKind.Close -> {
-            line(6.5f, 6.5f, 17.5f, 17.5f)
-            line(17.5f, 6.5f, 6.5f, 17.5f)
+        PersonIconKind.Plus -> {
+            line(12f, 5.5f, 12f, 18.5f)
+            line(5.5f, 12f, 18.5f, 12f)
         }
     }
 }

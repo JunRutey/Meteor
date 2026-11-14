@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.Document
 import com.meteor.memory.core.storage.ImageStore
+import com.meteor.memory.core.storage.PersonProfileCodec
 import com.meteor.memory.core.storage.PersonQueries
 import com.meteor.memory.core.storage.RecordSource
 import com.meteor.memory.core.storage.RecordType
@@ -14,6 +15,7 @@ import com.meteor.memory.core.storage.Relation
 import com.meteor.memory.core.storage.StorageRouter
 import com.meteor.memory.feature.editor.EditorModule
 import com.meteor.memory.feature.editor.MarkdownEditing
+import com.meteor.memory.feature.settings.SettingsRepository
 import com.meteor.memory.ui.common.decodeImages
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
@@ -21,6 +23,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -35,8 +38,10 @@ data class PersonEditState(
     val note: String = "",
     /** Markdown body (正文) — the part that can carry images. */
     val notes: String = "",
-    /** Free-form labels shown beside the structured relation. */
+    /** Free-form labels selected for this person. */
     val tags: List<String> = emptyList(),
+    /** Remembered labels offered as selectable chips. */
+    val customTags: List<String> = emptyList(),
     val images: Map<String, ImageBitmap> = emptyMap(),
     /** Referenced images whose bytes exist but produced no bitmap. */
     val missingImages: Set<String> = emptySet(),
@@ -60,6 +65,7 @@ class PersonEditViewModel @Inject constructor(
     private val editorModule: EditorModule,
     private val imageStore: ImageStore,
     private val storageRouter: StorageRouter,
+    private val settingsRepository: SettingsRepository,
     private val appLog: AppLog,
 ) : ViewModel() {
 
@@ -81,6 +87,16 @@ class PersonEditViewModel @Inject constructor(
             val profile = withContext(Dispatchers.IO) {
                 runCatching { personQueries.read(personId) }.getOrNull()
             }
+            val customTags = withContext(Dispatchers.IO) {
+                val stored = runCatching { settingsRepository.settings.first().peopleTags }
+                    .getOrDefault(emptySet<String>())
+                val fromPeople = runCatching { personQueries.list().flatMap { it.tags } }
+                    .getOrDefault(emptyList<String>())
+                (stored + fromPeople + profile?.tags.orEmpty())
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                    .sorted()
+            }
             _state.update {
                 it.copy(
                     displayName = profile?.displayName ?: personId.take(SHORT_ID),
@@ -88,6 +104,7 @@ class PersonEditViewModel @Inject constructor(
                     note = profile?.note.orEmpty(),
                     notes = profile?.notes.orEmpty(),
                     tags = profile?.tags.orEmpty(),
+                    customTags = customTags,
                 )
             }
             refreshImages(_state.value.notes)
@@ -104,6 +121,21 @@ class PersonEditViewModel @Inject constructor(
 
     fun onTagsChanged(value: List<String>) {
         _state.update { it.copy(tags = value, saved = false, error = null) }
+    }
+
+    /** Remembers a tag immediately and persists it for future edits. */
+    fun addTag(raw: String) {
+        val tag = PersonProfileCodec.normalizeTags(listOf(raw)).firstOrNull() ?: return
+        _state.update { state ->
+            state.copy(
+                customTags = (state.customTags + tag).distinct().sorted(),
+                saved = false,
+            )
+        }
+        viewModelScope.launch {
+            runCatching { settingsRepository.addPeopleTag(tag) }
+                .onFailure { appLog.warn(TAG, "people tag persist failed", it) }
+        }
     }
 
     fun onNoteChanged(value: String) {

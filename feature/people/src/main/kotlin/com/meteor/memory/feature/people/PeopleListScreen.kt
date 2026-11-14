@@ -56,7 +56,9 @@ fun relationLabel(relation: Relation?): String = stringResource(
 @Composable
 fun PeopleListScreen(
     people: List<PeopleRow>,
+    availableTags: List<String>,
     onCreate: (String, Relation?, List<String>) -> Unit,
+    onAddTag: (String) -> Unit,
     onOpen: (String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -147,6 +149,8 @@ fun PeopleListScreen(
 
     if (showCreate) {
         CreatePersonDialog(
+            availableTags = availableTags,
+            onAddTag = onAddTag,
             onDismiss = { showCreate = false },
             onConfirm = { name, relation, tags ->
                 showCreate = false
@@ -158,6 +162,8 @@ fun PeopleListScreen(
 
 @Composable
 private fun CreatePersonDialog(
+    availableTags: List<String>,
+    onAddTag: (String) -> Unit,
     onDismiss: () -> Unit,
     onConfirm: (String, Relation?, List<String>) -> Unit,
 ) {
@@ -187,8 +193,10 @@ private fun CreatePersonDialog(
                 PersonTagEditor(
                     relation = relation,
                     tags = tags,
+                    availableTags = availableTags,
                     onRelationChanged = { relation = it },
                     onTagsChanged = { tags = it },
+                    onAddTag = onAddTag,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }

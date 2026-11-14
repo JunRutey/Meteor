@@ -46,6 +46,12 @@ data class AppSettings(
     val aiWriteDiary: Boolean = true,
     /** Sub-grant of [aiWriteEnabled]: create/update person profiles (ADR-030). */
     val aiWritePeople: Boolean = true,
+    /**
+     * Custom tags the user added in the people editor. They are remembered
+     * separately from any one profile so the tag chip stays available after the
+     * person is deleted or when creating a new person.
+     */
+    val peopleTags: Set<String> = emptySet(),
     /** Whether the first-launch introduction and birth-date setup were completed. */
     val onboardingCompleted: Boolean = false,
 ) {

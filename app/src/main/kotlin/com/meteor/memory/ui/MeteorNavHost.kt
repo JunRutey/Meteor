@@ -334,6 +334,7 @@ fun MeteorNavHost(
         composable(ROUTE_PEOPLE) {
             val viewModel: PeopleViewModel = hiltViewModel()
             val people by viewModel.people.collectAsStateWithLifecycle()
+            val availableTags by viewModel.customTags.collectAsStateWithLifecycle()
             val context = LocalContext.current
 
             RefreshOnResume { viewModel.refresh() }
@@ -354,7 +355,9 @@ fun MeteorNavHost(
                         tags = entry.tags,
                     )
                 },
+                availableTags = availableTags,
                 onCreate = viewModel::create,
+                onAddTag = viewModel::addTag,
                 onOpen = { personId -> navController.navigate("people/$personId") },
                 onBack = { navController.popBackStack() },
             )
@@ -399,8 +402,6 @@ fun MeteorNavHost(
                 } + state.attachments.map { attachment -> attachment.toRecordRow() },
                 onBack = { navController.popBackStack() },
                 onEdit = { navController.navigate("people/$personId/edit") },
-                onEditNote = { navController.navigate("people/$personId/edit") },
-                onEditBody = { navController.navigate("people/$personId/edit") },
                 resolveImage = viewModel::imageFor,
                 onActivate = { target ->
                     if (target.startsWith("meteor://image/")) {
@@ -443,6 +444,7 @@ fun MeteorNavHost(
                 displayName = state.displayName,
                 relation = state.relation,
                 tags = state.tags,
+                availableTags = state.customTags,
                 note = state.note,
                 notes = state.notes,
                 saving = state.saving,
@@ -452,6 +454,7 @@ fun MeteorNavHost(
                 onNameChanged = viewModel::onNameChanged,
                 onRelationChanged = viewModel::onRelationChanged,
                 onTagsChanged = viewModel::onTagsChanged,
+                onAddTag = viewModel::addTag,
                 onNoteChanged = viewModel::onNoteChanged,
                 onNotesChanged = viewModel::onNotesChanged,
                 onInsertLink = viewModel::insertLink,
