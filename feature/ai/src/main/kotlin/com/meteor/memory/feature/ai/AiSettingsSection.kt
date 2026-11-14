@@ -69,10 +69,9 @@ import kotlinx.coroutines.launch
 fun AiSettingsSection(
     enabled: Boolean,
     consentAccepted: Boolean,
-    provider: String,
-    baseUrl: String,
     model: String,
     reasoning: String,
+    ttsVoice: String,
     apiKeyPresent: Boolean,
     models: List<String> = emptyList(),
     modelsLoading: Boolean = false,
@@ -84,10 +83,9 @@ fun AiSettingsSection(
     testMessage: String?,
     onEnabledChange: (Boolean) -> Unit,
     onConsentAccepted: () -> Unit,
-    onProviderChange: (String) -> Unit,
-    onBaseUrlChange: (String) -> Unit,
     onModelChange: (String) -> Unit,
     onReasoningChange: (String) -> Unit,
+    onTtsVoiceChange: (String) -> Unit,
     onRefreshModels: () -> Unit = {},
     onWriteChange: (Boolean) -> Unit = {},
     onWriteDiaryChange: (Boolean) -> Unit = {},
@@ -149,28 +147,6 @@ fun AiSettingsSection(
         }
 
         if (enabled && consentAccepted) {
-            Text(text = stringResource(R.string.ai_settings_provider), style = MaterialTheme.typography.bodyLarge)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AiPresets.ids.forEach { id ->
-                    val label = aiProviderLabel(id)
-                    if (id == provider) {
-                        Button(onClick = { onProviderChange(id) }) { Text(label) }
-                    } else {
-                        OutlinedButton(onClick = { onProviderChange(id) }) { Text(label) }
-                    }
-                }
-            }
-
-            if (provider == AiPresets.CUSTOM) {
-                OutlinedTextField(
-                    value = baseUrl,
-                    onValueChange = onBaseUrlChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    label = { Text(text = stringResource(R.string.ai_settings_base_url)) },
-                )
-            }
-
             OutlinedTextField(
                 value = model,
                 onValueChange = onModelChange,
@@ -246,6 +222,26 @@ fun AiSettingsSection(
                 text = stringResource(R.string.ai_settings_reasoning_hint),
                 style = MaterialTheme.typography.bodySmall,
             )
+
+            Text(
+                text = stringResource(R.string.ai_settings_tts_voice),
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                TtsVoice.entries.forEach { voice ->
+                    val label = ttsVoiceLabel(voice)
+                    if (voice.wire == ttsVoice) {
+                        Button(onClick = { onTtsVoiceChange(voice.wire) }) { Text(label) }
+                    } else {
+                        OutlinedButton(onClick = { onTtsVoiceChange(voice.wire) }) { Text(label) }
+                    }
+                }
+            }
 
             Row(
                 modifier = Modifier
@@ -618,6 +614,14 @@ internal fun reasoningLabel(mode: ReasoningMode): String = stringResource(
         ReasoningMode.LOW -> R.string.ai_reasoning_low
         ReasoningMode.HIGH -> R.string.ai_reasoning_high
         ReasoningMode.MAX -> R.string.ai_reasoning_max
+    },
+)
+
+@Composable
+internal fun ttsVoiceLabel(voice: TtsVoice): String = stringResource(
+    when (voice) {
+        TtsVoice.STELLA -> R.string.ai_tts_voice_stella
+        TtsVoice.TIDE -> R.string.ai_tts_voice_tide
     },
 )
 

@@ -31,6 +31,9 @@ internal enum class AiIconKind {
     Sparkle,
     Send,
     ArrowUpRight,
+    Play,
+    Stop,
+    Regenerate,
     Paperclip,
     Globe,
     Archive,
@@ -164,6 +167,48 @@ private fun DrawScope.drawAiIcon(kind: AiIconKind, color: Color) {
                 line(17.5f, 6.5f)
                 line(17.5f, 16f)
             }
+        }
+
+        AiIconKind.Play -> fill {
+            move(8.5f, 5.5f)
+            line(18.5f, 12f)
+            line(8.5f, 18.5f)
+            close()
+        }
+
+        AiIconKind.Stop -> fill {
+            move(7.5f, 7.5f)
+            line(16.5f, 7.5f)
+            line(16.5f, 16.5f)
+            line(7.5f, 16.5f)
+            close()
+        }
+
+        AiIconKind.Regenerate -> {
+            val center = p(12f, 12f)
+            val radius = 8f * w / 24f
+            drawArc(
+                color = color,
+                startAngle = 30f,
+                sweepAngle = 300f,
+                useCenter = false,
+                topLeft = Offset(center.x - radius, center.y - radius),
+                size = Size(radius * 2, radius * 2),
+                style = stroke,
+            )
+            val theta = Math.toRadians(330.0)
+            val ex = center.x + (radius.toDouble() * kotlin.math.cos(theta)).toFloat()
+            val ey = center.y + (radius.toDouble() * kotlin.math.sin(theta)).toFloat()
+            val tangentX = (-kotlin.math.sin(theta)).toFloat()
+            val tangentY = kotlin.math.cos(theta).toFloat()
+            val perpX = kotlin.math.cos(theta).toFloat()
+            val perpY = (-kotlin.math.sin(theta)).toFloat()
+            val scale = w / 24f
+            val tip = Offset(ex + tangentX * 4f * scale, ey + tangentY * 4f * scale)
+            val baseOne = Offset(ex + perpX * 2.5f * scale, ey + perpY * 2.5f * scale)
+            val baseTwo = Offset(ex - perpX * 2.5f * scale, ey - perpY * 2.5f * scale)
+            drawLine(color, baseOne, tip, strokeWidth, StrokeCap.Round)
+            drawLine(color, baseTwo, tip, strokeWidth, StrokeCap.Round)
         }
 
         AiIconKind.Paperclip -> strokePath {

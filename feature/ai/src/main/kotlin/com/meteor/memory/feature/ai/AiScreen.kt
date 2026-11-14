@@ -28,6 +28,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -104,6 +105,8 @@ fun AiScreen(
     pendingToolApprovals: List<AiToolApproval> = emptyList(),
     chatMode: AiChatMode = AiChatMode.ARCHIVE,
     reasoning: String = ReasoningMode.AUTO.wire,
+    speechLoadingId: String? = null,
+    speakingId: String? = null,
     conversations: List<AiConversationItem> = emptyList(),
     activeConversationId: String? = null,
     pendingFiles: List<AiFileReference> = emptyList(),
@@ -121,6 +124,7 @@ fun AiScreen(
     onBack: () -> Unit,
     onChatModeSelect: (AiChatMode) -> Unit = {},
     onReasoningChange: (String) -> Unit = {},
+    onToggleSpeech: (String) -> Unit = {},
     onNewConversation: () -> Unit = {},
     onSelectConversation: (String) -> Unit = {},
     onRenameConversation: (String, String) -> Unit = { _, _ -> },
@@ -372,12 +376,15 @@ fun AiScreen(
                                 bubble = bubble,
                                 enabled = canInteract,
                                 canContinue = index == messages.lastIndex,
+                                speechLoading = speechLoadingId == bubble.id,
+                                speaking = speakingId == bubble.id,
                                 onEdit = {
                                     editingMessageId = bubble.id
                                     input = bubble.text
                                 },
                                 onRegenerate = { onRegenerate(bubble.id) },
                                 onContinue = { onContinue(bubble.id, continuePrompt) },
+                                onToggleSpeech = { onToggleSpeech(bubble.id) },
                             )
                         }
                     }
@@ -520,9 +527,12 @@ private fun ChatMessage(
     bubble: AiChatBubble,
     enabled: Boolean,
     canContinue: Boolean,
+    speechLoading: Boolean,
+    speaking: Boolean,
     onEdit: () -> Unit,
     onRegenerate: () -> Unit,
     onContinue: () -> Unit,
+    onToggleSpeech: () -> Unit,
 ) {
     if (bubble.fromUser) {
         Column(
@@ -580,48 +590,153 @@ private fun ChatMessage(
             ) {
                 ProcessSteps(steps = bubble.steps, initiallyExpanded = false)
                 if (bubble.text.isNotBlank()) {
-                    SelectionContainer {
-                        Text(
-                            text = bubble.text,
-                            modifier = Modifier.padding(top = 2.dp),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
-                        )
-                    }
-                }
-                if (bubble.citations.isNotEmpty()) {
-                    CitationList(bubble.citations)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                    TextButton(
-                        onClick = onRegenerate,
-                        enabled = enabled,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                        shape = RoundedCornerShape(
+                            topStart = 20.dp,
+                            topEnd = 20.dp,
+                            bottomEnd = 20.dp,
+                            bottomStart = 6.dp,
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     ) {
-                        Text(
-                            text = stringResource(R.string.ai_message_regenerate),
-                            style = MaterialTheme.typography.labelMedium,
-                        )
-                    }
-                    if (bubble.isTruncated && bubble.serverToolCallsJson == null && canContinue) {
-                        TextButton(
-                            onClick = onContinue,
-                            enabled = enabled,
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                        Column(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Text(
-                                text = stringResource(R.string.ai_message_continue),
-                                style = MaterialTheme.typography.labelMedium,
-                            )
+                            SelectionContainer {
+                                Text(
+                                    text = bubble.text,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
+                            if (bubble.citations.isNotEmpty()) {
+                                CitationList(bubble.citations)
+                            }
                         }
                     }
                 }
-                val usage = bubble.usage
-                if (usage != null && usage.totalTokens > 0 && bubble.elapsedMs > 0) {
-                    AiUsageSummary(usage, bubble.elapsedMs, compact = true)
-                }
+                AssistantFooter(
+                    usage = bubble.usage,
+                    elapsedMs = bubble.elapsedMs,
+                    canContinue = bubble.isTruncated &&
+                        bubble.serverToolCallsJson == null &&
+                        canContinue,
+                    hasText = bubble.text.isNotBlank(),
+                    enabled = enabled,
+                    speechLoading = speechLoading,
+                    speaking = speaking,
+                    onContinue = onContinue,
+                    onToggleSpeech = onToggleSpeech,
+                    onRegenerate = onRegenerate,
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun AssistantFooter(
+    usage: AiUsage?,
+    elapsedMs: Long,
+    canContinue: Boolean,
+    hasText: Boolean,
+    enabled: Boolean,
+    speechLoading: Boolean,
+    speaking: Boolean,
+    onContinue: () -> Unit,
+    onToggleSpeech: () -> Unit,
+    onRegenerate: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(modifier = Modifier.weight(1f)) {
+            if (usage != null && usage.totalTokens > 0) {
+                AiUsageSummary(usage, elapsedMs, compact = true)
+            }
+        }
+        if (canContinue) {
+            TextButton(
+                onClick = onContinue,
+                enabled = enabled,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.ai_message_continue),
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            }
+        }
+        if (hasText) {
+            AiSpeechButton(
+                loading = speechLoading,
+                speaking = speaking,
+                enabled = enabled,
+                onClick = onToggleSpeech,
+            )
+        }
+        AiRegenerateButton(enabled = enabled, onClick = onRegenerate)
+    }
+}
+
+@Composable
+private fun AiSpeechButton(
+    loading: Boolean,
+    speaking: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val description = stringResource(
+        if (loading || speaking) R.string.ai_speech_stop else R.string.ai_speech_play,
+    )
+    IconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier
+            .size(36.dp)
+            .semantics { contentDescription = description },
+    ) {
+        when {
+            loading -> CircularProgressIndicator(
+                modifier = Modifier.size(16.dp),
+                strokeWidth = 2.dp,
+                color = MaterialTheme.colorScheme.primary,
+            )
+
+            speaking -> AiIcon(
+                AiIconKind.Stop,
+                iconSize = 18.dp,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+
+            else -> AiIcon(
+                AiIconKind.Play,
+                iconSize = 18.dp,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AiRegenerateButton(enabled: Boolean, onClick: () -> Unit) {
+    val description = stringResource(R.string.ai_message_regenerate)
+    IconButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier
+            .size(36.dp)
+            .semantics { contentDescription = description },
+    ) {
+        AiIcon(
+            AiIconKind.Regenerate,
+            iconSize = 18.dp,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -695,14 +810,27 @@ private fun LiveTurn(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            ProcessSteps(steps = steps, initiallyExpanded = true)
+            ProcessSteps(steps = steps, initiallyExpanded = false)
             if (content.isNotBlank()) {
-                SelectionContainer {
-                    Text(
-                        text = content + if (streaming) "▍" else "",
-                        modifier = Modifier.padding(top = 2.dp),
-                        style = MaterialTheme.typography.bodyLarge,
-                    )
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                    shape = RoundedCornerShape(
+                        topStart = 20.dp,
+                        topEnd = 20.dp,
+                        bottomEnd = 20.dp,
+                        bottomStart = 6.dp,
+                    ),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                ) {
+                    SelectionContainer {
+                        Text(
+                            text = content + if (streaming) "▍" else "",
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
                 }
             } else if (streaming) {
                 ThinkingIndicator()
@@ -715,7 +843,7 @@ private fun LiveTurn(
 private fun ProcessSteps(steps: List<AiProcessStep>, initiallyExpanded: Boolean) {
     if (steps.isEmpty()) return
 
-    var expanded by remember(steps, initiallyExpanded) {
+    var expanded by remember(initiallyExpanded) {
         mutableStateOf(initiallyExpanded)
     }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -987,6 +1115,7 @@ private fun toolLabel(name: String): String = stringResource(
         "set_mood" -> R.string.ai_tool_set_mood
         "create_person" -> R.string.ai_tool_create_person
         "update_person" -> R.string.ai_tool_update_person
+        "delete_person" -> R.string.ai_tool_delete_person
         "delete_record" -> R.string.ai_tool_delete_record
         else -> R.string.ai_tool_unknown
     },

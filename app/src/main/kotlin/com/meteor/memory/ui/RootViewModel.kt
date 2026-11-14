@@ -74,6 +74,7 @@ class RootViewModel @Inject constructor(
         // both steps share one coroutine and keep LOADING until both are done.
         viewModelScope.launch {
             markLegacyInstallAsOnboarded()
+            settingsRepository.migrateAiToDeepSeekOnly()
             settingsRepository.settings
                 .map { it.onboardingCompleted }
                 .distinctUntilChanged()

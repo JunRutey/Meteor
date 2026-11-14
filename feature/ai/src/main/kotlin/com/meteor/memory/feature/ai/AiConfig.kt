@@ -89,6 +89,10 @@ data class AiConfig(
     val filesEndpoint: String
         get() = "${resolvedBaseUrl.trimEnd('/').removeSuffix("/v1")}/files"
 
+    /** DeepSeek speech synthesis: raw 24 kHz mono 16-bit PCM. */
+    val speechEndpoint: String
+        get() = "${resolvedBaseUrl.trimEnd('/').removeSuffix("/v1")}/v1/tools/tts"
+
     val reasoningMode: ReasoningMode get() = ReasoningMode.fromWire(reasoning)
 
     /** Only DeepSeek documents the thinking fields; others keep AUTO. */

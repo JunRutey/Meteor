@@ -164,20 +164,16 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repository.setAiConsentAccepted(true) }
     }
 
-    fun setAiProvider(provider: String) {
-        viewModelScope.launch { repository.setAiProvider(provider) }
-    }
-
-    fun setAiBaseUrl(baseUrl: String) {
-        viewModelScope.launch { repository.setAiBaseUrl(baseUrl) }
-    }
-
     fun setAiModel(model: String) {
         viewModelScope.launch { repository.setAiModel(model) }
     }
 
     fun setAiReasoning(reasoning: String) {
         viewModelScope.launch { repository.setAiReasoning(reasoning) }
+    }
+
+    fun setAiTtsVoice(voice: String) {
+        viewModelScope.launch { repository.setAiTtsVoice(voice) }
     }
 
     fun setAiWriteEnabled(enabled: Boolean) {

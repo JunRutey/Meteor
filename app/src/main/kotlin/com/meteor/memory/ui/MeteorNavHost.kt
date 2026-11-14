@@ -46,6 +46,7 @@ import com.meteor.memory.feature.ai.AiPersonChip
 import com.meteor.memory.feature.ai.AiScreen
 import com.meteor.memory.feature.ai.AiSettingsScreen
 import com.meteor.memory.feature.ai.AiSettingsSummary
+import com.meteor.memory.feature.ai.AiUsageTotals
 import com.meteor.memory.feature.ai.R as AiR
 import com.meteor.memory.feature.ai.AiSkillChip
 import com.meteor.memory.feature.ai.PersonaScreen
@@ -540,6 +541,8 @@ fun MeteorNavHost(
                 pendingToolApprovals = state.pendingToolApprovals,
                 chatMode = state.chatMode,
                 reasoning = state.reasoning,
+                speechLoadingId = state.speechLoadingId,
+                speakingId = state.speakingId,
                 conversations = state.conversations,
                 activeConversationId = state.activeConversationId,
                 pendingFiles = state.pendingFiles,
@@ -557,6 +560,7 @@ fun MeteorNavHost(
                 onBack = { navController.popBackStack() },
                 onChatModeSelect = viewModel::setChatMode,
                 onReasoningChange = viewModel::setReasoning,
+                onToggleSpeech = viewModel::toggleSpeech,
                 onNewConversation = viewModel::newConversation,
                 onSelectConversation = viewModel::selectConversation,
                 onRenameConversation = viewModel::renameConversation,
@@ -720,10 +724,9 @@ fun MeteorNavHost(
             AiSettingsScreen(
                 enabled = settings.aiEnabled,
                 consentAccepted = settings.aiConsentAccepted,
-                provider = settings.aiProvider,
-                baseUrl = settings.aiBaseUrl,
                 model = settings.aiModel,
                 reasoning = settings.aiReasoning,
+                ttsVoice = settings.aiTtsVoice,
                 apiKeyPresent = apiKeyPresent,
                 models = aiModels.items,
                 modelsLoading = aiModels.loading,
@@ -733,10 +736,9 @@ fun MeteorNavHost(
                 writePeople = settings.aiWritePeople,
                 testing = aiTest.running,
                 testMessage = aiTestText(aiTest),
-                onProviderChange = viewModel::setAiProvider,
-                onBaseUrlChange = viewModel::setAiBaseUrl,
                 onModelChange = viewModel::setAiModel,
                 onReasoningChange = viewModel::setAiReasoning,
+                onTtsVoiceChange = viewModel::setAiTtsVoice,
                 onRefreshModels = viewModel::refreshAiModels,
                 onWriteChange = viewModel::setAiWriteEnabled,
                 onWriteDiaryChange = viewModel::setAiWriteDiary,
@@ -746,6 +748,13 @@ fun MeteorNavHost(
                 onRequestApiKey = viewModel::apiKeyOnce,
                 onTestConnection = viewModel::testAiConnection,
                 onBack = { navController.popBackStack() },
+                usageTotals = AiUsageTotals(
+                    tokens = settings.aiTotalPromptTokens + settings.aiTotalCompletionTokens,
+                    requests = settings.aiTotalRequests,
+                    elapsedMs = settings.aiTotalElapsedMs,
+                    cacheHitTokens = settings.aiTotalCacheHitTokens,
+                    cacheTokens = settings.aiTotalCacheHitTokens + settings.aiTotalCacheMissTokens,
+                ),
                 animationsEnabled = animationsEnabled,
             )
         }
@@ -917,6 +926,8 @@ private fun aiErrorText(code: Int, detail: String?): String? {
         detail == "empty-response" -> stringResource(AiR.string.ai_error_empty)
         detail == "content-filter" -> stringResource(AiR.string.ai_error_content_filter)
         detail == "step-limit" -> stringResource(AiR.string.ai_error_step_limit)
+        detail == "tts-unavailable" -> stringResource(AiR.string.ai_speech_unavailable)
+        detail == "tts-failed" -> stringResource(AiR.string.ai_speech_failed)
         code == 401 || code == 403 -> stringResource(AiR.string.ai_error_auth)
         code == 429 -> stringResource(AiR.string.ai_error_rate)
         code >= 500 || code == 0 -> stringResource(AiR.string.ai_error_network)
