@@ -12,7 +12,6 @@ import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -44,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.meteor.memory.R
 import java.time.LocalDate
@@ -51,6 +51,7 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
@@ -76,12 +77,16 @@ private data class LunarDateConversion(
 private fun isUsableLunarDate(date: LocalDate?, lunarYear: Int): Boolean =
     date != null && (date.year == lunarYear || date.year == lunarYear + 1)
 
-/** Row height of one wheel option, padded by 2dp spacing. */
-private val DateWheelItemHeight = 36.dp
-private val DateWheelItemSpacing = 2.dp
+/** Height of one wheel row, including the gap below it. */
+private val DateWheelRowHeight = 38.dp
+private val DateWheelRowGap = 2.dp
 
-/** Half the 144dp wheel: one item sits exactly in the middle. */
-private val DateWheelCenterPadding = 54.dp
+/**
+ * The scrolling wheel: four rows plus the gaps between them (158dp). The
+ * window must be a whole number of rows, or the row resting on the centre line
+ * would sit half an item off when the wheel snaps back.
+ */
+private val DateWheelHeight = 158.dp
 
 /**
  * Shared birth-date editor for first launch and for Settings.
@@ -447,9 +452,12 @@ private fun DateWheelPanel(content: @Composable RowScope.() -> Unit) {
 internal fun wheelScrollOffsetFor(
     index: Int,
     viewportHeight: Int,
-    itemHeight: Int,
-    itemSpacing: Int,
-): Int = index * (itemHeight + itemSpacing) - (viewportHeight - itemHeight) / 2
+    itemBlockSize: Int,
+): Int = index * itemBlockSize - (viewportHeight - itemBlockSize) / 2
+
+/** One row plus the gap below it: how far the wheel moves per item. */
+internal fun wheelItemBlockSize(rowHeight: Dp, rowGap: Dp): Int =
+    (rowHeight + rowGap).roundToPx()
 
 /**
  * One wheel column. Scrolling is preview only: the list eases back to
@@ -466,23 +474,22 @@ private fun <T> DateWheelColumn(
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
-    val itemHeightPx = with(LocalDensity.current) { DateWheelItemHeight.roundToPx() }
-    val itemSpacingPx = with(LocalDensity.current) { DateWheelItemSpacing.roundToPx() }
+    val itemBlockSize = with(LocalDensity.current) {
+        wheelItemBlockSize(DateWheelRowHeight, DateWheelRowGap)
+    }
     val settledIndex = selectedIndex.coerceIn(0, (options.size - 1).coerceAtLeast(0))
     val currentOptions by rememberUpdatedState(options)
     val currentOnSelect by rememberUpdatedState(onSelect)
 
+    fun settledScrollOffset(): Int = wheelScrollOffsetFor(
+        index = settledIndex,
+        viewportHeight = listState.layoutInfo.viewportSize.height,
+        itemBlockSize = itemBlockSize,
+    )
+
     LaunchedEffect(options, selectedIndex) {
         if (options.isNotEmpty()) {
-            listState.scrollToItem(
-                index = settledIndex,
-                scrollOffset = wheelScrollOffsetFor(
-                    index = settledIndex,
-                    viewportHeight = listState.layoutInfo.viewportSize.height,
-                    itemHeight = itemHeightPx,
-                    itemSpacing = itemSpacingPx,
-                ),
-            )
+            listState.scrollToItem(index = settledIndex, scrollOffset = settledScrollOffset())
         }
     }
 
@@ -494,12 +501,7 @@ private fun <T> DateWheelColumn(
             .distinctUntilChanged()
             .filter { !it }
             .collect {
-                val targetOffset = wheelScrollOffsetFor(
-                    index = settledIndex,
-                    viewportHeight = listState.layoutInfo.viewportSize.height,
-                    itemHeight = itemHeightPx,
-                    itemSpacing = itemSpacingPx,
-                )
+                val targetOffset = settledScrollOffset()
                 if (listState.firstVisibleItemIndex != settledIndex ||
                     listState.firstVisibleItemScrollOffset != targetOffset
                 ) {
@@ -517,12 +519,11 @@ private fun <T> DateWheelColumn(
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Box(modifier = Modifier.fillMaxWidth().height(144.dp)) {
+        Box(modifier = Modifier.fillMaxWidth().height(DateWheelHeight)) {
             LazyColumn(
-                modifier = Modifier.fillMaxWidth().height(144.dp),
+                modifier = Modifier.fillMaxWidth().height(DateWheelHeight),
                 state = listState,
-                contentPadding = PaddingValues(vertical = DateWheelCenterPadding),
-                verticalArrangement = Arrangement.spacedBy(DateWheelItemSpacing),
+                verticalArrangement = Arrangement.spacedBy(DateWheelRowGap),
                 flingBehavior = rememberSnapFlingBehavior(listState),
             ) {
                 itemsIndexed(options) { index, option ->
@@ -530,22 +531,22 @@ private fun <T> DateWheelColumn(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(DateWheelItemHeight)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(
-                                if (selected) {
-                                    MaterialTheme.colorScheme.primaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.surface
-                                },
-                            ),
+                            .height(DateWheelRowHeight),
                         contentAlignment = Alignment.Center,
                     ) {
-                        // The tap target fills the row, so picking a value does
-                        // not depend on hitting the label precisely.
+                        // The tap target is the visual row, so picking a value
+                        // does not depend on hitting the label precisely.
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(
+                                    if (selected) {
+                                        MaterialTheme.colorScheme.primaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.surface
+                                    },
+                                )
                                 .clickable {
                                     currentOptions.getOrNull(index)?.let(currentOnSelect)
                                 },
