@@ -8,12 +8,14 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -34,7 +36,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -50,12 +51,7 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
-import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.withContext
-import kotlin.math.abs
 
 private data class LunarDateSelection(
     val year: Int,
@@ -77,8 +73,19 @@ private data class LunarDateConversion(
 private fun isUsableLunarDate(date: LocalDate?, lunarYear: Int): Boolean =
     date != null && (date.year == lunarYear || date.year == lunarYear + 1)
 
+/** Row height of one wheel option, padded by 2dp spacing. */
+private val DateWheelItemHeight = 36.dp
+private val DateWheelItemSpacing = 2.dp
+
+/** Half the 144dp wheel: one item sits exactly in the middle. */
+private val DateWheelCenterPadding = 54.dp
+
 /**
  * Shared birth-date editor for first launch and for Settings.
+ *
+ * The wheels only scroll: dragging one never changes the date, because picking
+ * mid-flick would save whichever day happened to pass the centre line. Only a
+ * tap commits a value.
  *
  * The lunar conversion never runs on the main thread: enumerating a lunar year
  * reads one ICU field per Gregorian day, which is too slow for a composable
@@ -384,12 +391,24 @@ internal fun BirthDatePicker(
             }
         }
 
-        if (useLunar) {
-            settledLunarDate?.let { date ->
+        if (pickerExpanded) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (useLunar) {
+                    settledLunarDate?.let { date ->
+                        Text(
+                            text = stringResource(
+                                R.string.birth_date_value,
+                                dateFormatter.format(date),
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
                 Text(
-                    text = stringResource(R.string.birth_date_value, dateFormatter.format(date)),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = stringResource(R.string.birth_wheel_hint),
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -420,6 +439,10 @@ private fun DateWheelPanel(content: @Composable RowScope.() -> Unit) {
     }
 }
 
+/**
+ * One wheel column. Scrolling is preview only: it never changes the selection,
+ * and a row is committed only when it is tapped.
+ */
 @Composable
 private fun <T> DateWheelColumn(
     label: String,
@@ -430,31 +453,17 @@ private fun <T> DateWheelColumn(
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
-    val centerPadding = 54.dp
-    val centerOffset = with(LocalDensity.current) { centerPadding.roundToPx() }
+    val centerOffsetPx = with(LocalDensity.current) { DateWheelCenterPadding.roundToPx() }
+    val settledIndex = selectedIndex.coerceIn(0, (options.size - 1).coerceAtLeast(0))
     val currentOptions by rememberUpdatedState(options)
     val currentOnSelect by rememberUpdatedState(onSelect)
 
+    fun restOffset(index: Int): Int = if (index == 0) 0 else -centerOffsetPx
+
     LaunchedEffect(options, selectedIndex) {
         if (options.isNotEmpty()) {
-            val index = selectedIndex.coerceIn(options.indices)
-            listState.scrollToItem(index, scrollOffset = if (index == 0) 0 else -centerOffset)
+            listState.scrollToItem(index = settledIndex, scrollOffset = restOffset(settledIndex))
         }
-    }
-
-    LaunchedEffect(listState) {
-        snapshotFlow { listState.isScrollInProgress }
-            .distinctUntilChanged()
-            .drop(1)
-            .filter { !it }
-            .collect {
-                val layoutInfo = listState.layoutInfo
-                val center = layoutInfo.viewportSize.height / 2
-                val centeredIndex = layoutInfo.visibleItemsInfo.minByOrNull {
-                    abs(it.offset + it.size / 2 - center)
-                }?.index
-                centeredIndex?.let { currentOptions.getOrNull(it)?.let(currentOnSelect) }
-            }
     }
 
     Column(modifier) {
@@ -466,34 +475,45 @@ private fun <T> DateWheelColumn(
         LazyColumn(
             modifier = Modifier.fillMaxWidth().height(144.dp),
             state = listState,
-            contentPadding = PaddingValues(vertical = centerPadding),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            contentPadding = PaddingValues(vertical = DateWheelCenterPadding),
+            verticalArrangement = Arrangement.spacedBy(DateWheelItemSpacing),
+            flingBehavior = rememberSnapFlingBehavior(listState),
         ) {
             itemsIndexed(options) { index, option ->
                 val selected = index == selectedIndex
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(36.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(
-                            if (selected) {
-                                MaterialTheme.colorScheme.primaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.surface
-                            },
-                        )
-                        .clickable { onSelect(option) },
+                        .height(DateWheelItemHeight),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        text = optionLabel(option),
-                        color = if (selected) {
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
-                    )
+                    // The tap target is the visual row, so picking a value
+                    // does not depend on hitting the label precisely.
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(
+                                if (selected) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.surface
+                                },
+                            )
+                            .clickable {
+                                currentOptions.getOrNull(index)?.let(currentOnSelect)
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = optionLabel(option),
+                            color = if (selected) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurface
+                            },
+                        )
+                    }
                 }
             }
         }

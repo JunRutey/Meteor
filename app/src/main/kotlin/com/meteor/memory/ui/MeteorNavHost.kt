@@ -654,7 +654,6 @@ fun MeteorNavHost(
 
         composable(ROUTE_BIRTH_DATE) {
             BirthDateSettingsScreen(
-                onBack = { navController.popBackStack() },
                 onSaved = { navController.popBackStack() },
             )
         }
