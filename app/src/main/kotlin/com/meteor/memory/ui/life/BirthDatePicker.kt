@@ -1,18 +1,31 @@
 package com.meteor.memory.ui.life
 
-import android.app.DatePickerDialog
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -20,21 +33,29 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.meteor.memory.R
 import java.time.LocalDate
-import java.time.ZoneId
+import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
 
 private data class LunarDateSelection(
     val year: Int,
@@ -61,7 +82,7 @@ private fun isUsableLunarDate(date: LocalDate?, lunarYear: Int): Boolean =
  *
  * The lunar conversion never runs on the main thread: enumerating a lunar year
  * reads one ICU field per Gregorian day, which is too slow for a composable
- * that reacts to every dropdown change. [onProfileChanged] receives `null`
+ * that reacts to every wheel change. [onProfileChanged] receives `null`
  * while the current calendar has no valid, explicitly chosen date; it is not
  * called while the conversion for the latest selection is still running, so
  * callers keep the last settled profile instead of seeing a flash of `null`.
@@ -72,7 +93,6 @@ internal fun BirthDatePicker(
     modifier: Modifier = Modifier,
     onProfileChanged: (BirthProfile?) -> Unit,
 ) {
-    val context = LocalContext.current
     val today = remember { LocalDate.now() }
     val calendar = remember { ChineseLunarCalendar() }
     val locale = Locale.getDefault()
@@ -83,13 +103,17 @@ internal fun BirthDatePicker(
     val initialSolar = (initialProfile as? BirthProfile.Solar)?.gregorianDate
     val initialLunar = initialProfile as? BirthProfile.Lunar
 
-    var useLunar by rememberSaveable { mutableStateOf(initialLunar != null) }
+    var useLunar by rememberSaveable { mutableStateOf(initialProfile !is BirthProfile.Solar) }
     var solarDateText by rememberSaveable { mutableStateOf(initialSolar?.toString().orEmpty()) }
+    var solarWheelDateText by rememberSaveable {
+        mutableStateOf((initialSolar ?: today).toString())
+    }
     var lunarYear by rememberSaveable { mutableStateOf(initialLunar?.year ?: today.year) }
     var lunarMonth by rememberSaveable { mutableStateOf(initialLunar?.month ?: 1) }
     var lunarDay by rememberSaveable { mutableStateOf(initialLunar?.day ?: 1) }
     var leapMonth by rememberSaveable { mutableStateOf(initialLunar?.leapMonth ?: false) }
     var lunarTouched by rememberSaveable { mutableStateOf(false) }
+    var pickerExpanded by rememberSaveable { mutableStateOf(false) }
     val lunarSelection = LunarDateSelection(lunarYear, lunarMonth, lunarDay, leapMonth)
 
     var lunarMonths by remember { mutableStateOf<List<LunarMonth>>(emptyList()) }
@@ -118,7 +142,7 @@ internal fun BirthDatePicker(
         lunarConversion = LunarDateConversion(lunarSelection, date)
     }
 
-    // The conversion runs off the main thread, so right after a dropdown change
+    // The conversion runs off the main thread, so right after a wheel change
     // the stored result still belongs to the previous selection. Publishing
     // `null` for those frames would flicker the Save button and the "choose a
     // date" hint; keep the last settled profile until the new result lands.
@@ -142,6 +166,9 @@ internal fun BirthDatePicker(
         solarDateText.takeIf { it.isNotEmpty() }?.let {
             runCatching { LocalDate.parse(it) }.getOrNull()
         }
+    }
+    val solarWheelDate = remember(solarWheelDateText) {
+        runCatching { LocalDate.parse(solarWheelDateText) }.getOrNull() ?: today
     }
 
     val computedProfile: BirthProfile? = if (useLunar) {
@@ -182,6 +209,39 @@ internal fun BirthDatePicker(
         solarDate?.isAfter(today) == true
     }
 
+    fun updateSolarDate(year: Int, month: Int, day: Int) {
+        val safeMonth = month.coerceAtMost(if (year == today.year) today.monthValue else 12)
+        val lastDay = if (year == today.year && safeMonth == today.monthValue) {
+            today.dayOfMonth
+        } else {
+            YearMonth.of(year, safeMonth).lengthOfMonth()
+        }
+        val date = LocalDate.of(year, safeMonth, day.coerceAtMost(lastDay))
+        solarWheelDateText = date.toString()
+        solarDateText = date.toString()
+    }
+
+    val solarYearOptions = remember(today.year) {
+        (BirthProfile.MIN_BIRTH_YEAR..today.year).reversed().toList()
+    }
+    val solarMonthOptions = remember(solarWheelDate.year, today) {
+        (1..if (solarWheelDate.year == today.year) today.monthValue else 12).toList()
+    }
+    val solarDayOptions = remember(solarWheelDate.year, solarWheelDate.monthValue, today) {
+        val lastDay = if (
+            solarWheelDate.year == today.year &&
+            solarWheelDate.monthValue == today.monthValue
+        ) {
+            today.dayOfMonth
+        } else {
+            solarWheelDate.lengthOfMonth()
+        }
+        (1..lastDay).toList()
+    }
+    val lunarYearOptions = remember(today.year) {
+        (BirthProfile.MIN_BIRTH_YEAR..today.year).reversed().toList()
+    }
+
     Column(modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             if (!useLunar) {
@@ -201,105 +261,135 @@ internal fun BirthDatePicker(
             }
         }
 
-        if (useLunar) {
-            if (selectedLunarMonth == null) {
-                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(modifier = Modifier.padding(vertical = 12.dp))
+        val selectedDateLabel = if (useLunar) {
+            val month = selectedLunarMonth
+            if (month == null || (!lunarTouched && initialLunar == null)) {
+                stringResource(R.string.birth_choose_lunar_date)
+            } else {
+                val monthLabel = if (month.leapMonth) {
+                    stringResource(R.string.birth_lunar_leap_month_option, month.month)
+                } else {
+                    stringResource(R.string.birth_lunar_month_option, month.month)
+                }
+                stringResource(R.string.birth_lunar_date_value, lunarYear, monthLabel, lunarDay)
+            }
+        } else {
+            solarDate?.let { stringResource(R.string.birth_date_value, dateFormatter.format(it)) }
+                ?: stringResource(R.string.birth_choose_solar_date)
+        }
+        OutlinedButton(
+            onClick = { pickerExpanded = !pickerExpanded },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+        ) {
+            Text(text = selectedDateLabel, maxLines = 1)
+        }
+
+        AnimatedVisibility(
+            visible = pickerExpanded,
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut(),
+        ) {
+            if (useLunar) {
+                if (selectedLunarMonth == null) {
+                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(modifier = Modifier.padding(vertical = 12.dp))
+                    }
+                } else {
+                    val monthOptions = lunarMonths.map { month ->
+                        val label = if (month.leapMonth) {
+                            stringResource(R.string.birth_lunar_leap_month_option, month.month)
+                        } else {
+                            stringResource(R.string.birth_lunar_month_option, month.month)
+                        }
+                        month to label
+                    }
+                    DateWheelPanel {
+                        DateWheelColumn(
+                            label = stringResource(R.string.birth_date_year),
+                            options = lunarYearOptions,
+                            selectedIndex = lunarYearOptions.indexOf(lunarYear).coerceAtLeast(0),
+                            optionLabel = { it.toString() },
+                            onSelect = {
+                                if (lunarYear != it) {
+                                    lunarYear = it
+                                    lunarMonth = 1
+                                    lunarDay = 1
+                                    leapMonth = false
+                                    lunarTouched = true
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                        )
+                        DateWheelColumn(
+                            label = stringResource(R.string.birth_date_month),
+                            options = monthOptions,
+                            selectedIndex = monthOptions.indexOfFirst {
+                                it.first.month == lunarMonth && it.first.leapMonth == leapMonth
+                            }.coerceAtLeast(0),
+                            optionLabel = { it.second },
+                            onSelect = {
+                                lunarMonth = it.first.month
+                                leapMonth = it.first.leapMonth
+                                lunarTouched = true
+                            },
+                            modifier = Modifier.weight(1.25f),
+                        )
+                        DateWheelColumn(
+                            label = stringResource(R.string.birth_date_day),
+                            options = (1..selectedLunarMonth.lastDay).toList(),
+                            selectedIndex = (lunarDay - 1).coerceAtLeast(0),
+                            optionLabel = { it.toString() },
+                            onSelect = {
+                                lunarDay = it
+                                lunarTouched = true
+                            },
+                            modifier = Modifier.weight(0.8f),
+                        )
+                    }
                 }
             } else {
-                val monthOptions = lunarMonths.map { month ->
-                    val label = if (month.leapMonth) {
-                        stringResource(R.string.birth_lunar_leap_month_option, month.month)
-                    } else {
-                        stringResource(R.string.birth_lunar_month_option, month.month)
-                    }
-                    month to label
-                }
-                val selectedMonthOption = monthOptions.firstOrNull {
-                    it.first.month == lunarMonth && it.first.leapMonth == leapMonth
-                } ?: monthOptions.firstOrNull {
-                    it.first.month == lunarMonth && !it.first.leapMonth
-                } ?: monthOptions.first()
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ChoiceDropdown(
-                        label = stringResource(R.string.birth_lunar_year),
-                        value = lunarYear.toString(),
-                        options = (BirthProfile.MIN_BIRTH_YEAR..today.year)
-                            .reversed()
-                            .map { it to it.toString() },
+                DateWheelPanel {
+                    DateWheelColumn(
+                        label = stringResource(R.string.birth_date_year),
+                        options = solarYearOptions,
+                        selectedIndex = solarYearOptions.indexOf(solarWheelDate.year).coerceAtLeast(0),
+                        optionLabel = { it.toString() },
                         onSelect = {
-                            if (lunarYear != it) {
-                                lunarYear = it
-                                lunarMonth = 1
-                                lunarDay = 1
-                                leapMonth = false
-                                lunarTouched = true
-                            }
+                            updateSolarDate(it, solarWheelDate.monthValue, solarWheelDate.dayOfMonth)
                         },
-                        modifier = Modifier.weight(1.3f),
+                        modifier = Modifier.weight(1f),
                     )
-                    ChoiceDropdown(
-                        label = stringResource(R.string.birth_lunar_month),
-                        value = selectedMonthOption.second,
-                        options = monthOptions,
+                    DateWheelColumn(
+                        label = stringResource(R.string.birth_date_month),
+                        options = solarMonthOptions,
+                        selectedIndex = (solarWheelDate.monthValue - 1).coerceAtLeast(0),
+                        optionLabel = { it.toString() },
                         onSelect = {
-                            lunarMonth = it.month
-                            leapMonth = it.leapMonth
-                            lunarTouched = true
+                            updateSolarDate(solarWheelDate.year, it, solarWheelDate.dayOfMonth)
                         },
-                        modifier = Modifier.weight(1.4f),
+                        modifier = Modifier.weight(0.8f),
                     )
-                    ChoiceDropdown(
-                        label = stringResource(R.string.birth_lunar_day),
-                        value = lunarDay.toString(),
-                        options = (1..selectedLunarMonth.lastDay).map { it to it.toString() },
+                    DateWheelColumn(
+                        label = stringResource(R.string.birth_date_day),
+                        options = solarDayOptions,
+                        selectedIndex = (solarWheelDate.dayOfMonth - 1).coerceAtLeast(0),
+                        optionLabel = { it.toString() },
                         onSelect = {
-                            lunarDay = it
-                            lunarTouched = true
+                            updateSolarDate(solarWheelDate.year, solarWheelDate.monthValue, it)
                         },
-                        modifier = Modifier.weight(0.9f),
-                    )
-                }
-                settledLunarDate?.let { date ->
-                    Text(
-                        text = stringResource(
-                            R.string.birth_date_value,
-                            dateFormatter.format(date),
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.weight(0.8f),
                     )
                 }
             }
-        } else {
-            val shownDate = solarDate?.let { dateFormatter.format(it) }
-            OutlinedButton(
-                onClick = {
-                    val initial = solarDate ?: today
-                    DatePickerDialog(
-                        context,
-                        { _, year, month, day ->
-                            solarDateText = LocalDate.of(year, month + 1, day).toString()
-                        },
-                        initial.year,
-                        initial.monthValue - 1,
-                        initial.dayOfMonth,
-                    ).apply {
-                        datePicker.minDate = LocalDate.of(
-                            BirthProfile.MIN_BIRTH_YEAR,
-                            1,
-                            1,
-                        ).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-                        datePicker.maxDate = System.currentTimeMillis()
-                    }.show()
-                },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
+        }
+
+        if (useLunar) {
+            settledLunarDate?.let { date ->
                 Text(
-                    text = shownDate?.let {
-                        stringResource(R.string.birth_date_value, it)
-                    } ?: stringResource(R.string.birth_choose_solar_date),
+                    text = stringResource(R.string.birth_date_value, dateFormatter.format(date)),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
                 )
             }
         }
@@ -315,37 +405,93 @@ internal fun BirthDatePicker(
 }
 
 @Composable
-private fun <T> ChoiceDropdown(
+private fun DateWheelPanel(content: @Composable RowScope.() -> Unit) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            content = content,
+        )
+    }
+}
+
+@Composable
+private fun <T> DateWheelColumn(
     label: String,
-    value: String,
-    options: List<Pair<T, String>>,
+    options: List<T>,
+    selectedIndex: Int,
+    optionLabel: (T) -> String,
     onSelect: (T) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var expanded by rememberSaveable { mutableStateOf(false) }
+    val listState = rememberLazyListState()
+    val centerPadding = 54.dp
+    val centerOffset = with(LocalDensity.current) { centerPadding.roundToPx() }
+    val currentOptions by rememberUpdatedState(options)
+    val currentOnSelect by rememberUpdatedState(onSelect)
+
+    LaunchedEffect(options, selectedIndex) {
+        if (options.isNotEmpty()) {
+            val index = selectedIndex.coerceIn(options.indices)
+            listState.scrollToItem(index, scrollOffset = if (index == 0) 0 else -centerOffset)
+        }
+    }
+
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }
+            .distinctUntilChanged()
+            .drop(1)
+            .filter { !it }
+            .collect {
+                val layoutInfo = listState.layoutInfo
+                val center = layoutInfo.viewportSize.height / 2
+                val centeredIndex = layoutInfo.visibleItemsInfo.minByOrNull {
+                    abs(it.offset + it.size / 2 - center)
+                }?.index
+                centeredIndex?.let { currentOptions.getOrNull(it)?.let(currentOnSelect) }
+            }
+    }
+
     Column(modifier) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Box {
-            OutlinedButton(
-                onClick = { expanded = true },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(text = value, maxLines = 1)
-            }
-            DropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false },
-            ) {
-                options.forEach { (option, title) ->
-                    DropdownMenuItem(
-                        text = { Text(text = title) },
-                        onClick = {
-                            onSelect(option)
-                            expanded = false
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().height(144.dp),
+            state = listState,
+            contentPadding = PaddingValues(vertical = centerPadding),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            itemsIndexed(options) { index, option ->
+                val selected = index == selectedIndex
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(36.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            if (selected) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surface
+                            },
+                        )
+                        .clickable { onSelect(option) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = optionLabel(option),
+                        color = if (selected) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
                         },
                     )
                 }

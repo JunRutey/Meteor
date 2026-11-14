@@ -49,7 +49,10 @@ fun BirthDateSettingsScreen(
         if (state.saved) onSaved()
     }
 
-    Surface(Modifier.fillMaxSize()) {
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
