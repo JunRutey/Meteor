@@ -80,6 +80,13 @@ internal fun PersonTagEditor(
         onSelectionChanged(selected.distinct(), derivedRelation(selected))
     }
 
+    fun toggleTag(label: String, selected: Boolean) {
+        when {
+            selected -> applySelection(selectedTags - label)
+            selectedTags.size < PersonProfileCodec.MAX_TAGS -> applySelection(selectedTags + label)
+        }
+    }
+
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             text = stringResource(R.string.people_tags_label),
@@ -103,11 +110,7 @@ internal fun PersonTagEditor(
                     label = label,
                     selected = selected,
                     role = Role.Checkbox,
-                    onClick = {
-                        applySelection(
-                            if (selected) selectedTags - label else selectedTags + label,
-                        )
-                    },
+                    onClick = { toggleTag(label, selected) },
                 )
             }
             visibleCustomTags.forEach { tag ->
@@ -116,11 +119,7 @@ internal fun PersonTagEditor(
                     label = tag,
                     selected = selected,
                     role = Role.Checkbox,
-                    onClick = {
-                        applySelection(
-                            if (selected) selectedTags - tag else selectedTags + tag,
-                        )
-                    },
+                    onClick = { toggleTag(tag, selected) },
                 )
             }
             AddTagChip(onClick = { showAddDialog = true })
