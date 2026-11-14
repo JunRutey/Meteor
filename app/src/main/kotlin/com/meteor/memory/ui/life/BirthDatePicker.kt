@@ -8,12 +8,13 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -34,14 +35,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.meteor.memory.R
 import java.time.LocalDate
@@ -49,13 +51,11 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
+import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.withContext
-import kotlin.math.abs
 
 private data class LunarDateSelection(
     val year: Int,
@@ -77,8 +77,24 @@ private data class LunarDateConversion(
 private fun isUsableLunarDate(date: LocalDate?, lunarYear: Int): Boolean =
     date != null && (date.year == lunarYear || date.year == lunarYear + 1)
 
+/** Height of one wheel row, including the gap below it. */
+private val DateWheelRowHeight = 38.dp
+private val DateWheelRowGap = 2.dp
+
+/**
+ * The scrolling wheel: four rows plus the gaps between them (158dp). The
+ * window must be a whole number of rows, or the row resting on the centre line
+ * would sit half an item off when the wheel snaps back.
+ */
+private val DateWheelHeight = 158.dp
+
 /**
  * Shared birth-date editor for first launch and for Settings.
+ *
+ * The wheels only scroll: dragging one never changes the date, because picking
+ * mid-flick would save whichever day happened to pass the centre line. A
+ * released wheel snaps back (or continues its fling) to the row that was
+ * selected before, and only a tap commits a value.
  *
  * The lunar conversion never runs on the main thread: enumerating a lunar year
  * reads one ICU field per Gregorian day, which is too slow for a composable
@@ -384,12 +400,24 @@ internal fun BirthDatePicker(
             }
         }
 
-        if (useLunar) {
-            settledLunarDate?.let { date ->
+        if (pickerExpanded) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (useLunar) {
+                    settledLunarDate?.let { date ->
+                        Text(
+                            text = stringResource(
+                                R.string.birth_date_value,
+                                dateFormatter.format(date),
+                            ),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
                 Text(
-                    text = stringResource(R.string.birth_date_value, dateFormatter.format(date)),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    text = stringResource(R.string.birth_wheel_hint),
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
@@ -420,6 +448,21 @@ private fun DateWheelPanel(content: @Composable RowScope.() -> Unit) {
     }
 }
 
+/** Where the first item starts so that [index] sits exactly on the centre line. */
+internal fun wheelScrollOffsetFor(
+    index: Int,
+    viewportHeight: Int,
+    itemBlockSize: Int,
+): Int = index * itemBlockSize - (viewportHeight - itemBlockSize) / 2
+
+/** One row plus the gap below it: how far the wheel moves per item. */
+internal fun wheelItemBlockSize(rowHeight: Dp, rowGap: Dp): Dp = rowHeight + rowGap
+
+/**
+ * One wheel column. Scrolling is preview only: the list eases back to
+ * [selectedIndex] once the finger lifts, and a row is committed only when it
+ * is tapped.
+ */
 @Composable
 private fun <T> DateWheelColumn(
     label: String,
@@ -430,30 +473,42 @@ private fun <T> DateWheelColumn(
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
-    val centerPadding = 54.dp
-    val centerOffset = with(LocalDensity.current) { centerPadding.roundToPx() }
+    val itemBlockSize = with(LocalDensity.current) {
+        wheelItemBlockSize(DateWheelRowHeight, DateWheelRowGap).roundToPx()
+    }
+    val settledIndex = selectedIndex.coerceIn(0, (options.size - 1).coerceAtLeast(0))
     val currentOptions by rememberUpdatedState(options)
     val currentOnSelect by rememberUpdatedState(onSelect)
 
+    fun settledScrollOffset(): Int = wheelScrollOffsetFor(
+        index = settledIndex,
+        viewportHeight = listState.layoutInfo.viewportSize.height,
+        itemBlockSize = itemBlockSize,
+    )
+
     LaunchedEffect(options, selectedIndex) {
         if (options.isNotEmpty()) {
-            val index = selectedIndex.coerceIn(options.indices)
-            listState.scrollToItem(index, scrollOffset = if (index == 0) 0 else -centerOffset)
+            listState.scrollToItem(index = settledIndex, scrollOffset = settledScrollOffset())
         }
     }
 
+    // Dragging is preview only. Once it stops, ease back to the committed row
+    // instead of adopting whatever passed the centre line: a flick without a
+    // tap must leave the date untouched.
     LaunchedEffect(listState) {
         snapshotFlow { listState.isScrollInProgress }
             .distinctUntilChanged()
-            .drop(1)
             .filter { !it }
             .collect {
-                val layoutInfo = listState.layoutInfo
-                val center = layoutInfo.viewportSize.height / 2
-                val centeredIndex = layoutInfo.visibleItemsInfo.minByOrNull {
-                    abs(it.offset + it.size / 2 - center)
-                }?.index
-                centeredIndex?.let { currentOptions.getOrNull(it)?.let(currentOnSelect) }
+                val targetOffset = settledScrollOffset()
+                if (listState.firstVisibleItemIndex != settledIndex ||
+                    listState.firstVisibleItemScrollOffset != targetOffset
+                ) {
+                    listState.animateScrollToItem(
+                        index = settledIndex,
+                        scrollOffset = targetOffset,
+                    )
+                }
             }
     }
 
@@ -463,39 +518,60 @@ private fun <T> DateWheelColumn(
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        LazyColumn(
-            modifier = Modifier.fillMaxWidth().height(144.dp),
-            state = listState,
-            contentPadding = PaddingValues(vertical = centerPadding),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            itemsIndexed(options) { index, option ->
-                val selected = index == selectedIndex
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(36.dp)
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(
-                            if (selected) {
-                                MaterialTheme.colorScheme.primaryContainer
-                            } else {
-                                MaterialTheme.colorScheme.surface
-                            },
-                        )
-                        .clickable { onSelect(option) },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = optionLabel(option),
-                        color = if (selected) {
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onSurface
-                        },
-                    )
+        Box(modifier = Modifier.fillMaxWidth().height(DateWheelHeight)) {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth().height(DateWheelHeight),
+                state = listState,
+                verticalArrangement = Arrangement.spacedBy(DateWheelRowGap),
+                flingBehavior = rememberSnapFlingBehavior(listState),
+            ) {
+                itemsIndexed(options) { index, option ->
+                    val selected = index == selectedIndex
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(DateWheelRowHeight),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        // The tap target is the visual row, so picking a value
+                        // does not depend on hitting the label precisely.
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(
+                                    if (selected) {
+                                        MaterialTheme.colorScheme.primaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme.surface
+                                    },
+                                )
+                                .clickable {
+                                    currentOptions.getOrNull(index)?.let(currentOnSelect)
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(
+                                text = optionLabel(option),
+                                color = if (selected) {
+                                    MaterialTheme.colorScheme.onPrimaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
+                            )
+                        }
+                    }
                 }
             }
+            // A hairline marks the row the committed date sits on. It never
+            // intercepts touches, so a drag anywhere on the wheel still scrolls.
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(MaterialTheme.colorScheme.outlineVariant),
+            )
         }
     }
 }
