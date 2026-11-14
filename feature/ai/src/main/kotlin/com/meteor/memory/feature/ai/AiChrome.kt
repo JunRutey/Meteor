@@ -597,6 +597,52 @@ private fun AiModeChip(
 }
 
 @Composable
+private fun AiReasoningOption(
+    label: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .alpha(if (enabled) 1f else 0.45f)
+            .clip(RoundedCornerShape(18.dp))
+            .selectable(
+                selected = selected,
+                enabled = enabled,
+                role = Role.RadioButton,
+                onClick = onClick,
+            ),
+        shape = RoundedCornerShape(18.dp),
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        border = BorderStroke(
+            1.dp,
+            if (selected) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+            } else {
+                MaterialTheme.colorScheme.outlineVariant
+            },
+        ),
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.labelLarge,
+            color = if (selected) {
+                MaterialTheme.colorScheme.onPrimaryContainer
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
 private fun AiSendButton(canSend: Boolean, busy: Boolean, onSend: () -> Unit) {
     val sendDescription = stringResource(R.string.ai_send)
     Surface(
@@ -886,11 +932,13 @@ internal fun AiChatSettingsSheet(
     people: List<AiPersonChip>,
     selectedPersonId: String?,
     personaStatus: String?,
+    reasoning: String,
     enabled: Boolean,
     canUploadFiles: Boolean,
     canUseWebTools: Boolean,
     onSkillSelect: (String) -> Unit,
     onPersonSelect: (String?) -> Unit,
+    onReasoningChange: (String) -> Unit,
     onOpenPersona: (String) -> Unit,
     onOpenSettings: () -> Unit,
     onDismiss: () -> Unit,
@@ -1014,6 +1062,30 @@ internal fun AiChatSettingsSheet(
                         status = personaStatus,
                         enabled = enabled,
                         onOpenPersona = { onOpenPersona(selectedPersonId) },
+                    )
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AiSheetSectionLabel(stringResource(R.string.ai_settings_reasoning))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
+                            .selectableGroup(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        ReasoningMode.entries.forEach { mode ->
+                            AiReasoningOption(
+                                label = reasoningLabel(mode),
+                                selected = mode.wire == reasoning,
+                                enabled = enabled,
+                                onClick = { onReasoningChange(mode.wire) },
+                            )
+                        }
+                    }
+                    Text(
+                        text = stringResource(R.string.ai_settings_reasoning_hint_short),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 if (!canUseWebTools || !canUploadFiles) {

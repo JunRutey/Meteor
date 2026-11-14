@@ -32,6 +32,7 @@ import com.meteor.memory.feature.ai.ArchiveTools
 import com.meteor.memory.feature.ai.AiConversationItem
 import com.meteor.memory.feature.ai.ChatRequest
 import com.meteor.memory.feature.ai.ChatTurn
+import com.meteor.memory.feature.ai.ReasoningMode
 import com.meteor.memory.feature.ai.SkillStage
 import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.SettingsRepository
@@ -87,6 +88,7 @@ data class AiUiState(
     val errorDetail: String? = null,
     val blocked: AiBlocked? = null,
     val provider: String = AiPresets.DEEPSEEK,
+    val reasoning: String = AppSettings.DEFAULT_AI_REASONING,
     val sessionUsage: AiUsage = AiUsage(),
     val sessionElapsedMs: Long = 0,
     val streaming: Boolean = false,
@@ -151,6 +153,7 @@ class AiViewModel @Inject constructor(
                     it.copy(
                         blocked = blocked,
                         provider = settings.aiProvider,
+                        reasoning = settings.aiReasoning,
                         canUploadFiles = deepSeekFilesAvailable,
                         canUseWebTools = deepSeekFilesAvailable,
                         chatMode = if (deepSeekFilesAvailable) it.chatMode else AiChatMode.ARCHIVE,
@@ -460,6 +463,13 @@ class AiViewModel @Inject constructor(
             return
         }
         _state.update { it.copy(chatMode = mode, errorCode = 0, errorDetail = null) }
+    }
+
+    /** Thinking effort is a global AI preference, also editable from chat settings. */
+    fun setReasoning(reasoning: String) {
+        val wire = ReasoningMode.fromWire(reasoning).wire
+        _state.update { it.copy(reasoning = wire) }
+        viewModelScope.launch { repository.setAiReasoning(wire) }
     }
 
     fun addFiles(uris: List<Uri>) {

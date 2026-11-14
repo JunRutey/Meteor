@@ -103,6 +103,7 @@ fun AiScreen(
     liveSteps: List<AiProcessStep> = emptyList(),
     pendingToolApprovals: List<AiToolApproval> = emptyList(),
     chatMode: AiChatMode = AiChatMode.ARCHIVE,
+    reasoning: String = ReasoningMode.AUTO.wire,
     conversations: List<AiConversationItem> = emptyList(),
     activeConversationId: String? = null,
     pendingFiles: List<AiFileReference> = emptyList(),
@@ -114,10 +115,12 @@ fun AiScreen(
     onSend: (String) -> Unit,
     onOpenPersona: (String) -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenAiSettings: () -> Unit = onOpenSettings,
     onClear: () -> Unit,
     onToolApproval: (Boolean) -> Unit = {},
     onBack: () -> Unit,
     onChatModeSelect: (AiChatMode) -> Unit = {},
+    onReasoningChange: (String) -> Unit = {},
     onNewConversation: () -> Unit = {},
     onSelectConversation: (String) -> Unit = {},
     onRenameConversation: (String, String) -> Unit = { _, _ -> },
@@ -492,18 +495,20 @@ fun AiScreen(
             people = people,
             selectedPersonId = selectedPersonId,
             personaStatus = personaStatus,
+            reasoning = reasoning,
             enabled = canInteract,
             canUploadFiles = canUploadFiles,
             canUseWebTools = canUseWebTools,
             onSkillSelect = onSkillSelect,
             onPersonSelect = onPersonSelect,
+            onReasoningChange = onReasoningChange,
             onOpenPersona = { personId ->
                 showChatSettings = false
                 onOpenPersona(personId)
             },
             onOpenSettings = {
                 showChatSettings = false
-                onOpenSettings()
+                onOpenAiSettings()
             },
             onDismiss = { showChatSettings = false },
         )
