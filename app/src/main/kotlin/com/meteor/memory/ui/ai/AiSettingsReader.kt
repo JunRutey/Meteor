@@ -3,6 +3,7 @@ package com.meteor.memory.ui.ai
 import com.meteor.memory.core.crypto.SecretStore
 import com.meteor.memory.feature.ai.AiConfig
 import com.meteor.memory.feature.ai.AiCredentialKeys
+import com.meteor.memory.feature.ai.AiPresets
 import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.SettingsRepository
 import kotlinx.coroutines.flow.first
@@ -29,8 +30,10 @@ class AiSettingsReader(
         return AiReadiness(
             settings = settings,
             config = AiConfig(
-                provider = settings.aiProvider,
-                baseUrl = settings.aiBaseUrl,
+                // DeepSeek is the only supported provider; legacy provider and
+                // base-URL preferences are intentionally ignored.
+                provider = AiPresets.DEEPSEEK,
+                baseUrl = "",
                 model = settings.aiModel,
                 apiKey = key,
                 reasoning = settings.aiReasoning,

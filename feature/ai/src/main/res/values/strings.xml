@@ -5,9 +5,19 @@
     <string name="ai_clear">清空</string>
     <string name="ai_clear_confirm_title">清空这段对话？</string>
     <string name="ai_clear_confirm_body">当前对话对象与技能下的历史消息将被删除，且无法恢复。</string>
+    <string name="ai_clear_current">清空当前对话</string>
     <string name="ai_open_settings">去设置</string>
+    <string name="ai_settings_entry">AI 设置</string>
+    <string name="ai_conversations">对话记录</string>
+    <string name="ai_open_conversations">打开对话记录</string>
+    <string name="ai_open_chat_settings">打开对话设置</string>
+    <string name="ai_close_sheet">关闭</string>
+    <string name="ai_more_actions">更多操作</string>
+    <string name="ai_current_conversation">当前对话</string>
     <string name="ai_header_provider">连接到 %1$s</string>
     <string name="ai_context_heading">对话设置</string>
+    <string name="ai_skill_requires_person">先选择对话对象</string>
+    <string name="ai_sessions_note">对话按技能与对话对象分别保存，本机加密。</string>
     <string name="ai_welcome_title">让记忆成为对话</string>
     <string name="ai_welcome_body">从你的档案、日记与人物记忆出发，提问、回顾，或继续一段熟悉的对话。</string>
     <string name="ai_suggestions_heading">试着这样开始</string>
@@ -29,6 +39,7 @@
     <string name="ai_persona_missing">这个人还没有蒸馏人格，对话会只依据档案回答。</string>
     <string name="ai_persona_open">查看人格档案</string>
     <string name="ai_send_to">内容会发送到 %1$s</string>
+    <string name="ai_composer_disclaimer">内容会发送到 %1$s · AI 生成内容请甄别</string>
     <string name="ai_question_hint">说点什么…</string>
     <string name="ai_send">发送</string>
     <string name="ai_busy">思考中…</string>
@@ -36,6 +47,7 @@
     <string name="ai_process_group">思考与工具调用（%1$d）</string>
     <string name="ai_composer_collapse">收起输入</string>
     <string name="ai_composer_expand">展开输入</string>
+    <string name="ai_edit_banner">正在编辑这条提问</string>
     <string name="ai_tool_line">%1$s %2$s · %3$s</string>
     <string name="ai_tool_approval_title">确认 AI 修改</string>
     <string name="ai_tool_approval_message">AI 请求执行「%1$s」。以下是本次操作的完整参数。请核对内容；拒绝或关闭将不会执行。</string>
@@ -62,6 +74,7 @@
     <string name="ai_tool_set_mood">设置心情</string>
     <string name="ai_tool_create_person">新建人物</string>
     <string name="ai_tool_update_person">更新人物</string>
+    <string name="ai_tool_delete_person">删除人物</string>
     <string name="ai_tool_delete_record">删除日记或心情</string>
     <string name="ai_mode_archive">档案工具</string>
     <string name="ai_mode_web">联网搜索</string>
@@ -74,6 +87,7 @@
     <string name="ai_web_working">正在联网处理</string>
     <string name="ai_citation_link">来源 %1$d · %2$s</string>
     <string name="ai_file_add">添加文件</string>
+    <string name="ai_file_remove">移除附件</string>
     <string name="ai_file_uploading">正在上传并解析…</string>
     <string name="ai_file_attached">附件：%1$s</string>
     <string name="ai_file_not_supported">文件输入仅支持 DeepSeek deepseek-flash；请切换模型或移除附件。</string>
@@ -85,6 +99,10 @@
     <string name="ai_message_edit">编辑</string>
     <string name="ai_message_regenerate">重新生成</string>
     <string name="ai_message_continue">继续生成</string>
+    <string name="ai_speech_play">朗读回答</string>
+    <string name="ai_speech_stop">停止朗读</string>
+    <string name="ai_speech_unavailable">这条回答暂时无法朗读。</string>
+    <string name="ai_speech_failed">朗读失败，请稍后再试。</string>
     <string name="ai_edit_cancel">取消编辑</string>
     <string name="ai_session_untitled">未命名对话</string>
     <string name="ai_session_new">新对话</string>
@@ -97,6 +115,16 @@
     <string name="ai_usage_line_cache">%1$.1fs · %2$d tokens · %3$d tok/s · 缓存 %4$d%%</string>
     <string name="ai_usage_session">本次累计 %1$d tokens · 平均 %2$d tok/s</string>
     <string name="ai_usage_session_cache">本次累计 %1$d tokens · 平均 %2$d tok/s · 缓存命中 %3$d%%</string>
+    <string name="ai_usage_total_title">总用量</string>
+    <string name="ai_usage_total_note">仅统计 AI 对话请求</string>
+    <string name="ai_usage_total_tokens">累计 tokens</string>
+    <string name="ai_usage_total_requests">对话请求</string>
+    <string name="ai_usage_total_elapsed">累计用时</string>
+    <string name="ai_usage_total_cache">缓存命中</string>
+    <string name="ai_usage_total_cache_value">%1$d%%</string>
+    <string name="ai_usage_duration_hours_minutes">%1$d 小时 %2$d 分</string>
+    <string name="ai_usage_duration_minutes_seconds">%1$d 分 %2$d 秒</string>
+    <string name="ai_usage_duration_seconds">%1$d 秒</string>
     <string name="ai_error_auth">API Key 无效或没有权限。</string>
     <string name="ai_error_rate">请求过于频繁或额度不足。</string>
     <string name="ai_error_network">网络请求失败，请检查网络与接口地址。</string>
@@ -111,6 +139,8 @@
 
     <string name="ai_settings_enable">启用 AI</string>
     <string name="ai_settings_enable_desc">关闭后不发出任何网络请求，首页入口也会隐藏。</string>
+    <string name="ai_settings_summary_ready">模型、思考强度、密钥与写入权限</string>
+    <string name="ai_settings_summary_locked">开启 AI 后可配置</string>
     <string name="ai_settings_consent_title">开启前请确认</string>
     <string name="ai_settings_consent_body">开启后，你输入的内容与相关档案片段（包括导入并索引的文本记录）会通过 HTTPS 直接发送到你配置的 AI 提供商（DeepSeek / OpenAI / 自定义接口）。照片和视频不会自动发送。使用 DeepSeek 文件输入时，只有你主动选择的文档或图片会上传到 DeepSeek 进行解析；上传与解析可能产生费用，原文件和解析结果不能下载，文件默认 30 天后过期，也可在应用删除对应对话时尝试删除。\n\nMeteor 没有后端：作者不接收、不收集、不记录任何内容，也不做埋点或跟踪。\n\nAPI Key 只在本机加密保存；聊天记录在本机加密保存。是否使用、用哪家提供商，完全由你决定。</string>
     <string name="ai_settings_consent_accept">我已了解，开启</string>
@@ -144,6 +174,10 @@
     <string name="ai_settings_key_clear">清除</string>
     <string name="ai_settings_reasoning">思考强度</string>
     <string name="ai_settings_reasoning_hint">仅对 DeepSeek 生效；选「自动」不发送任何额外参数，最兼容。开启思考会返回思维链并增加 token。</string>
+    <string name="ai_settings_reasoning_hint_short">全局生效，仅 DeepSeek 支持；开启思考会增加 token 消耗。</string>
+    <string name="ai_settings_tts_voice">朗读音色</string>
+    <string name="ai_tts_voice_stella">海星（女声）</string>
+    <string name="ai_tts_voice_tide">暗潮（男声）</string>
     <string name="ai_reasoning_auto">自动</string>
     <string name="ai_reasoning_off">关闭</string>
     <string name="ai_reasoning_low">低</string>

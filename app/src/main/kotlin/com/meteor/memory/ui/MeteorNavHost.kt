@@ -44,7 +44,9 @@ import com.meteor.memory.R
 import com.meteor.memory.core.storage.RecordType
 import com.meteor.memory.feature.ai.AiPersonChip
 import com.meteor.memory.feature.ai.AiScreen
-import com.meteor.memory.feature.ai.AiSettingsSection
+import com.meteor.memory.feature.ai.AiSettingsScreen
+import com.meteor.memory.feature.ai.AiSettingsSummary
+import com.meteor.memory.feature.ai.AiUsageTotals
 import com.meteor.memory.feature.ai.R as AiR
 import com.meteor.memory.feature.ai.AiSkillChip
 import com.meteor.memory.feature.ai.PersonaScreen
@@ -108,6 +110,7 @@ private const val SETTINGS_ENTER_MS = 220
 private const val SETTINGS_EXIT_MS = 120
 private const val SETTINGS_ENTER_SCALE = 0.97f
 private const val ROUTE_BIRTH_DATE = "settings/birth-date"
+private const val ROUTE_AI_SETTINGS = "settings/ai"
 private const val ROUTE_DIARY_EDIT = "diary/edit"
 private const val ROUTE_DIARY_VIEW = "diary/view/{date}"
 private const val ROUTE_ABOUT = "about"
@@ -537,6 +540,9 @@ fun MeteorNavHost(
                 liveSteps = state.liveSteps,
                 pendingToolApprovals = state.pendingToolApprovals,
                 chatMode = state.chatMode,
+                reasoning = state.reasoning,
+                speechLoadingId = state.speechLoadingId,
+                speakingId = state.speakingId,
                 conversations = state.conversations,
                 activeConversationId = state.activeConversationId,
                 pendingFiles = state.pendingFiles,
@@ -548,10 +554,13 @@ fun MeteorNavHost(
                 onSend = viewModel::send,
                 onOpenPersona = { personId -> navController.navigate("ai/persona/$personId") },
                 onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
+                onOpenAiSettings = { navController.navigate(ROUTE_AI_SETTINGS) },
                 onClear = viewModel::clear,
                 onToolApproval = viewModel::decideToolApproval,
                 onBack = { navController.popBackStack() },
                 onChatModeSelect = viewModel::setChatMode,
+                onReasoningChange = viewModel::setReasoning,
+                onToggleSpeech = viewModel::toggleSpeech,
                 onNewConversation = viewModel::newConversation,
                 onSelectConversation = viewModel::selectConversation,
                 onRenameConversation = viewModel::renameConversation,
@@ -618,9 +627,6 @@ fun MeteorNavHost(
             val viewModel: SettingsViewModel = hiltViewModel()
             val settings by viewModel.settings.collectAsStateWithLifecycle()
             val logSizeBytes by viewModel.logSizeBytes.collectAsStateWithLifecycle()
-            val apiKeyPresent by viewModel.apiKeyPresent.collectAsStateWithLifecycle()
-            val aiTest by viewModel.aiTest.collectAsStateWithLifecycle()
-            val aiModels by viewModel.aiModels.collectAsStateWithLifecycle()
             val reminderNotificationsAllowed by viewModel.reminderNotificationsAllowed
                 .collectAsStateWithLifecycle()
             val canScheduleExactAlarms by viewModel.canScheduleExactAlarms.collectAsStateWithLifecycle()
@@ -697,39 +703,59 @@ fun MeteorNavHost(
                 backupActions = { BackupActions() },
                 logActions = { LogActions() },
                 aiActions = {
-                    AiSettingsSection(
+                    AiSettingsSummary(
                         enabled = settings.aiEnabled,
                         consentAccepted = settings.aiConsentAccepted,
-                        provider = settings.aiProvider,
-                        baseUrl = settings.aiBaseUrl,
-                        model = settings.aiModel,
-                        reasoning = settings.aiReasoning,
-                        apiKeyPresent = apiKeyPresent,
-                        models = aiModels.items,
-                        modelsLoading = aiModels.loading,
-                        modelsFailed = aiModels.failed,
-                        writeEnabled = settings.aiWriteEnabled,
-                        writeDiary = settings.aiWriteDiary,
-                        writePeople = settings.aiWritePeople,
-                        onWriteDiaryChange = viewModel::setAiWriteDiary,
-                        onWritePeopleChange = viewModel::setAiWritePeople,
-                        onRequestApiKey = viewModel::apiKeyOnce,
-                        testing = aiTest.running,
-                        testMessage = aiTestText(aiTest),
                         onEnabledChange = viewModel::setAiEnabled,
                         onConsentAccepted = viewModel::acceptAiConsent,
-                        onProviderChange = viewModel::setAiProvider,
-                        onBaseUrlChange = viewModel::setAiBaseUrl,
-                        onModelChange = viewModel::setAiModel,
-                        onReasoningChange = viewModel::setAiReasoning,
-                        onRefreshModels = viewModel::refreshAiModels,
-                        onWriteChange = viewModel::setAiWriteEnabled,
-                        onSaveApiKey = viewModel::saveApiKey,
-                        onClearApiKey = viewModel::clearApiKey,
-                        onTestConnection = viewModel::testAiConnection,
-                        animationsEnabled = animationsEnabled,
+                        onOpenSettings = { navController.navigate(ROUTE_AI_SETTINGS) },
                     )
                 },
+            )
+        }
+
+        composable(ROUTE_AI_SETTINGS) {
+            val viewModel: SettingsViewModel = hiltViewModel()
+            val settings by viewModel.settings.collectAsStateWithLifecycle()
+            val apiKeyPresent by viewModel.apiKeyPresent.collectAsStateWithLifecycle()
+            val aiTest by viewModel.aiTest.collectAsStateWithLifecycle()
+            val aiModels by viewModel.aiModels.collectAsStateWithLifecycle()
+
+            AiSettingsScreen(
+                enabled = settings.aiEnabled,
+                consentAccepted = settings.aiConsentAccepted,
+                model = settings.aiModel,
+                reasoning = settings.aiReasoning,
+                ttsVoice = settings.aiTtsVoice,
+                apiKeyPresent = apiKeyPresent,
+                models = aiModels.items,
+                modelsLoading = aiModels.loading,
+                modelsFailed = aiModels.failed,
+                writeEnabled = settings.aiWriteEnabled,
+                writeDiary = settings.aiWriteDiary,
+                writePeople = settings.aiWritePeople,
+                testing = aiTest.running,
+                testMessage = aiTestText(aiTest),
+                onModelChange = viewModel::setAiModel,
+                onReasoningChange = viewModel::setAiReasoning,
+                onTtsVoiceChange = viewModel::setAiTtsVoice,
+                onRefreshModels = viewModel::refreshAiModels,
+                onWriteChange = viewModel::setAiWriteEnabled,
+                onWriteDiaryChange = viewModel::setAiWriteDiary,
+                onWritePeopleChange = viewModel::setAiWritePeople,
+                onSaveApiKey = viewModel::saveApiKey,
+                onClearApiKey = viewModel::clearApiKey,
+                onRequestApiKey = viewModel::apiKeyOnce,
+                onTestConnection = viewModel::testAiConnection,
+                onBack = { navController.popBackStack() },
+                usageTotals = AiUsageTotals(
+                    tokens = settings.aiTotalPromptTokens + settings.aiTotalCompletionTokens,
+                    requests = settings.aiTotalRequests,
+                    elapsedMs = settings.aiTotalElapsedMs,
+                    cacheHitTokens = settings.aiTotalCacheHitTokens,
+                    cacheTokens = settings.aiTotalCacheHitTokens + settings.aiTotalCacheMissTokens,
+                ),
+                animationsEnabled = animationsEnabled,
             )
         }
 
@@ -900,6 +926,8 @@ private fun aiErrorText(code: Int, detail: String?): String? {
         detail == "empty-response" -> stringResource(AiR.string.ai_error_empty)
         detail == "content-filter" -> stringResource(AiR.string.ai_error_content_filter)
         detail == "step-limit" -> stringResource(AiR.string.ai_error_step_limit)
+        detail == "tts-unavailable" -> stringResource(AiR.string.ai_speech_unavailable)
+        detail == "tts-failed" -> stringResource(AiR.string.ai_speech_failed)
         code == 401 || code == 403 -> stringResource(AiR.string.ai_error_auth)
         code == 429 -> stringResource(AiR.string.ai_error_rate)
         code >= 500 || code == 0 -> stringResource(AiR.string.ai_error_network)

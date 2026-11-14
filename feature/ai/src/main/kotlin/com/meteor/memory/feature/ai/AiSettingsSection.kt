@@ -18,12 +18,15 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -44,8 +47,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -64,10 +69,9 @@ import kotlinx.coroutines.launch
 fun AiSettingsSection(
     enabled: Boolean,
     consentAccepted: Boolean,
-    provider: String,
-    baseUrl: String,
     model: String,
     reasoning: String,
+    ttsVoice: String,
     apiKeyPresent: Boolean,
     models: List<String> = emptyList(),
     modelsLoading: Boolean = false,
@@ -79,10 +83,9 @@ fun AiSettingsSection(
     testMessage: String?,
     onEnabledChange: (Boolean) -> Unit,
     onConsentAccepted: () -> Unit,
-    onProviderChange: (String) -> Unit,
-    onBaseUrlChange: (String) -> Unit,
     onModelChange: (String) -> Unit,
     onReasoningChange: (String) -> Unit,
+    onTtsVoiceChange: (String) -> Unit,
     onRefreshModels: () -> Unit = {},
     onWriteChange: (Boolean) -> Unit = {},
     onWriteDiaryChange: (Boolean) -> Unit = {},
@@ -93,9 +96,10 @@ fun AiSettingsSection(
     onRequestApiKey: suspend () -> String? = { null },
     onTestConnection: () -> Unit,
     modifier: Modifier = Modifier,
+    /** The standalone AI settings page renders the details only; the master switch stays in Settings. */
+    showMasterSwitch: Boolean = true,
     animationsEnabled: Boolean = true,
 ) {
-    var showConsent by remember { mutableStateOf(false) }
     var showModels by remember { mutableStateOf(false) }
     var keyDraft by remember { mutableStateOf("") }
 
@@ -133,88 +137,16 @@ fun AiSettingsSection(
             ),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
-                    shape = MaterialTheme.shapes.medium,
-                )
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                Text(text = stringResource(R.string.ai_settings_enable), style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    text = stringResource(R.string.ai_settings_enable_desc),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            Switch(
-                checked = enabled,
-                onCheckedChange = { wanted ->
-                    if (wanted && !consentAccepted) {
-                        showConsent = true
-                    } else {
-                        onEnabledChange(wanted)
-                    }
-                },
-            )
-        }
-
-        if (showConsent) {
-            AlertDialog(
-                onDismissRequest = { showConsent = false },
-                title = { Text(text = stringResource(R.string.ai_settings_consent_title)) },
-                text = { Text(text = stringResource(R.string.ai_settings_consent_body)) },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            showConsent = false
-                            onConsentAccepted()
-                            onEnabledChange(true)
-                        },
-                    ) {
-                        Text(text = stringResource(R.string.ai_settings_consent_accept))
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            showConsent = false
-                            onEnabledChange(false)
-                        },
-                    ) {
-                        Text(text = stringResource(R.string.ai_settings_cancel))
-                    }
-                },
+        if (showMasterSwitch) {
+            AiMasterSwitchRow(
+                enabled = enabled,
+                consentAccepted = consentAccepted,
+                onEnabledChange = onEnabledChange,
+                onConsentAccepted = onConsentAccepted,
             )
         }
 
         if (enabled && consentAccepted) {
-            Text(text = stringResource(R.string.ai_settings_provider), style = MaterialTheme.typography.bodyLarge)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AiPresets.ids.forEach { id ->
-                    val label = aiProviderLabel(id)
-                    if (id == provider) {
-                        Button(onClick = { onProviderChange(id) }) { Text(label) }
-                    } else {
-                        OutlinedButton(onClick = { onProviderChange(id) }) { Text(label) }
-                    }
-                }
-            }
-
-            if (provider == AiPresets.CUSTOM) {
-                OutlinedTextField(
-                    value = baseUrl,
-                    onValueChange = onBaseUrlChange,
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    label = { Text(text = stringResource(R.string.ai_settings_base_url)) },
-                )
-            }
-
             OutlinedTextField(
                 value = model,
                 onValueChange = onModelChange,
@@ -271,7 +203,12 @@ fun AiSettingsSection(
                 text = stringResource(R.string.ai_settings_reasoning),
                 style = MaterialTheme.typography.bodyLarge,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 ReasoningMode.entries.forEach { mode ->
                     val label = reasoningLabel(mode)
                     if (mode.wire == reasoning) {
@@ -285,6 +222,26 @@ fun AiSettingsSection(
                 text = stringResource(R.string.ai_settings_reasoning_hint),
                 style = MaterialTheme.typography.bodySmall,
             )
+
+            Text(
+                text = stringResource(R.string.ai_settings_tts_voice),
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                TtsVoice.entries.forEach { voice ->
+                    val label = ttsVoiceLabel(voice)
+                    if (voice.wire == ttsVoice) {
+                        Button(onClick = { onTtsVoiceChange(voice.wire) }) { Text(label) }
+                    } else {
+                        OutlinedButton(onClick = { onTtsVoiceChange(voice.wire) }) { Text(label) }
+                    }
+                }
+            }
 
             Row(
                 modifier = Modifier
@@ -498,6 +455,149 @@ fun AiSettingsSection(
 }
 
 @Composable
+private fun AiMasterSwitchRow(
+    enabled: Boolean,
+    consentAccepted: Boolean,
+    onEnabledChange: (Boolean) -> Unit,
+    onConsentAccepted: () -> Unit,
+) {
+    var showConsent by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
+                shape = MaterialTheme.shapes.medium,
+            )
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(
+                text = stringResource(R.string.ai_settings_enable),
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Text(
+                text = stringResource(R.string.ai_settings_enable_desc),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Switch(
+            checked = enabled,
+            onCheckedChange = { wanted ->
+                if (wanted && !consentAccepted) {
+                    showConsent = true
+                } else {
+                    onEnabledChange(wanted)
+                }
+            },
+        )
+    }
+
+    if (showConsent) {
+        AlertDialog(
+            onDismissRequest = { showConsent = false },
+            title = { Text(text = stringResource(R.string.ai_settings_consent_title)) },
+            text = { Text(text = stringResource(R.string.ai_settings_consent_body)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showConsent = false
+                        onConsentAccepted()
+                        onEnabledChange(true)
+                    },
+                ) {
+                    Text(text = stringResource(R.string.ai_settings_consent_accept))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showConsent = false
+                        onEnabledChange(false)
+                    },
+                ) {
+                    Text(text = stringResource(R.string.ai_settings_cancel))
+                }
+            },
+        )
+    }
+}
+
+/**
+ * Settings entry: only the master switch plus a jump to the dedicated AI page.
+ * The detailed provider/model/key controls live there, not inline.
+ */
+@Composable
+fun AiSettingsSummary(
+    enabled: Boolean,
+    consentAccepted: Boolean,
+    onEnabledChange: (Boolean) -> Unit,
+    onConsentAccepted: () -> Unit,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val canOpen = enabled && consentAccepted
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        AiMasterSwitchRow(
+            enabled = enabled,
+            consentAccepted = consentAccepted,
+            onEnabledChange = onEnabledChange,
+            onConsentAccepted = onConsentAccepted,
+        )
+        AiSettingsEntryRow(
+            enabled = canOpen,
+            subtitle = stringResource(
+                if (canOpen) {
+                    R.string.ai_settings_summary_ready
+                } else {
+                    R.string.ai_settings_summary_locked
+                },
+            ),
+            onClick = onOpenSettings,
+        )
+    }
+}
+
+@Composable
+private fun AiSettingsEntryRow(
+    enabled: Boolean,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .alpha(if (enabled) 1f else 0.55f)
+            .background(
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.46f),
+                shape = MaterialTheme.shapes.medium,
+            )
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(R.string.ai_settings_entry),
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            Text(text = subtitle, style = MaterialTheme.typography.bodySmall)
+        }
+        AiIcon(
+            AiIconKind.ChevronRight,
+            iconSize = 18.dp,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
 fun aiProviderLabel(provider: String): String = stringResource(
     when (provider) {
         AiPresets.OPENAI -> R.string.ai_provider_openai
@@ -507,13 +607,21 @@ fun aiProviderLabel(provider: String): String = stringResource(
 )
 
 @Composable
-private fun reasoningLabel(mode: ReasoningMode): String = stringResource(
+internal fun reasoningLabel(mode: ReasoningMode): String = stringResource(
     when (mode) {
         ReasoningMode.AUTO -> R.string.ai_reasoning_auto
         ReasoningMode.OFF -> R.string.ai_reasoning_off
         ReasoningMode.LOW -> R.string.ai_reasoning_low
         ReasoningMode.HIGH -> R.string.ai_reasoning_high
         ReasoningMode.MAX -> R.string.ai_reasoning_max
+    },
+)
+
+@Composable
+internal fun ttsVoiceLabel(voice: TtsVoice): String = stringResource(
+    when (voice) {
+        TtsVoice.STELLA -> R.string.ai_tts_voice_stella
+        TtsVoice.TIDE -> R.string.ai_tts_voice_tide
     },
 )
 

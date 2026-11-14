@@ -46,6 +46,15 @@ data class AppSettings(
     val aiWriteDiary: Boolean = true,
     /** Sub-grant of [aiWriteEnabled]: create/update person profiles (ADR-030). */
     val aiWritePeople: Boolean = true,
+    /** Read-aloud voice id: `stella` (female) or `tide` (male). */
+    val aiTtsVoice: String = DEFAULT_AI_TTS_VOICE,
+    /** Lifetime token counters, shown on the AI settings page. */
+    val aiTotalPromptTokens: Long = 0,
+    val aiTotalCompletionTokens: Long = 0,
+    val aiTotalCacheHitTokens: Long = 0,
+    val aiTotalCacheMissTokens: Long = 0,
+    val aiTotalElapsedMs: Long = 0,
+    val aiTotalRequests: Int = 0,
     /** Whether the first-launch introduction and birth-date setup were completed. */
     val onboardingCompleted: Boolean = false,
 ) {
@@ -54,6 +63,7 @@ data class AppSettings(
         const val DEFAULT_DIARY_REMINDER_TIME_MINUTES = 20 * 60
         const val DEFAULT_AI_PROVIDER = "deepseek"
         const val DEFAULT_AI_REASONING = "auto"
+        const val DEFAULT_AI_TTS_VOICE = "stella"
     }
 }
 
