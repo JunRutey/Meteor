@@ -13,6 +13,16 @@ data class AppSettings(
     val animationsEnabled: Boolean = true,
     val fontScale: FontScale = FontScale.SYSTEM,
     val appLockEnabled: Boolean = false,
+    /**
+     * Blocks system screenshots and screen recording with `FLAG_SECURE`; the
+     * platform also blanks the recent-tasks preview. It is deliberately not a
+     * sub-flag of [appLockEnabled]: capture can be allowed again without giving
+     * up the biometric gate.
+     *
+     * [SettingsRepository] falls back to [appLockEnabled] while the user has
+     * never touched this switch, so an upgrade keeps the old protection.
+     */
+    val screenshotProtectionEnabled: Boolean = false,
     /** Record every log level, not just warnings and errors. */
     val verboseLogging: Boolean = false,
     val autoBackupEnabled: Boolean = true,

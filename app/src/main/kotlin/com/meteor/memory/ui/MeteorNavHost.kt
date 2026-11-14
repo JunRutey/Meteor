@@ -693,6 +693,7 @@ fun MeteorNavHost(
                 onDynamicColorChanged = viewModel::setDynamicColor,
                 onAnimationsChanged = viewModel::setAnimationsEnabled,
                 onAppLockChanged = viewModel::setAppLockEnabled,
+                onScreenshotProtectionChanged = viewModel::setScreenshotProtectionEnabled,
                 onVerboseLoggingChanged = viewModel::setVerboseLogging,
                 onOpenAbout = { navController.navigate(ROUTE_ABOUT) },
                 onOpenDonate = { navController.navigate(ROUTE_ABOUT_DONATE) },

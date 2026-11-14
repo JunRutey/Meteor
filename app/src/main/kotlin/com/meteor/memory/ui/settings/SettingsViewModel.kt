@@ -102,6 +102,10 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { repository.setAppLockEnabled(enabled) }
     }
 
+    fun setScreenshotProtectionEnabled(enabled: Boolean) {
+        viewModelScope.launch { repository.setScreenshotProtectionEnabled(enabled) }
+    }
+
     fun setDiaryReminderEnabled(enabled: Boolean) {
         viewModelScope.launch {
             repository.setDiaryReminderEnabled(enabled)
