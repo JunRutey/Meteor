@@ -16,7 +16,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -57,12 +56,11 @@ fun BirthDateSettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 16.dp),
+                .padding(start = 20.dp, top = 6.dp, end = 20.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            TextButton(onClick = onBack) {
-                Text(text = stringResource(R.string.birth_date_back))
-            }
+            // No back button here on purpose: this page never appears as the
+            // first screen, so the system back gesture is always available.
             Text(
                 text = stringResource(R.string.birth_date_title),
                 style = MaterialTheme.typography.headlineSmall,
