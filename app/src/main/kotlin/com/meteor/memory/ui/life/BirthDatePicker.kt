@@ -456,8 +456,7 @@ internal fun wheelScrollOffsetFor(
 ): Int = index * itemBlockSize - (viewportHeight - itemBlockSize) / 2
 
 /** One row plus the gap below it: how far the wheel moves per item. */
-internal fun wheelItemBlockSize(rowHeight: Dp, rowGap: Dp): Int =
-    (rowHeight + rowGap).roundToPx()
+internal fun wheelItemBlockSize(rowHeight: Dp, rowGap: Dp): Dp = rowHeight + rowGap
 
 /**
  * One wheel column. Scrolling is preview only: the list eases back to
@@ -475,7 +474,7 @@ private fun <T> DateWheelColumn(
 ) {
     val listState = rememberLazyListState()
     val itemBlockSize = with(LocalDensity.current) {
-        wheelItemBlockSize(DateWheelRowHeight, DateWheelRowGap)
+        wheelItemBlockSize(DateWheelRowHeight, DateWheelRowGap).roundToPx()
     }
     val settledIndex = selectedIndex.coerceIn(0, (options.size - 1).coerceAtLeast(0))
     val currentOptions by rememberUpdatedState(options)
