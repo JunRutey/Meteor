@@ -1,8 +1,12 @@
 # ADR-027 · AI 改为「可关闭的联网提供商 + 技能驱动」，取代 ADR-026 的纯离线引擎
 
-- 状态：已接受（v0.6 修订）
+- 状态：已接受（v0.6 修订；v1.0.0 收敛为仅官方 DeepSeek）
 - 取代：[ADR-026](ADR-026-ai-local-deterministic-persona.md)（本地确定性引擎）
 - 影响：`:feature-ai`、`:feature-settings`、`:core-crypto`、`:app`；新增 `INTERNET` 权限
+
+> v1.0.0 修订：界面与配置只保留官方 DeepSeek 接入，移除了 OpenAI 预设与自定义 base URL
+> 入口；升级时旧的提供商设置会重置为 DeepSeek。下文关于多提供商的历史决策保留，用于说明
+> 为什么协议层仍然保持 OpenAI 兼容的请求形状。
 
 ## 背景
 
