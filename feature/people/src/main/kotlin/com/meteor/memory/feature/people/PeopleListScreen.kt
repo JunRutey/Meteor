@@ -53,6 +53,25 @@ fun relationLabel(relation: Relation?): String = stringResource(
     },
 )
 
+/**
+ * Every label to render for one person.
+ *
+ * Built-in relations now behave like custom tags: they live in the same tag
+ * list and are multi-selectable. A profile may still carry only the legacy
+ * `relation` field, so fold that label back in unless the tag list already has
+ * it. An empty result means "未分类".
+ */
+@Composable
+internal fun personTagLabels(relation: Relation?, tags: List<String>): List<String> {
+    val legacyLabel = relation?.let { relationLabel(it) }
+    val merged = if (legacyLabel != null && legacyLabel !in tags) {
+        listOf(legacyLabel) + tags
+    } else {
+        tags
+    }
+    return merged.filter { it.isNotBlank() }.distinct()
+}
+
 @Composable
 fun PeopleListScreen(
     people: List<PeopleRow>,
@@ -123,17 +142,26 @@ fun PeopleListScreen(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Text(text = row.displayName, style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                text = relationLabel(row.relation),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                            row.tags.forEach { tag ->
+                            val primaryLabel = row.relation?.let { relationLabel(it) }
+                            val labels = personTagLabels(row.relation, row.tags)
+                            if (labels.isEmpty()) {
                                 Text(
-                                    text = tag,
+                                    text = relationLabel(null),
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = MaterialTheme.colorScheme.primary,
                                 )
+                            } else {
+                                labels.forEach { label ->
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (label == primaryLabel) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        },
+                                    )
+                                }
                             }
                         }
                         Text(
@@ -167,9 +195,10 @@ private fun CreatePersonDialog(
     onDismiss: () -> Unit,
     onConfirm: (String, Relation?, List<String>) -> Unit,
 ) {
+    val defaultRelationLabel = relationLabel(Relation.FRIEND)
     var name by remember { mutableStateOf("") }
     var relation by remember { mutableStateOf<Relation?>(Relation.FRIEND) }
-    var tags by remember { mutableStateOf(emptyList<String>()) }
+    var tags by remember { mutableStateOf(listOf(defaultRelationLabel)) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -194,8 +223,10 @@ private fun CreatePersonDialog(
                     relation = relation,
                     tags = tags,
                     availableTags = availableTags,
-                    onRelationChanged = { relation = it },
-                    onTagsChanged = { tags = it },
+                    onSelectionChanged = { selected, derived ->
+                        tags = selected
+                        relation = derived
+                    },
                     onAddTag = onAddTag,
                     modifier = Modifier.fillMaxWidth(),
                 )

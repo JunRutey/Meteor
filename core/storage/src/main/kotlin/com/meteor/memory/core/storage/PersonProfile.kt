@@ -22,9 +22,11 @@ enum class Relation(val code: String) {
  * - [note] is a one-line reminder, kept in the header so it stays a single line;
  * - [notes] is the free-form Markdown body — the 正文 — which may carry images.
  *
- * [tags] are free-form labels that supplement the structured [relation]. They
- * are user-authored text ("同事", "大学同学"), so older readers that do not
- * know the `tags:` key simply ignore the line and keep the rest of the profile.
+ * [tags] holds every selected label, including the built-in relation labels
+ * ("家人", "朋友", "绝交的朋友") and user-authored text ("同事", "大学同学").
+ * [relation] is still written as the first selected built-in relation for AI
+ * tools and old readers; a legacy file that only has `relation:` is folded back
+ * into the tag chips by the UI.
  */
 data class PersonProfile(
     val displayName: String,
@@ -33,7 +35,7 @@ data class PersonProfile(
     val note: String = "",
     /** Free-form Markdown body (正文). */
     val notes: String = "",
-    /** User-defined labels, written as the comma-separated `tags` header key. */
+    /** All selected labels, written as the comma-separated `tags` header key. */
     val tags: List<String> = emptyList(),
 )
 

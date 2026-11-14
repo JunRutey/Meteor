@@ -371,12 +371,15 @@ private fun ProfileHero(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (relation != null) {
-                        TagPill(label = relationLabel(relation), emphasized = true)
-                    } else if (tags.isEmpty()) {
+                    val emphasizedLabel = relation?.let { relationLabel(it) }
+                    val labels = personTagLabels(relation, tags)
+                    if (labels.isEmpty()) {
                         TagPill(label = relationLabel(null), emphasized = false)
+                    } else {
+                        labels.forEach { label ->
+                            TagPill(label = label, emphasized = label == emphasizedLabel)
+                        }
                     }
-                    tags.forEach { tag -> TagPill(label = tag, emphasized = false) }
                 }
                 if (note.isNotBlank()) {
                     Text(

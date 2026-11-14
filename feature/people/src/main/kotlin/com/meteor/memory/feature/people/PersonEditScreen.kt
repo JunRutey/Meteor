@@ -131,8 +131,10 @@ fun PersonEditScreen(
                             relation = relation,
                             tags = tags,
                             availableTags = availableTags,
-                            onRelationChanged = onRelationChanged,
-                            onTagsChanged = onTagsChanged,
+                            onSelectionChanged = { selected, derived ->
+                                onTagsChanged(selected)
+                                onRelationChanged(derived)
+                            },
                             onAddTag = onAddTag,
                             modifier = Modifier.fillMaxWidth(),
                         )

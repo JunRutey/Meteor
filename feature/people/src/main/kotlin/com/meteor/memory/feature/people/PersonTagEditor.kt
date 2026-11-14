@@ -51,19 +51,34 @@ internal fun PersonTagEditor(
     relation: Relation?,
     tags: List<String>,
     availableTags: List<String>,
-    onRelationChanged: (Relation?) -> Unit,
-    onTagsChanged: (List<String>) -> Unit,
+    onSelectionChanged: (List<String>, Relation?) -> Unit,
     onAddTag: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
 
     val noneLabel = relationLabel(null)
-    val relationLabels = Relation.entries.map { relationLabel(it) }
-    val builtInLabels = (listOf(noneLabel) + relationLabels).toSet()
+    val relationChoices = Relation.entries.map { it to relationLabel(it) }
+    val builtInLabels = (listOf(noneLabel) + relationChoices.map { it.second }).toSet()
+
+    // A profile written before this change stores relation separately; fold it
+    // into the selected chip set so built-in tags behave exactly like custom ones.
+    val selectedRelationLabel = relationChoices.firstOrNull { it.first == relation }?.second
+    val selectedTags = if (selectedRelationLabel != null) {
+        (tags + selectedRelationLabel).distinct()
+    } else {
+        tags.distinct()
+    }
     val visibleCustomTags = (availableTags + tags)
         .filter { it.isNotBlank() && it !in builtInLabels }
         .distinct()
+
+    fun derivedRelation(selected: List<String>): Relation? =
+        relationChoices.firstOrNull { (_, label) -> label in selected }?.first
+
+    fun applySelection(selected: List<String>) {
+        onSelectionChanged(selected.distinct(), derivedRelation(selected))
+    }
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
@@ -78,37 +93,39 @@ internal fun PersonTagEditor(
         ) {
             TagChip(
                 label = noneLabel,
-                selected = relation == null,
+                selected = selectedTags.isEmpty(),
                 role = Role.RadioButton,
-                onClick = { onRelationChanged(null) },
+                onClick = { applySelection(emptyList()) },
             )
-            Relation.entries.forEachIndexed { index, candidate ->
-                val selected = candidate == relation
+            relationChoices.forEach { (candidate, label) ->
+                val selected = label in selectedTags
                 TagChip(
-                    label = relationLabels[index],
+                    label = label,
                     selected = selected,
-                    role = Role.RadioButton,
-                    // Clicking the selected relation again clears it.
-                    onClick = { onRelationChanged(if (selected) null else candidate) },
+                    role = Role.Checkbox,
+                    onClick = {
+                        applySelection(
+                            if (selected) selectedTags - label else selectedTags + label,
+                        )
+                    },
                 )
             }
             visibleCustomTags.forEach { tag ->
-                val selected = tag in tags
+                val selected = tag in selectedTags
                 TagChip(
                     label = tag,
                     selected = selected,
                     role = Role.Checkbox,
                     onClick = {
-                        when {
-                            selected -> onTagsChanged(tags - tag)
-                            tags.size < PersonProfileCodec.MAX_TAGS -> onTagsChanged(tags + tag)
-                        }
+                        applySelection(
+                            if (selected) selectedTags - tag else selectedTags + tag,
+                        )
                     },
                 )
             }
             AddTagChip(onClick = { showAddDialog = true })
         }
-        if (tags.size >= PersonProfileCodec.MAX_TAGS) {
+        if (selectedTags.size >= PersonProfileCodec.MAX_TAGS) {
             Text(
                 text = stringResource(
                     R.string.people_tag_limit,
@@ -127,8 +144,8 @@ internal fun PersonTagEditor(
                 val value = PersonProfileCodec.normalizeTags(listOf(raw)).firstOrNull()
                 if (value != null && value !in builtInLabels) {
                     onAddTag(value)
-                    if (value !in tags && tags.size < PersonProfileCodec.MAX_TAGS) {
-                        onTagsChanged(tags + value)
+                    if (value !in selectedTags && selectedTags.size < PersonProfileCodec.MAX_TAGS) {
+                        applySelection(selectedTags + value)
                     }
                 }
                 showAddDialog = false
