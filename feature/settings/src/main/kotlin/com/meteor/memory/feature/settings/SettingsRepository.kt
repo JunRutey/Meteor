@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -45,6 +46,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             // exactly the same tool set after the upgrade (ADR-030).
             aiWriteDiary = prefs[KEY_AI_WRITE_DIARY] ?: true,
             aiWritePeople = prefs[KEY_AI_WRITE_PEOPLE] ?: true,
+            peopleTags = prefs[KEY_PEOPLE_TAGS].orEmpty(),
             aiTtsVoice = prefs[KEY_AI_TTS_VOICE] ?: AppSettings.DEFAULT_AI_TTS_VOICE,
             aiTotalPromptTokens = prefs[KEY_AI_TOTAL_PROMPT_TOKENS] ?: 0L,
             aiTotalCompletionTokens = prefs[KEY_AI_TOTAL_COMPLETION_TOKENS] ?: 0L,
@@ -133,6 +135,13 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     suspend fun setOnboardingCompleted(completed: Boolean) =
         store.edit { it[KEY_ONBOARDING_COMPLETED] = completed }
 
+    /** Adds one custom people tag to the remembered chip list; idempotent. */
+    suspend fun addPeopleTag(tag: String) = store.edit { prefs ->
+        val current = prefs[KEY_PEOPLE_TAGS].orEmpty()
+        if (tag in current || current.size >= MAX_PEOPLE_TAGS) return@edit
+        prefs[KEY_PEOPLE_TAGS] = current + tag
+    }
+
     /**
      * DeepSeek-only release: legacy OpenAI/custom preferences are reset to the
      * DeepSeek preset so an upgrade cannot send requests with an incompatible
@@ -182,6 +191,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val KEY_AI_WRITE = booleanPreferencesKey("ai_write_enabled")
         val KEY_AI_WRITE_DIARY = booleanPreferencesKey("ai_write_diary")
         val KEY_AI_WRITE_PEOPLE = booleanPreferencesKey("ai_write_people")
+        val KEY_PEOPLE_TAGS = stringSetPreferencesKey("people_tags")
         val KEY_AI_TTS_VOICE = stringPreferencesKey("ai_tts_voice")
         val KEY_AI_TOTAL_PROMPT_TOKENS = longPreferencesKey("ai_total_prompt_tokens")
         val KEY_AI_TOTAL_COMPLETION_TOKENS = longPreferencesKey("ai_total_completion_tokens")
@@ -190,5 +200,6 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val KEY_AI_TOTAL_ELAPSED_MS = longPreferencesKey("ai_total_elapsed_ms")
         val KEY_AI_TOTAL_REQUESTS = intPreferencesKey("ai_total_requests")
         val KEY_ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
+        const val MAX_PEOPLE_TAGS = 32
     }
 }

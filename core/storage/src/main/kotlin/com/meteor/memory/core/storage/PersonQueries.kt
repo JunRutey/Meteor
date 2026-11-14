@@ -10,7 +10,16 @@ data class PersonEntry(
     val displayName: String?,
     val relation: Relation?,
     val hasProfile: Boolean,
+    /** Free-form labels written by the user; empty for older profiles. */
+    val tags: List<String> = emptyList(),
 )
+
+/** Outcome of a person deletion; [NOT_FOUND] keeps retries idempotent. */
+enum class PersonDeleteResult {
+    DELETED,
+    NOT_FOUND,
+    FAILED,
+}
 
 /**
  * Person directory access (archive v0.5).
@@ -30,11 +39,13 @@ interface PersonQueries {
         relation: Relation?,
         note: String = "",
         notes: String = "",
+        tags: List<String> = emptyList(),
     ): String
 
     /**
      * Overwrites the whole profile. [note] is the one-line reminder, [notes] the
-     * Markdown body — they are separate fields by design (ADR-023).
+     * Markdown body — they are separate fields by design (ADR-023). [tags] is
+     * the free-form label list shown beside the structured relation.
      */
     fun update(
         personId: String,
@@ -42,7 +53,17 @@ interface PersonQueries {
         relation: Relation?,
         note: String,
         notes: String,
+        tags: List<String> = emptyList(),
     )
+
+    /**
+     * Deletes the person directory and its `profile.md`.
+     *
+     * Deliberately narrow: only the address-book entry disappears. The user's
+     * diaries and imported attachments belong to separate stores and are not
+     * touched here.
+     */
+    fun delete(personId: String): PersonDeleteResult
 }
 
 class PrivatePersonQueries(
@@ -68,6 +89,7 @@ class PrivatePersonQueries(
                     displayName = profile?.displayName,
                     relation = profile?.relation,
                     hasProfile = profile != null,
+                    tags = profile?.tags.orEmpty(),
                 )
             }
             ?.sortedWith(
@@ -91,10 +113,11 @@ class PrivatePersonQueries(
         relation: Relation?,
         note: String,
         notes: String,
+        tags: List<String>,
     ): String {
         // 32 hex chars, satisfies PERSON_ID_PATTERN and stays opaque.
         val personId = UUID.randomUUID().toString().replace("-", "")
-        writeProfile(personId, displayName, relation, note, notes)
+        writeProfile(personId, displayName, relation, note, notes, tags)
         return personId
     }
 
@@ -104,8 +127,20 @@ class PrivatePersonQueries(
         relation: Relation?,
         note: String,
         notes: String,
+        tags: List<String>,
     ) {
-        writeProfile(personId, displayName, relation, note, notes)
+        writeProfile(personId, displayName, relation, note, notes, tags)
+    }
+
+    override fun delete(personId: String): PersonDeleteResult {
+        if (!StorageLayout.PERSON_ID_PATTERN.matches(personId)) return PersonDeleteResult.FAILED
+        val dir = File(peopleDir, personId)
+        if (!dir.exists()) return PersonDeleteResult.NOT_FOUND
+        return if (dir.deleteRecursively()) {
+            PersonDeleteResult.DELETED
+        } else {
+            PersonDeleteResult.FAILED
+        }
     }
 
     private fun writeProfile(
@@ -114,6 +149,7 @@ class PrivatePersonQueries(
         relation: Relation?,
         note: String,
         notes: String,
+        tags: List<String>,
     ) {
         val file = profileFile(personId) ?: error("illegal person_id: $personId")
         val existing = if (file.isFile) runCatching { router.read(file) }.getOrNull() else null
@@ -132,6 +168,7 @@ class PrivatePersonQueries(
                         relation = relation,
                         note = note,
                         notes = notes,
+                        tags = tags,
                     ),
                 ),
             ),

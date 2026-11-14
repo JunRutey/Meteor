@@ -44,6 +44,12 @@ interface SearchService {
     /** Incremental index update after a record is saved. */
     suspend fun indexDocument(document: Document)
 
+    /**
+     * Drops one record from the index, addressed by its archive-relative path.
+     * No-op when search is disabled; the files remain the source of truth.
+     */
+    suspend fun removeRecord(sourcePath: String) = Unit
+
     /** Launch-time full rebuild used as the safety net for incremental updates. */
     suspend fun rebuildOnLaunch()
 

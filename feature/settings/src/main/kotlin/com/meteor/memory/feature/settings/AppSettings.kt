@@ -46,6 +46,12 @@ data class AppSettings(
     val aiWriteDiary: Boolean = true,
     /** Sub-grant of [aiWriteEnabled]: create/update person profiles (ADR-030). */
     val aiWritePeople: Boolean = true,
+    /**
+     * Custom tags the user added in the people editor. They are remembered
+     * separately from any one profile so the tag chip stays available after the
+     * person is deleted or when creating a new person.
+     */
+    val peopleTags: Set<String> = emptySet(),
     /** Read-aloud voice id: `stella` (female) or `tide` (male). */
     val aiTtsVoice: String = DEFAULT_AI_TTS_VOICE,
     /** Lifetime token counters, shown on the AI settings page. */

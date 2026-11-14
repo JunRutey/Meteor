@@ -72,6 +72,12 @@ class StorageLayout(private val root: File) {
 
         val PERSON_ID_PATTERN = Regex("^[A-Za-z0-9_-]{1,64}$")
 
+        /** Archive-relative path of a profile, matching what the index stores. */
+        fun profileRelativePath(personId: String): String {
+            require(PERSON_ID_PATTERN.matches(personId)) { "illegal person_id: $personId" }
+            return "$ARCHIVE/$RELATIONS/$personId/profile.md"
+        }
+
         private val DAY_FORMAT = DateTimeFormatter.ofPattern(DAY_PATTERN)
         private val YEAR_FORMAT = DateTimeFormatter.ofPattern("yyyy")
     }

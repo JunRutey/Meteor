@@ -100,4 +100,37 @@ class PersonProfileCodecTest {
         )
         assertEquals("name: 小明\nrelation: friend\n---\n同学\n", body)
     }
+
+    @Test
+    fun `round trips custom tags next to the relation`() {
+        val profile = PersonProfile(
+            displayName = "小明",
+            relation = Relation.FRIEND,
+            tags = listOf("同事", "大学同学"),
+        )
+        val body = PersonProfileCodec.encode(profile)
+        val decoded = PersonProfileCodec.decode(body)
+
+        assertEquals("name: 小明\nrelation: friend\ntags: 同事, 大学同学\n---\n", body)
+        assertEquals(listOf("同事", "大学同学"), decoded!!.tags)
+    }
+
+    @Test
+    fun `tags are trimmed deduplicated and bounded`() {
+        val tags = PersonProfileCodec.normalizeTags(
+            listOf(" 同事 ", "同事", "", "a".repeat(100)) + (1..10).map { "tag$it" },
+        )
+
+        assertEquals(PersonProfileCodec.MAX_TAGS, tags.size)
+        assertEquals("同事", tags.first())
+        assertTrue(tags.none { it.isBlank() })
+        assertTrue(tags.all { it.length <= PersonProfileCodec.MAX_TAG_CHARS })
+    }
+
+    @Test
+    fun `older files without tags read back with an empty list`() {
+        val decoded = PersonProfileCodec.decode("name: 小明\nrelation: friend\n---\n旧的内容\n")
+
+        assertEquals(emptyList<String>(), decoded!!.tags)
+    }
 }

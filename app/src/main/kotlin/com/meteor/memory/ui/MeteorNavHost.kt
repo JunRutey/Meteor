@@ -19,6 +19,7 @@ import androidx.compose.animation.core.FastOutLinearInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -338,6 +339,7 @@ fun MeteorNavHost(
         composable(ROUTE_PEOPLE) {
             val viewModel: PeopleViewModel = hiltViewModel()
             val people by viewModel.people.collectAsStateWithLifecycle()
+            val availableTags by viewModel.customTags.collectAsStateWithLifecycle()
             val context = LocalContext.current
 
             RefreshOnResume { viewModel.refresh() }
@@ -355,9 +357,12 @@ fun MeteorNavHost(
                                 R.string.people_secondary_missing
                             },
                         ),
+                        tags = entry.tags,
                     )
                 },
+                availableTags = availableTags,
                 onCreate = viewModel::create,
+                onAddTag = viewModel::addTag,
                 onOpen = { personId -> navController.navigate("people/$personId") },
                 onBack = { navController.popBackStack() },
             )
@@ -383,9 +388,14 @@ fun MeteorNavHost(
 
             RefreshOnResume { viewModel.load() }
 
+            LaunchedEffect(state.deleted) {
+                if (state.deleted) navController.popBackStack()
+            }
+
             PersonDetailScreen(
                 displayName = state.displayName,
                 relation = state.relation,
+                tags = state.tags,
                 note = state.note,
                 notes = state.notes,
                 records = state.records.map {
@@ -397,8 +407,6 @@ fun MeteorNavHost(
                 } + state.attachments.map { attachment -> attachment.toRecordRow() },
                 onBack = { navController.popBackStack() },
                 onEdit = { navController.navigate("people/$personId/edit") },
-                onEditNote = { navController.navigate("people/$personId/edit") },
-                onEditBody = { navController.navigate("people/$personId/edit") },
                 resolveImage = viewModel::imageFor,
                 onActivate = { target ->
                     if (target.startsWith("meteor://image/")) {
@@ -423,6 +431,9 @@ fun MeteorNavHost(
                     }
                 },
                 exportFailed = state.exportFailed,
+                onDelete = viewModel::delete,
+                deleting = state.deleting,
+                deleteFailed = state.deleteFailed,
             )
         }
 
@@ -437,6 +448,8 @@ fun MeteorNavHost(
             PersonEditScreen(
                 displayName = state.displayName,
                 relation = state.relation,
+                tags = state.tags,
+                availableTags = state.customTags,
                 note = state.note,
                 notes = state.notes,
                 saving = state.saving,
@@ -445,6 +458,8 @@ fun MeteorNavHost(
                 error = state.error,
                 onNameChanged = viewModel::onNameChanged,
                 onRelationChanged = viewModel::onRelationChanged,
+                onTagsChanged = viewModel::onTagsChanged,
+                onAddTag = viewModel::addTag,
                 onNoteChanged = viewModel::onNoteChanged,
                 onNotesChanged = viewModel::onNotesChanged,
                 onInsertLink = viewModel::insertLink,

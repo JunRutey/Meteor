@@ -2,17 +2,21 @@ package com.meteor.memory.feature.people
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
@@ -36,6 +40,7 @@ data class PeopleRow(
     val displayName: String,
     val relation: Relation?,
     val secondary: String,
+    val tags: List<String> = emptyList(),
 )
 
 @Composable
@@ -48,10 +53,31 @@ fun relationLabel(relation: Relation?): String = stringResource(
     },
 )
 
+/**
+ * Every label to render for one person.
+ *
+ * Built-in relations now behave like custom tags: they live in the same tag
+ * list and are multi-selectable. A profile may still carry only the legacy
+ * `relation` field, so fold that label back in unless the tag list already has
+ * it. An empty result means "未分类".
+ */
+@Composable
+internal fun personTagLabels(relation: Relation?, tags: List<String>): List<String> {
+    val legacyLabel = relation?.let { relationLabel(it) }
+    val merged = if (legacyLabel != null && legacyLabel !in tags) {
+        listOf(legacyLabel) + tags
+    } else {
+        tags
+    }
+    return merged.filter { it.isNotBlank() }.distinct()
+}
+
 @Composable
 fun PeopleListScreen(
     people: List<PeopleRow>,
-    onCreate: (String, Relation?) -> Unit,
+    availableTags: List<String>,
+    onCreate: (String, Relation?, List<String>) -> Unit,
+    onAddTag: (String) -> Unit,
     onOpen: (String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -110,13 +136,33 @@ fun PeopleListScreen(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             Text(text = row.displayName, style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                text = relationLabel(row.relation),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
+                            val primaryLabel = row.relation?.let { relationLabel(it) }
+                            val labels = personTagLabels(row.relation, row.tags)
+                            if (labels.isEmpty()) {
+                                Text(
+                                    text = relationLabel(null),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            } else {
+                                labels.forEach { label ->
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (label == primaryLabel) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        },
+                                    )
+                                }
+                            }
                         }
                         Text(
                             text = row.secondary,
@@ -131,10 +177,12 @@ fun PeopleListScreen(
 
     if (showCreate) {
         CreatePersonDialog(
+            availableTags = availableTags,
+            onAddTag = onAddTag,
             onDismiss = { showCreate = false },
-            onConfirm = { name, relation ->
+            onConfirm = { name, relation, tags ->
                 showCreate = false
-                onCreate(name, relation)
+                onCreate(name, relation, tags)
             },
         )
     }
@@ -142,37 +190,51 @@ fun PeopleListScreen(
 
 @Composable
 private fun CreatePersonDialog(
+    availableTags: List<String>,
+    onAddTag: (String) -> Unit,
     onDismiss: () -> Unit,
-    onConfirm: (String, Relation?) -> Unit,
+    onConfirm: (String, Relation?, List<String>) -> Unit,
 ) {
+    val defaultRelationLabel = relationLabel(Relation.FRIEND)
     var name by remember { mutableStateOf("") }
     var relation by remember { mutableStateOf<Relation?>(Relation.FRIEND) }
+    var tags by remember { mutableStateOf(listOf(defaultRelationLabel)) }
 
-    androidx.compose.material3.AlertDialog(
+    AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(text = stringResource(R.string.people_create_title)) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
+                    modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
                     label = { Text(text = stringResource(R.string.people_name)) },
+                    placeholder = { Text(text = stringResource(R.string.people_name_hint)) },
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Relation.entries.forEach { candidate ->
-                        if (candidate == relation) {
-                            Button(onClick = { relation = candidate }) { Text(relationLabel(candidate)) }
-                        } else {
-                            TextButton(onClick = { relation = candidate }) { Text(relationLabel(candidate)) }
-                        }
-                    }
-                }
+                PersonTagEditor(
+                    relation = relation,
+                    tags = tags,
+                    availableTags = availableTags,
+                    onSelectionChanged = { selected, derived ->
+                        tags = selected
+                        relation = derived
+                    },
+                    onAddTag = onAddTag,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         },
         confirmButton = {
             TextButton(
-                onClick = { onConfirm(name.trim(), relation) },
+                onClick = { onConfirm(name.trim(), relation, tags) },
                 enabled = name.isNotBlank(),
             ) {
                 Text(stringResource(R.string.people_confirm))

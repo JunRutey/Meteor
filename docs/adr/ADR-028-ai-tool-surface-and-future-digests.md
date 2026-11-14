@@ -1,5 +1,8 @@
 # ADR-028 · AI 工具面：读写分级与「周/年档案代写」预留
 
+> 删除能力与人物标签由 [ADR-034](ADR-034-person-deletion-custom-tags-and-detail-redesign.md) 补充；
+> 写操作确认规则由 [ADR-032](ADR-032-ai-write-confirmation-and-scoped-deletion.md) 更新。
+
 - 状态：已接受（v0.6.2）
 - 日期：2026-10-31
 - 关联：ADR-027（联网 AI、只读工具、隐私边界）

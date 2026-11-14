@@ -22,18 +22,14 @@
     <string name="people_record_index_failed">文件已保存，但文本索引更新失败</string>
 
     <string name="people_note_section">备注</string>
-    <string name="people_note_add">添加备注</string>
-    <string name="people_note_edit">改备注</string>
     <string name="people_note_empty">（暂无备注）</string>
 
     <string name="people_body_section">正文</string>
-    <string name="people_body_add">写正文</string>
-    <string name="people_body_edit">编辑正文</string>
     <string name="people_body_empty">（暂无正文）</string>
 
     <string name="people_edit">编辑</string>
     <string name="people_edit_title">编辑人物</string>
-    <string name="people_edit_subtitle">称呼 · 关系 · 备注 · 正文，改完点保存</string>
+    <string name="people_edit_subtitle">改完点右上角保存</string>
     <string name="people_label_name">称呼</string>
     <string name="people_label_relation">关系</string>
     <string name="people_label_note">备注</string>
@@ -48,4 +44,22 @@
     <string name="people_relation_friend">朋友</string>
     <string name="people_relation_former">绝交的朋友</string>
     <string name="people_relation_none">未分类</string>
+
+    <string name="people_tags_label">标签</string>
+    <string name="people_tag_add_title">添加标签</string>
+    <string name="people_tag_add_description">添加自定义标签</string>
+    <string name="people_tag_input_label">标签名</string>
+    <string name="people_tag_hint">比如「同事」</string>
+    <string name="people_tag_add">添加</string>
+    <string name="people_tag_limit">最多同时选择 %1$d 个标签</string>
+
+    <string name="people_detail_title">人物档案</string>
+    <string name="people_detail_unnamed">未命名</string>
+    <string name="people_more_actions">更多操作</string>
+    <string name="people_delete">删除人物</string>
+    <string name="people_deleting">删除中…</string>
+    <string name="people_delete_failed">删除失败，请重试。</string>
+    <string name="people_delete_confirm_title">删除人物档案？</string>
+    <string name="people_delete_confirm_body">将删除「%1$s」的称呼、标签、备注和正文。相关日记和已导入的文件不会被删除。此操作不可撤销。</string>
+    <string name="people_delete_confirm_action">删除</string>
 </resources>

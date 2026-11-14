@@ -163,7 +163,7 @@
     <string name="ai_settings_write_diary">允许写日记与心情</string>
     <string name="ai_settings_write_diary_desc">可写日记与心情；覆盖和删除需确认。</string>
     <string name="ai_settings_write_people">允许新建/更新人物</string>
-    <string name="ai_settings_write_people_desc">可新建或修改人物；修改需确认。</string>
+    <string name="ai_settings_write_people_desc">可新建人物档案，或修改称呼、关系、标签与备注，也可以删除人物。新建无需确认，修改或删除已有档案需确认。</string>
     <string name="ai_settings_key">API Key</string>
     <string name="ai_settings_key_new">新密钥</string>
     <string name="ai_settings_key_new_hint">粘贴后保存；留空不改动现有密钥</string>

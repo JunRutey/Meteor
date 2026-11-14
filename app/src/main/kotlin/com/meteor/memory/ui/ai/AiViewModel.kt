@@ -64,15 +64,18 @@ import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 
 internal fun isSuccessfulSearchableWrite(name: String, result: String): Boolean {
-    if (
-        name != ArchiveTools.TOOL_SAVE_DIARY &&
-        name != ArchiveTools.TOOL_APPEND_DIARY &&
-        name != ArchiveTools.TOOL_SET_MOOD
-    ) {
-        return false
+    val successKey = when (name) {
+        ArchiveTools.TOOL_SAVE_DIARY,
+        ArchiveTools.TOOL_APPEND_DIARY,
+        ArchiveTools.TOOL_SET_MOOD -> "saved"
+
+        ArchiveTools.TOOL_CREATE_PERSON -> "created"
+        ArchiveTools.TOOL_UPDATE_PERSON -> "updated"
+        ArchiveTools.TOOL_DELETE_PERSON -> "deleted"
+        else -> return false
     }
     return try {
-        JSONObject(result).optBoolean("saved")
+        JSONObject(result).optBoolean(successKey)
     } catch (_: JSONException) {
         false
     }

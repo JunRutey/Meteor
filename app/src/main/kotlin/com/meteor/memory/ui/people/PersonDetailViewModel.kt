@@ -9,10 +9,12 @@ import android.net.Uri
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.AttachmentStore
 import com.meteor.memory.core.storage.ImageStore
+import com.meteor.memory.core.storage.PersonDeleteResult
 import com.meteor.memory.core.storage.PersonProfile
 import com.meteor.memory.core.storage.PersonQueries
 import com.meteor.memory.core.storage.Relation
 import com.meteor.memory.core.storage.RecordType
+import com.meteor.memory.core.storage.StorageLayout
 import com.meteor.memory.core.time.TimeModule
 import com.meteor.memory.feature.editor.MarkdownEditing
 import com.meteor.memory.ui.common.decodeImages
@@ -55,6 +57,8 @@ data class PersonViewState(
     val note: String = "",
     /** Markdown body (正文), rendered with images. */
     val notes: String = "",
+    /** User-defined labels shown beside the structured relation. */
+    val tags: List<String> = emptyList(),
     /** Decrypted images referenced by the notes, so the page can render them. */
     val images: Map<String, ImageBitmap> = emptyMap(),
     val records: List<PersonRecordView> = emptyList(),
@@ -64,6 +68,10 @@ data class PersonViewState(
     val importSummary: AttachmentImportSummary? = null,
     /** null while no export has finished; true when the last one failed. */
     val exportFailed: Boolean? = null,
+    val deleting: Boolean = false,
+    /** Set after the profile is gone; the host screen leaves the route. */
+    val deleted: Boolean = false,
+    val deleteFailed: Boolean = false,
     val loaded: Boolean = false,
 )
 
@@ -111,6 +119,7 @@ class PersonDetailViewModel @Inject constructor(
                     relation = profile?.relation,
                     note = profile?.note.orEmpty(),
                     notes = profile?.notes.orEmpty(),
+                    tags = profile?.tags.orEmpty(),
                     records = records.map { record -> record.toView(locale) },
                     attachments = attachments.map { attachment ->
                         PersonAttachmentView(
@@ -164,6 +173,38 @@ class PersonDetailViewModel @Inject constructor(
             val summary = attachmentImportCoordinator.importAll(uris, personId)
             _state.update { it.copy(isImporting = false, importSummary = summary) }
             load()
+        }
+    }
+
+    /**
+     * Deletes only the address-book entry. Diaries and imported attachments are
+     * separate stores, so this cannot silently destroy unrelated memories.
+     */
+    fun delete() {
+        val current = _state.value
+        if (current.deleting || current.deleted) return
+        _state.update { it.copy(deleting = true, deleteFailed = false) }
+
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { personQueries.delete(personId) }.getOrNull()
+            }
+            when (result) {
+                PersonDeleteResult.DELETED, PersonDeleteResult.NOT_FOUND -> {
+                    withContext(Dispatchers.IO) {
+                        runCatching {
+                            searchService.removeRecord(StorageLayout.profileRelativePath(personId))
+                        }.onFailure { appLog.warn(TAG, "person index removal failed: $personId", it) }
+                    }
+                    appLog.info(TAG, "person deleted: $personId result=$result")
+                    _state.update { it.copy(deleting = false, deleted = true) }
+                }
+
+                else -> {
+                    appLog.warn(TAG, "person delete failed: $personId result=$result")
+                    _state.update { it.copy(deleting = false, deleteFailed = true) }
+                }
+            }
         }
     }
 

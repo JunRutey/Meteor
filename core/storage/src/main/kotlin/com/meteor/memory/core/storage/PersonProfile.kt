@@ -21,6 +21,12 @@ enum class Relation(val code: String) {
  * Two text fields, deliberately separate (ADR-023):
  * - [note] is a one-line reminder, kept in the header so it stays a single line;
  * - [notes] is the free-form Markdown body — the 正文 — which may carry images.
+ *
+ * [tags] holds every selected label, including the built-in relation labels
+ * ("家人", "朋友", "绝交的朋友") and user-authored text ("同事", "大学同学").
+ * [relation] is still written as the first selected built-in relation for AI
+ * tools and old readers; a legacy file that only has `relation:` is folded back
+ * into the tag chips by the UI.
  */
 data class PersonProfile(
     val displayName: String,
@@ -29,6 +35,8 @@ data class PersonProfile(
     val note: String = "",
     /** Free-form Markdown body (正文). */
     val notes: String = "",
+    /** All selected labels, written as the comma-separated `tags` header key. */
+    val tags: List<String> = emptyList(),
 )
 
 /**
@@ -38,6 +46,7 @@ data class PersonProfile(
  * name: 小明
  * relation: friend
  * note: 大学同学
+ * tags: 同事, 大学同学
  * ---
  * 正文（Markdown，可含图片）
  * ```
@@ -45,8 +54,8 @@ data class PersonProfile(
  * A small header block keeps the file parseable *and* readable in an exported
  * backup, which is what §5.1's "Markdown is the source of truth" asks for.
  *
- * `note:` is optional and absent from files written before ADR-023, so such
- * files simply read back with an empty note and their old body as the 正文.
+ * `note:` and `tags:` are optional and absent from older files, so such files
+ * simply read back with empty values and their old body as the 正文.
  */
 object PersonProfileCodec {
 
@@ -54,6 +63,14 @@ object PersonProfileCodec {
     const val KEY_NAME = "name"
     const val KEY_RELATION = "relation"
     const val KEY_NOTE = "note"
+    const val KEY_TAGS = "tags"
+
+    /** UI and AI tools share these bounds; the codec enforces them on write. */
+    const val MAX_TAGS = 8
+    const val MAX_TAG_CHARS = 24
+
+    private val TAG_SEPARATORS = Regex("[,，、]")
+    private val WHITESPACE = Regex("\\s+")
 
     fun encode(profile: PersonProfile): String = buildString {
         append(KEY_NAME).append(": ").append(profile.displayName).append('\n')
@@ -61,6 +78,8 @@ object PersonProfileCodec {
         // The header is line based: a newline inside the note would corrupt it.
         val note = profile.note.replace('\n', ' ').replace('\r', ' ').trim()
         if (note.isNotEmpty()) append(KEY_NOTE).append(": ").append(note).append('\n')
+        val tags = normalizeTags(profile.tags)
+        if (tags.isNotEmpty()) append(KEY_TAGS).append(": ").append(tags.joinToString(", ")).append('\n')
         append(SEPARATOR).append('\n')
         if (profile.notes.isNotBlank()) append(profile.notes.trimEnd()).append('\n')
     }
@@ -90,6 +109,32 @@ object PersonProfileCodec {
             relation = header[KEY_RELATION]?.let(Relation::fromCode),
             note = header[KEY_NOTE].orEmpty(),
             notes = notes,
+            tags = header[KEY_TAGS]?.let(::parseTags).orEmpty(),
         )
     }
+
+    /**
+     * Trims, de-duplicates and bounds a tag list. Separators are flattened to
+     * spaces so every encoded tag survives a decode/split round trip.
+     */
+    fun normalizeTags(tags: List<String>): List<String> = tags.asSequence()
+        .map(::normalizeTag)
+        .filter { it.isNotEmpty() }
+        .distinct()
+        .take(MAX_TAGS)
+        .toList()
+
+    private fun parseTags(value: String): List<String> =
+        normalizeTags(value.split(TAG_SEPARATORS))
+
+    private fun normalizeTag(raw: String): String = raw
+        .replace('\n', ' ')
+        .replace('\r', ' ')
+        .replace(',', ' ')
+        .replace('，', ' ')
+        .replace('、', ' ')
+        .replace(WHITESPACE, " ")
+        .trim()
+        .take(MAX_TAG_CHARS)
+        .trim()
 }
