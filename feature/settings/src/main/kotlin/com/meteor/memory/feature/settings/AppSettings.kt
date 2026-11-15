@@ -88,8 +88,8 @@ enum class DarkMode { FOLLOW_SYSTEM, DARK, LIGHT }
 enum class FontScale { SYSTEM, SMALL, NORMAL, LARGE }
 
 /**
- * R3 contract: when `:feature-settings` is removed, `aiEnabled` is permanently
- * false and every other module still compiles and reads existing data.
+ * Feature switches resolved at composition time. `aiEnabled` gates the AI entry
+ * points, so feature code asks here instead of reading AI settings directly.
  */
 class FeatureFlags(private val aiEnabled: Boolean) {
     val ai: Boolean get() = aiEnabled

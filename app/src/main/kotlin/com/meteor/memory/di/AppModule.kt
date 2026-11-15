@@ -70,7 +70,7 @@ import javax.inject.Singleton
 
 /**
  * Composition root. `:app` is the only module that knows about Hilt, which keeps
- * every `:core-*` / `:feature-*` module plain Kotlin and removable (archive R3).
+ * every `:core-*` / `:feature-*` module free of the DI framework.
  *
  * Still unwired: [BackupModule] (lands with the backup implementation).
  */

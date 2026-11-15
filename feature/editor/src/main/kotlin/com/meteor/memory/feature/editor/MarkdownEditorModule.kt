@@ -16,9 +16,8 @@ import kotlin.math.roundToInt
 /**
  * Markdown implementation of the frozen [EditorModule].
  *
- * Bodies stay plain Markdown inside the encrypted file, which is what keeps the
- * data readable without this module (archive R3) and search-friendly for
- * `:core-index`.
+ * Bodies stay plain Markdown inside the encrypted file, so the stored data stays
+ * readable without this module and search-friendly for `:core-index`.
  */
 class MarkdownEditorModule(
     private val router: StorageRouter,

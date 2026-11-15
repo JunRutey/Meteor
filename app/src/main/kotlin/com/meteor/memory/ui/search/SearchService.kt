@@ -27,12 +27,11 @@ data class PersonRecord(
 )
 
 /**
- * Seam that makes `:core-index` removable (archive R3).
+ * Search seam owned by `:app`.
  *
  * Everything above this interface — search UI, diagnostics, diary saving — is
- * written against these app-owned types. When the module is excluded from the
- * build, a no-op implementation takes its place and the rest of the app still
- * compiles and runs; only search is degraded.
+ * written against these app-owned types instead of `:core-index`'s, so the index
+ * backend can change without the UI learning about it.
  */
 interface SearchService {
     suspend fun search(query: String, maxHits: Int = 20, snippetChars: Int = 160): List<SearchMatch>
@@ -46,9 +45,8 @@ interface SearchService {
 
     /**
      * Drops one record from the index, addressed by its archive-relative path.
-     * No-op when search is disabled; the files remain the source of truth.
      */
-    suspend fun removeRecord(sourcePath: String) = Unit
+    suspend fun removeRecord(sourcePath: String)
 
     /** Launch-time full rebuild used as the safety net for incremental updates. */
     suspend fun rebuildOnLaunch()
@@ -57,8 +55,8 @@ interface SearchService {
     suspend fun recordsForPerson(personId: String): List<PersonRecord>
 
     /** Rebuilds the in-memory text index for encrypted file attachments. */
-    suspend fun refreshAttachmentIndex() = Unit
+    suspend fun refreshAttachmentIndex()
 
     /** Drops decrypted attachment text from memory when the app is backgrounded. */
-    suspend fun clearAttachmentIndex() = Unit
+    suspend fun clearAttachmentIndex()
 }
