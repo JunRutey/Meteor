@@ -1,8 +1,6 @@
 package com.meteor.memory.system
 
 interface NotificationFeature {
-    val available: Boolean
-
     fun initialize()
     fun canPostNotifications(): Boolean
     fun canPostDailyReminder(): Boolean

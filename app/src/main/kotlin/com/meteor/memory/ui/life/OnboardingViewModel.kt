@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.feature.settings.SettingsRepository
-import com.meteor.memory.system.NotificationFeature
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -23,11 +22,8 @@ data class OnboardingSaveState(
 class OnboardingViewModel @Inject constructor(
     private val profileStore: BirthdayProfileStore,
     private val settingsRepository: SettingsRepository,
-    notificationFeature: NotificationFeature,
     private val appLog: AppLog,
 ) : ViewModel() {
-
-    val notificationFeatureAvailable: Boolean = notificationFeature.available
 
     private val _saveState = MutableStateFlow(OnboardingSaveState())
     val saveState = _saveState.asStateFlow()

@@ -54,8 +54,6 @@ class AndroidNotificationFeature @Inject constructor(
         },
     )
 
-    override val available: Boolean = true
-
     override fun initialize() {
         NotificationChannels.create(context)
         scope.launch { syncReminder() }
