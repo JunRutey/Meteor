@@ -2,5 +2,4 @@
 <resources>
     <string name="meteor_lock_title">解锁 Meteor</string>
     <string name="meteor_lock_subtitle">验证身份以访问你的记忆档案</string>
-    <string name="meteor_lock_cancel">取消</string>
 </resources>

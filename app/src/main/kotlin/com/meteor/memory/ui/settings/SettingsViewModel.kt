@@ -2,6 +2,7 @@ package com.meteor.memory.ui.settings
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.meteor.memory.core.crypto.AppLock
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.feature.ai.AiModels
 import com.meteor.memory.feature.ai.AiModule
@@ -42,6 +43,7 @@ data class AiModelsState(
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val repository: SettingsRepository,
+    private val appLock: AppLock,
     private val appLog: AppLog,
     private val reader: AiSettingsReader,
     private val aiModule: AiModule,
@@ -76,6 +78,11 @@ class SettingsViewModel @Inject constructor(
 
     private val _aiModels = MutableStateFlow(AiModelsState())
     val aiModels: StateFlow<AiModelsState> = _aiModels.asStateFlow()
+
+    /** True after an attempt to enable the lock on a device with nothing to verify. */
+    private val _appLockUnavailable = MutableStateFlow(false)
+    val appLockUnavailable: StateFlow<Boolean> = _appLockUnavailable.asStateFlow()
+
     internal val updateState: StateFlow<UpdateState> = updateService.state
 
     init {
@@ -110,11 +117,31 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Never persists "on" when the system has nothing to verify the person
+     * against: the next cold start would otherwise sit at a gate nobody can
+     * pass. The screen explains this with [appLockUnavailable].
+     */
     fun setAppLockEnabled(enabled: Boolean) {
         viewModelScope.launch {
+            if (enabled) {
+                val available = withContext(Dispatchers.IO) {
+                    runCatching { appLock.isAuthenticationAvailable() }.getOrDefault(false)
+                }
+                if (!available) {
+                    appLog.warn(TAG, "app lock not enabled: no biometric or lock-screen credential")
+                    _appLockUnavailable.value = true
+                    return@launch
+                }
+            }
+            _appLockUnavailable.value = false
             repository.setAppLockEnabled(enabled)
             appLog.info(TAG, "app lock requested=$enabled")
         }
+    }
+
+    fun dismissAppLockUnavailable() {
+        _appLockUnavailable.value = false
     }
 
     fun setScreenshotProtectionEnabled(enabled: Boolean) {
