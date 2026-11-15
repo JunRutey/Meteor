@@ -63,8 +63,8 @@
  └── :core-notify        每日日记提醒调度与通知渠道
 ```
 
-依赖严格单向、无环，由 `tools/check-module-graph.sh` 在 CI 中强制；
-`:core-index` 与 `:core-notify` 均可通过 `-Pmeteor.excludeModules=` 整体移除（CI 有专门任务验证）。
+依赖严格单向、无环，由 `tools/check-module-graph.sh` 在 CI 中强制（同时校验 build 文件与源码里的包引用）；
+`:core-index` 与 `:core-notify` 均可通过 `-Pmeteor.excludeModules=` 整体移除（CI 的 Pluggability 任务会真的排除后构建一次）。
 `:feature-ai` 刻意不依赖 `:core-index`：自己在解密后的记录上检索，索引被排除时 AI 仍可用。
 
 ## 版本路线

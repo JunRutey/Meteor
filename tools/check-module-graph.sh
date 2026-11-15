@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# Enforces Meteor archive rule R1: dependencies must be one-directional and
-# may only follow the edges declared below. Runs before any Gradle work in CI.
+# Enforces Meteor archive rules R1 and R3, before any Gradle work in CI:
+#   R1  dependencies must be one-directional and may only follow the declared
+#       edges below — checked both on build.gradle.kts and on source packages;
+#   R3  a module must stay removable — :app's conditional source sets may only
+#       name the module they are paired with.
+# Catching a stray import here costs seconds; catching it in the pluggability
+# build costs a full assembleDebug.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -106,9 +111,80 @@ if [ "$visited" -ne "${#on_disk[@]}" ]; then
   error "Declared dependency graph contains a cycle."
 fi
 
+# ---------------------------------------------------------------------------
+# R1 on source code, not only on build files.
+#
+# The edge check above only reads `project(":x")` declarations. A stray
+# `import com.meteor.memory.core.index.*` compiles perfectly in the default
+# build — the dependency is on the classpath — and only fails once the module
+# is excluded. That makes the pluggability build the sole detector, at the
+# price of an assemble. Checking the packages directly is equivalent for every
+# compile-time reference and costs milliseconds.
+# ---------------------------------------------------------------------------
+
+# Package prefix for a module, with dots escaped for grep -E.
+module_package() {
+  case "$1" in
+    core-*)    echo "com\.meteor\.memory\.core\.${1#core-}" ;;
+    feature-*) echo "com\.meteor\.memory\.feature\.${1#feature-}" ;;
+    *)         echo "" ;;
+  esac
+}
+
+# Gradle module name -> its directory, mirroring settings.gradle.kts.
+module_dir() {
+  case "$1" in
+    app)       echo "app" ;;
+    core-*)    echo "core/${1#core-}" ;;
+    feature-*) echo "feature/${1#feature-}" ;;
+    *)         echo "" ;;
+  esac
+}
+
+# "$1" source dir, "$2" modules it must not name.
+check_forbidden_packages() {
+  local src="$1" forbidden="$2" pattern="" m pkg
+  [ -d "$src" ] || return 0
+  for m in $forbidden; do
+    pkg="$(module_package "$m")"
+    [ -n "$pkg" ] && pattern+="${pkg}|"
+  done
+  [ -z "$pattern" ] && return 0
+  # A trailing package boundary keeps :core-index from matching :core-indexer.
+  pattern="(${pattern%|})(\$|[^A-Za-z0-9_])"
+  while IFS= read -r hit; do
+    [ -z "$hit" ] && continue
+    error "$src references a module it must not depend on (archive §3): ${hit:0:160}"
+  done < <(grep -rnE --include='*.kt' --include='*.java' "$pattern" "$src" 2>/dev/null || true)
+}
+
+# Every library module: no package of a module it has no declared edge to.
+for m in "${on_disk[@]}"; do
+  dir="$(module_dir "$m")"
+  [ -z "$dir" ] && continue
+  forbidden=""
+  for n in "${on_disk[@]}"; do
+    [ "$n" = "$m" ] && continue
+    grep -qxF "$m $n" <<< "$ALLOWED_EDGES" || forbidden+="$n "
+  done
+  check_forbidden_packages "$dir" "$forbidden"
+done
+
+# :app owns the R3 seams. Each conditional source set may name the module it is
+# paired with — that is the whole point of the seam — but nothing else, so the
+# two features stay independent of each other. app/src/main must stay neutral:
+# that is what lets a module be dropped without touching the app shell.
+# Adding a seam means adding both its source sets here and its exclusions to the
+# Pluggability job in .github/workflows/ci.yml.
+check_forbidden_packages app/src/main                     "core-index core-notify"
+check_forbidden_packages app/src/indexEnabled             "core-notify"
+check_forbidden_packages app/src/indexDisabled            "core-index"
+check_forbidden_packages app/src/notificationsEnabled     "core-index"
+check_forbidden_packages app/src/notificationsDisabled    "core-notify"
+
 if [ "$fail" -ne 0 ]; then
   echo "Module graph check FAILED."
   exit 1
 fi
 
-echo "Module graph OK (${#on_disk[@]} modules, acyclic, all edges declared)."
+echo "Module graph OK (${#on_disk[@]} modules, acyclic, all edges declared, packages within bounds)."
