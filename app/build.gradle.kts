@@ -6,8 +6,9 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
-// R3 (archive): every module must be removable. Dropping :core-index or
-// :core-notify selects its no-op app implementation and removes the dependency.
+// Legacy (R3 retired): dropping :core-index or :core-notify still selects its
+// no-op app implementation and removes the dependency, but this is no longer a
+// requirement and no longer verified by CI. See AGENTS.md §3.
 val excludedModules: Set<String> =
     (providers.gradleProperty("meteor.excludeModules").orNull ?: "")
         .split(',')
