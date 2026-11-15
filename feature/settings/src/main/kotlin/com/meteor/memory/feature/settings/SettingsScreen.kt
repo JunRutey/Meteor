@@ -79,7 +79,6 @@ fun SettingsScreen(
     onCheckUpdates: () -> Unit,
     onInstallUpdate: () -> Unit,
     logSizeBytes: Long,
-    notificationFeatureAvailable: Boolean,
     reminderNotificationsAllowed: Boolean,
     canScheduleExactAlarms: Boolean,
     notificationPermissionDenied: Boolean,
@@ -176,21 +175,19 @@ fun SettingsScreen(
                 }
             }
 
-            if (notificationFeatureAvailable) {
-                SettingsSection(title = stringResource(R.string.settings_section_notifications)) {
-                    ReminderSettingsSection(
-                        enabled = settings.diaryReminderEnabled,
-                        timeMinutes = settings.diaryReminderTimeMinutes,
-                        reminderNotificationsAllowed = reminderNotificationsAllowed,
-                        canScheduleExactAlarms = canScheduleExactAlarms,
-                        permissionDenied = notificationPermissionDenied,
-                        onEnabledChange = onReminderEnabledChanged,
-                        onTimeChanged = onReminderTimeChanged,
-                        onOpenExactAlarmSettings = onOpenExactAlarmSettings,
-                        onOpenNotificationSettings = onOpenNotificationSettings,
-                        onDismissPermissionDenied = onDismissNotificationPermissionDenied,
-                    )
-                }
+            SettingsSection(title = stringResource(R.string.settings_section_notifications)) {
+                ReminderSettingsSection(
+                    enabled = settings.diaryReminderEnabled,
+                    timeMinutes = settings.diaryReminderTimeMinutes,
+                    reminderNotificationsAllowed = reminderNotificationsAllowed,
+                    canScheduleExactAlarms = canScheduleExactAlarms,
+                    permissionDenied = notificationPermissionDenied,
+                    onEnabledChange = onReminderEnabledChanged,
+                    onTimeChanged = onReminderTimeChanged,
+                    onOpenExactAlarmSettings = onOpenExactAlarmSettings,
+                    onOpenNotificationSettings = onOpenNotificationSettings,
+                    onDismissPermissionDenied = onDismissNotificationPermissionDenied,
+                )
             }
 
             SettingsSection(title = stringResource(R.string.settings_section_backup)) {

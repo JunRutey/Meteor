@@ -51,8 +51,6 @@ class SettingsViewModel @Inject constructor(
     private val updateService: UpdateService,
 ) : ViewModel() {
 
-    val notificationFeatureAvailable: Boolean = notificationFeature.available
-
     private val _reminderNotificationsAllowed =
         MutableStateFlow(notificationFeature.canPostDailyReminder())
     val reminderNotificationsAllowed: StateFlow<Boolean> =

@@ -137,13 +137,9 @@ fun OnboardingFlowScreen(
                     )
 
                     STEP_PERMISSIONS -> OnboardingPermissionsPage(
-                        notificationFeatureAvailable = viewModel.notificationFeatureAvailable,
-                        canRequestPermission =
-                            viewModel.notificationFeatureAvailable &&
-                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
+                        canRequestPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
                         onRequestPermission = {
                             if (
-                                viewModel.notificationFeatureAvailable &&
                                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                                 ContextCompat.checkSelfPermission(
                                     context,
@@ -251,7 +247,6 @@ private fun OnboardingTextPage(
 
 @Composable
 private fun OnboardingPermissionsPage(
-    notificationFeatureAvailable: Boolean,
     canRequestPermission: Boolean,
     onRequestPermission: () -> Unit,
     onSkip: () -> Unit,
@@ -267,10 +262,10 @@ private fun OnboardingPermissionsPage(
         )
         Text(
             text = stringResource(
-                when {
-                    !notificationFeatureAvailable -> R.string.onboarding_permissions_unavailable
-                    canRequestPermission -> R.string.onboarding_permissions_body
-                    else -> R.string.onboarding_permissions_not_required
+                if (canRequestPermission) {
+                    R.string.onboarding_permissions_body
+                } else {
+                    R.string.onboarding_permissions_not_required
                 },
             ),
             modifier = Modifier.weight(1f),

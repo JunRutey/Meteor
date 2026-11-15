@@ -710,7 +710,6 @@ fun MeteorNavHost(
                 onCheckUpdates = viewModel::checkForUpdates,
                 onInstallUpdate = viewModel::installUpdate,
                 logSizeBytes = logSizeBytes,
-                notificationFeatureAvailable = viewModel.notificationFeatureAvailable,
                 reminderNotificationsAllowed = reminderNotificationsAllowed,
                 canScheduleExactAlarms = canScheduleExactAlarms,
                 notificationPermissionDenied = notificationPermissionDenied,

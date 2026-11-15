@@ -74,7 +74,6 @@
     <string name="onboarding_privacy_body">日记和出生日期保存在应用私有空间。出生日期使用设备 Keystore 的 AES-GCM 密钥加密；Meteor 不收集、不上传，也不跟踪你的生日。\n\n自动检查更新默认开启，会连接 GitHub 查询版本并在后台下载新版本（通知栏显示进度）；不会上传日记、档案或出生日期，可在设置中关闭。可选 AI 默认关闭，启用并完成配置后，提问和选中的档案片段会通过 HTTPS 直接发送到 DeepSeek，并受 DeepSeek 的隐私条款约束。\n\n通知只用于你选择开启的本地日记提醒，以及后台更新下载的进度。你可以跳过通知授权，也可以稍后在系统设置中修改。</string>
     <string name="onboarding_permissions_title">通知权限</string>
     <string name="onboarding_permissions_body">允许通知后，Meteor 才能在你开启日记提醒时发送提醒，并在后台下载更新时显示进度。此处不会自动开启提醒；你也可以跳过，之后再决定。</string>
-    <string name="onboarding_permissions_unavailable">当前版本未包含通知提醒功能，无需授予通知权限。继续设置出生日期即可。</string>
     <string name="onboarding_permissions_not_required">此 Android 版本不需要单独申请通知权限。日记提醒仍需你之后在设置中主动开启。</string>
     <string name="onboarding_allow_notifications">允许通知</string>
     <string name="onboarding_permissions_continue">继续</string>
