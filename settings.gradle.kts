@@ -29,9 +29,9 @@ rootProject.name = "Meteor"
 //                       :feature-ai -> feature/ai
 //                       :app        -> app
 //
-// R3 (pluggable): pass -Pmeteor.excludeModules=feature-ai,core-index to drop
-// modules from the build. A module may only be excluded once no remaining
-// module references it; tools/check-module-graph.sh enforces that rule in CI.
+// Legacy (R3 retired): -Pmeteor.excludeModules=feature-ai,core-index still drops
+// modules from the build, but CI no longer verifies that any module can be
+// dropped and this path is not maintained. Do not rely on it — see AGENTS.md §3.
 // ---------------------------------------------------------------------------
 
 val excludedModules: Set<String> =
