@@ -6,7 +6,7 @@
 密钥由设备 Keystore 保管，不可导出、不上传、无云端同步。AI 是可选能力，默认关闭，
 仅接入官方 DeepSeek。
 
-> 当前版本 **v1.1.0**。功能与隐私的细节见 [AI 功能与隐私](docs/AI.md) 与
+> 当前版本 **v1.1.1**。功能与隐私的细节见 [AI 功能与隐私](docs/AI.md) 与
 > [加密与安全](docs/SECURITY.md)，设计取舍见 [ADR](docs/adr)，
 > 历次发布见 [发布说明](docs/releases)。
 
@@ -15,7 +15,7 @@
 - **日记与编辑**：Markdown 加粗、图片、链接；图片按天分组浏览。
   详见 [ADR-019](docs/adr/ADR-019-editor-keeps-bold-images-links.md)、
   [ADR-021](docs/adr/ADR-021-editor-is-plain-text.md)
-- **全文搜索**：CJK 分词，FTS5 → FTS4 → LIKE 运行时降级。
+- **全文搜索**：CJK 分词，支持单字与心情标签检索，FTS5 → FTS4 → LIKE 运行时降级。
   详见 [ADR-015](docs/adr/ADR-015-cjk-bigram-tokenizer.md)、
   [ADR-016](docs/adr/ADR-016-fts-runtime-backend-fallback.md)
 - **心情日历**：心情按天记录，日历着色。详见
