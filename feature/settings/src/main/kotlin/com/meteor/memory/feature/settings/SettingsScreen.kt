@@ -95,6 +95,9 @@ fun SettingsScreen(
     backupActions: @Composable () -> Unit = {},
     logActions: @Composable () -> Unit = {},
     aiActions: @Composable () -> Unit = {},
+    appLockUnavailable: Boolean = false,
+    onDismissAppLockUnavailable: () -> Unit = {},
+    onOpenSecuritySettings: () -> Unit = {},
 ) {
     Column(modifier = modifier.fillMaxSize()) {
         SettingsHeader(onBack = onBack)
@@ -283,6 +286,31 @@ fun SettingsScreen(
                 )
             }
         }
+    }
+
+    // Shown when the switch was refused: the app lock delegates to the system
+    // and a device with no credential at all could never pass its own gate.
+    if (appLockUnavailable) {
+        AlertDialog(
+            onDismissRequest = onDismissAppLockUnavailable,
+            title = { Text(text = stringResource(R.string.settings_app_lock_unavailable_title)) },
+            text = { Text(text = stringResource(R.string.settings_app_lock_unavailable_body)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDismissAppLockUnavailable()
+                        onOpenSecuritySettings()
+                    },
+                ) {
+                    Text(text = stringResource(R.string.settings_open_security_settings))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismissAppLockUnavailable) {
+                    Text(text = stringResource(R.string.settings_app_lock_unavailable_dismiss))
+                }
+            },
+        )
     }
 }
 

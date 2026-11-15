@@ -106,6 +106,13 @@
     <string name="lock_subtitle">Meteor 已开启应用锁，请验证身份后继续。</string>
     <string name="lock_unlock">解锁</string>
     <string name="lock_failed">身份验证未通过，请重试。</string>
+    <string name="lock_no_device_credential">这台设备没有设置锁屏密码、图案，也没有录入指纹或人脸，系统无法验证身份。请先在系统设置中设置锁屏密码或录入生物识别，再回来解锁。</string>
+    <string name="lock_open_security_settings">去系统设置</string>
+    <string name="lock_disable_app_lock">仍要关闭应用锁</string>
+    <string name="lock_disable_app_lock_title">关闭应用锁？</string>
+    <string name="lock_disable_app_lock_body">关闭后，拿到这台手机的人可以直接打开 Meteor。只有在无法设置任何锁屏密码或生物识别时才应这样做；关闭后请尽快在系统设置中添加锁屏。</string>
+    <string name="lock_disable_app_lock_confirm">关闭应用锁</string>
+    <string name="lock_disable_app_lock_cancel">取消</string>
 
     <string name="backup_export">导出备份</string>
     <string name="backup_import">导入备份</string>

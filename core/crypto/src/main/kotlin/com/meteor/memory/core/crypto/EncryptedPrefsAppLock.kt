@@ -45,6 +45,8 @@ class EncryptedPrefsAppLock(
         sessionUnlocked = false
     }
 
+    override fun isAuthenticationAvailable(): Boolean = canAuthenticate(context)
+
     override suspend fun unlock(activity: FragmentActivity): Boolean {
         if (!isEnabled()) {
             sessionUnlocked = true
@@ -55,15 +57,24 @@ class EncryptedPrefsAppLock(
         return if (canAuthenticate(activity)) {
             promptBiometric(activity).also { if (it) sessionUnlocked = true }
         } else {
-            // No biometric hardware or nothing enrolled: do not silently unlock.
+            // No biometrics and no lock screen: do not silently unlock.
             false
         }
     }
 
-    private fun canAuthenticate(context: Context): Boolean {
-        val allowed = BiometricManager.Authenticators.BIOMETRIC_WEAK
-        return BiometricManager.from(context).canAuthenticate(allowed) == BiometricManager.BIOMETRIC_SUCCESS
-    }
+    /**
+     * Biometrics (Class 2+, so fingerprint, face and iris all qualify) **or**
+     * the lock-screen PIN/pattern/password.
+     *
+     * The device credential is what keeps a phone without an enrolled
+     * fingerprint from becoming impossible to unlock: before it was requested
+     * here, such a device could never pass the gate. The androidx backport
+     * reports SUCCESS whenever the device is secured, and falls back to the
+     * confirm-credential activity itself below API 30.
+     */
+    private fun canAuthenticate(context: Context): Boolean =
+        BiometricManager.from(context).canAuthenticate(AUTHENTICATORS) ==
+            BiometricManager.BIOMETRIC_SUCCESS
 
     private suspend fun promptBiometric(activity: FragmentActivity): Boolean =
         suspendCancellableCoroutine { continuation ->
@@ -87,8 +98,11 @@ class EncryptedPrefsAppLock(
             val info = BiometricPrompt.PromptInfo.Builder()
                 .setTitle(activity.getString(R.string.meteor_lock_title))
                 .setSubtitle(activity.getString(R.string.meteor_lock_subtitle))
-                .setNegativeButtonText(activity.getString(R.string.meteor_lock_cancel))
-                .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_WEAK)
+                // No negative button text: it is illegal alongside
+                // DEVICE_CREDENTIAL (the system provides Cancel) and it is what
+                // unlocks the "Use PIN/pattern/password" fallback, which also
+                // covers face unlock on devices that expose it to the prompt.
+                .setAllowedAuthenticators(AUTHENTICATORS)
                 .build()
 
             continuation.invokeOnCancellation {
@@ -118,5 +132,13 @@ class EncryptedPrefsAppLock(
         /** Archive §6: namespace `app_lock`. */
         const val PREFS_NAME = "meteor_app_lock"
         const val KEY_ENABLED = "app_lock_enabled"
+
+        /**
+         * Class 2+ biometrics (fingerprint, face, iris) plus the device
+         * credential as the mandatory fallback.
+         */
+        val AUTHENTICATORS: Int =
+            BiometricManager.Authenticators.BIOMETRIC_WEAK or
+                BiometricManager.Authenticators.DEVICE_CREDENTIAL
     }
 }

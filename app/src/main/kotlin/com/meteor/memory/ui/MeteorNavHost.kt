@@ -666,6 +666,7 @@ fun MeteorNavHost(
                 .collectAsStateWithLifecycle()
             val canScheduleExactAlarms by viewModel.canScheduleExactAlarms.collectAsStateWithLifecycle()
             val updateState by viewModel.updateState.collectAsStateWithLifecycle()
+            val appLockUnavailable by viewModel.appLockUnavailable.collectAsStateWithLifecycle()
             val context = LocalContext.current
             var notificationPermissionDenied by rememberSaveable { mutableStateOf(false) }
             val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -692,6 +693,9 @@ fun MeteorNavHost(
                 onDynamicColorChanged = viewModel::setDynamicColor,
                 onAnimationsChanged = viewModel::setAnimationsEnabled,
                 onAppLockChanged = viewModel::setAppLockEnabled,
+                appLockUnavailable = appLockUnavailable,
+                onDismissAppLockUnavailable = viewModel::dismissAppLockUnavailable,
+                onOpenSecuritySettings = { openSecuritySettings(context) },
                 onScreenshotProtectionChanged = viewModel::setScreenshotProtectionEnabled,
                 onVerboseLoggingChanged = viewModel::setVerboseLogging,
                 onOpenAbout = { navController.navigate(ROUTE_ABOUT) },

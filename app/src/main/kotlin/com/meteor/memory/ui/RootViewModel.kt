@@ -59,6 +59,15 @@ class RootViewModel @Inject constructor(
     private val _unlockFailed = MutableStateFlow(false)
     val unlockFailed: StateFlow<Boolean> = _unlockFailed.asStateFlow()
 
+    /**
+     * True when the gate is armed but the system has nothing to verify the
+     * person against: no enrolled biometric and no lock-screen PIN/pattern.
+     * Only then may the lock screen offer the "disable the lock" escape, since
+     * keeping the gate would otherwise strand the archive forever.
+     */
+    private val _noDeviceCredential = MutableStateFlow(false)
+    val noDeviceCredential: StateFlow<Boolean> = _noDeviceCredential.asStateFlow()
+
     /** Guards against re-locking while a biometric check is in flight. */
     @Volatile
     private var unlocking: Boolean = false
@@ -141,7 +150,7 @@ class RootViewModel @Inject constructor(
                         startupValueApplied = true
                         // Cold start: a stored lock is honoured right away.
                         _locked.value = enabled
-                        if (!enabled) scheduleIndexRebuild()
+                        if (enabled) updateLockAvailability() else scheduleIndexRebuild()
                     } else if (enabled) {
                         // Turned on from Settings by the person holding the phone.
                         // Swapping the screen for the gate here would throw away
@@ -163,6 +172,15 @@ class RootViewModel @Inject constructor(
         unlocking = true
         viewModelScope.launch {
             try {
+                // Check before prompting: without any credential the system can
+                // only error out, and the gate must explain why instead of
+                // pretending the attempt failed.
+                if (!isAuthenticationAvailable()) {
+                    appLog.warn(TAG, "unlock impossible: no biometric or lock screen")
+                    _noDeviceCredential.value = true
+                    return@launch
+                }
+                _noDeviceCredential.value = false
                 val granted = runCatching { appLock.unlock(activity) }.getOrDefault(false)
                 if (granted) {
                     appLog.info(TAG, "unlock granted")
@@ -177,6 +195,48 @@ class RootViewModel @Inject constructor(
                 unlocking = false
             }
         }
+    }
+
+    /**
+     * Re-checks whether the system can still verify identity, e.g. after the
+     * person returned from setting up a PIN in system settings.
+     */
+    fun refreshLockAvailability() {
+        if (_locked.value != true) return
+        viewModelScope.launch { updateLockAvailability() }
+    }
+
+    /**
+     * Last-resort escape shown only when the device has no lock screen and no
+     * enrolled biometric: there is nothing the system could verify against, so
+     * a lock nobody can pass would brick the archive. The lock screen asks for
+     * explicit confirmation first and this is logged as a warning.
+     */
+    fun disableAppLockWithoutCredential() {
+        viewModelScope.launch {
+            appLog.warn(TAG, "disabling app lock without a device credential to avoid a lockout")
+            runCatching { settingsRepository.setAppLockEnabled(false) }
+            withContext(Dispatchers.IO) {
+                runCatching { appLock.setEnabled(false) }
+            }
+            _noDeviceCredential.value = false
+            _unlockFailed.value = false
+            _locked.value = false
+            scheduleIndexRebuild()
+        }
+    }
+
+    private suspend fun isAuthenticationAvailable(): Boolean =
+        withContext(Dispatchers.IO) {
+            runCatching { appLock.isAuthenticationAvailable() }.getOrDefault(false)
+        }
+
+    private suspend fun updateLockAvailability() {
+        if (_locked.value != true) {
+            _noDeviceCredential.value = false
+            return
+        }
+        _noDeviceCredential.value = !isAuthenticationAvailable()
     }
 
     /**
@@ -203,6 +263,7 @@ class RootViewModel @Inject constructor(
             if (wasEnabled) {
                 appLog.info(TAG, "entered background, lock re-armed")
                 _locked.value = true
+                updateLockAvailability()
             }
         }
     }

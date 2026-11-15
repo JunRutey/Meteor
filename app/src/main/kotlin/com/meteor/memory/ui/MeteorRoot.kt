@@ -44,6 +44,7 @@ fun MeteorRoot(versionName: String) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val locked by viewModel.locked.collectAsStateWithLifecycle()
     val unlockFailed by viewModel.unlockFailed.collectAsStateWithLifecycle()
+    val noDeviceCredential by viewModel.noDeviceCredential.collectAsStateWithLifecycle()
     val onboardingGate by viewModel.onboardingGate.collectAsStateWithLifecycle()
 
     val darkTheme = when (settings.darkMode) {
@@ -61,7 +62,13 @@ fun MeteorRoot(versionName: String) {
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP) viewModel.onEnterBackground()
+            when (event) {
+                Lifecycle.Event.ON_STOP -> viewModel.onEnterBackground()
+                // Return from system settings: the credential the user just set
+                // up has to become usable without restarting the app.
+                Lifecycle.Event.ON_START -> viewModel.refreshLockAvailability()
+                else -> Unit
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -90,10 +97,14 @@ fun MeteorRoot(versionName: String) {
                     null -> StartupPlaceholder()
 
                     true -> {
-                        val activity = LocalContext.current as? FragmentActivity
+                        val context = LocalContext.current
+                        val activity = context as? FragmentActivity
                         LockScreen(
                             failed = unlockFailed,
                             onUnlock = { activity?.let(viewModel::unlock) },
+                            noDeviceCredential = noDeviceCredential,
+                            onOpenSecuritySettings = { openSecuritySettings(context) },
+                            onDisableLock = viewModel::disableAppLockWithoutCredential,
                         )
                     }
 

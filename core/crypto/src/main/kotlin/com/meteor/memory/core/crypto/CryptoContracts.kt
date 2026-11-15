@@ -26,6 +26,16 @@ interface AppLock {
     fun requireUnlocked(): Boolean
 
     /**
+     * True when the platform can actually show an identity check: a biometric
+     * is enrolled and/or the device has a lock-screen PIN/pattern/password.
+     *
+     * Added with a default body under archive R2 (additive only). Callers must
+     * not enable the lock when this is false — a lock nobody can pass would
+     * strand the archive behind the gate forever.
+     */
+    fun isAuthenticationAvailable(): Boolean = true
+
+    /**
      * Re-arms the lock for this process lifetime, discarding the "already
      * unlocked in this session" shortcut.
      *
