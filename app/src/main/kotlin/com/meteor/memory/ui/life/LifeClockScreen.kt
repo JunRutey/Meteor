@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -40,6 +41,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.meteor.memory.R
+import com.meteor.memory.ui.theme.LocalDynamicColorEnabled
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
@@ -83,26 +85,42 @@ fun LifeClockScreen(
         }
     }
 
-    val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+    val scheme = MaterialTheme.colorScheme
+    val dynamicColor = LocalDynamicColorEnabled.current
+    val dark = scheme.background.luminance() < 0.5f
+    // The fixed paper gradient belongs to the hand-tuned palette. Material You
+    // can pick any wallpaper hue, so under dynamic colour the page has to be
+    // painted from the scheme — otherwise the background stays blue while the
+    // rest of the screen changes.
+    val background = when {
+        !dynamicColor && dark -> Brush.verticalGradient(
+            listOf(scheme.background, scheme.background),
+        )
+
+        !dynamicColor -> Brush.verticalGradient(
+            0f to Color(0xFFEAF2FB),
+            0.55f to Color(0xFFF4F8FC),
+            1f to Color(0xFFE3ECF7),
+        )
+
+        dark -> Brush.verticalGradient(
+            listOf(
+                lerp(scheme.background, scheme.primaryContainer, 0.35f),
+                scheme.background,
+                lerp(scheme.background, scheme.secondaryContainer, 0.30f),
+            ),
+        )
+
+        else -> Brush.verticalGradient(
+            0f to lerp(scheme.background, scheme.primaryContainer, 0.55f),
+            0.55f to scheme.background,
+            1f to lerp(scheme.background, scheme.secondaryContainer, 0.45f),
+        )
+    }
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(
-                if (dark) {
-                    Brush.verticalGradient(
-                        listOf(
-                            MaterialTheme.colorScheme.background,
-                            MaterialTheme.colorScheme.background,
-                        ),
-                    )
-                } else {
-                    Brush.verticalGradient(
-                        0f to Color(0xFFEAF2FB),
-                        0.55f to Color(0xFFF4F8FC),
-                        1f to Color(0xFFE3ECF7),
-                    )
-                },
-            ),
+            .background(background),
     ) {
         when (state) {
             LifePageState.Loading -> CircularProgressIndicator(
@@ -357,7 +375,10 @@ private fun LifeClockContent(
                     .fillMaxWidth()
                     .padding(top = 16.dp)
                     .height(8.dp)
-                    .background(Color(0xFFE3ECF7), RoundedCornerShape(4.dp)),
+                    .background(
+                        MaterialTheme.colorScheme.surfaceContainerHighest,
+                        RoundedCornerShape(4.dp),
+                    ),
             ) {
                 Box(
                     modifier = Modifier

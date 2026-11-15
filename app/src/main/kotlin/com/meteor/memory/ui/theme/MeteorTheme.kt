@@ -32,6 +32,15 @@ import androidx.core.view.WindowCompat
 val LocalAnimationsEnabled = staticCompositionLocalOf { true }
 
 /**
+ * True when Material You wallpaper colours are actually driving the scheme.
+ *
+ * A screen that paints a decorative background must check this: the hand-tuned
+ * paper gradient only belongs to [MeteorLight], so under dynamic colour it has
+ * to be replaced by a scheme-derived one instead of staying blue.
+ */
+val LocalDynamicColorEnabled = staticCompositionLocalOf { false }
+
+/**
  * Colour roles follow the shipped design sheet (see `docs/design/`):
  * misty blue paper (#F4F8FC), ink (#1B2A38), slate blue accents
  * (#426989 / #2E4F6B), soft blue fills (#D6E8F7 / #E6EFF8 / #EAF1F8)
@@ -115,9 +124,10 @@ fun MeteorTheme(
     }
 
     val context = LocalContext.current
-    val colorScheme = remember(context, darkTheme, dynamicColor) {
+    val dynamicColorActive = dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val colorScheme = remember(context, darkTheme, dynamicColorActive) {
         when {
-            dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+            dynamicColorActive -> {
                 if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
             }
             darkTheme -> MeteorDark
@@ -127,6 +137,7 @@ fun MeteorTheme(
 
     CompositionLocalProvider(
         LocalAnimationsEnabled provides animationsEnabled,
+        LocalDynamicColorEnabled provides dynamicColorActive,
         LocalDensity provides scaledDensity,
     ) {
         // The app paints its own background behind the status/nav bars (edge-to-edge),
