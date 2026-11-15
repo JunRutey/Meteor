@@ -3,6 +3,7 @@ package com.meteor.memory.ui.search
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meteor.memory.core.log.AppLog
+import com.meteor.memory.core.storage.DiaryFiles
 import com.meteor.memory.core.storage.RecordType
 import com.meteor.memory.core.time.TimeModule
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -36,6 +37,18 @@ sealed interface SearchUiState {
     data class Results(val rows: List<SearchRow>) : SearchUiState
     data class Failed(val message: String) : SearchUiState
 }
+
+/**
+ * Day a hit belongs to.
+ *
+ * Diaries, moods and chat logs carry their day in the archive path
+ * (`…/2026/2026-11-15.md`); `timestamp` only says when the file was last
+ * written, so a back-filled diary would otherwise open today. Profile records
+ * have no date of their own and keep the timestamp.
+ */
+internal fun searchRowDate(hit: SearchMatch, zone: ZoneId = ZoneId.systemDefault()): LocalDate =
+    DiaryFiles.parseDate(hit.sourcePath.substringAfterLast('/'))
+        ?: hit.timestamp.atZone(zone).toLocalDate()
 
 @HiltViewModel
 class SearchViewModel @Inject constructor(
@@ -80,7 +93,7 @@ class SearchViewModel @Inject constructor(
                 val locale = Locale.getDefault()
                 SearchUiState.Results(
                     hits.map { hit ->
-                        val date = hit.timestamp.atZone(ZoneId.systemDefault()).toLocalDate()
+                        val date = searchRowDate(hit)
                         SearchRow(
                             recordId = hit.recordId,
                             type = hit.type,

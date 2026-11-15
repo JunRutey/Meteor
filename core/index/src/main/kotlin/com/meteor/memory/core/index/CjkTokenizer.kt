@@ -79,6 +79,17 @@ object CjkTokenizer {
         return tokens.joinToString(" OR ") { "\"" + it.replace("\"", "\"\"") + "\"" }
     }
 
+    /**
+     * True when [tokens] contains a lone CJK character.
+     *
+     * Chinese text is indexed as overlapping bigrams (ADR-015), so a
+     * one-character term never exists as a token of its own and an FTS
+     * `MATCH` for it can only miss (e.g. `心` would not find `心情`). Callers
+     * that can fall back to substring matching must do so for such queries.
+     */
+    fun needsSubstringFallback(tokens: List<String>): Boolean =
+        tokens.any { token -> token.length == 1 && isCjk(token[0]) }
+
     private fun isCjk(ch: Char): Boolean {
         val code = ch.code
         return code in 0x4E00..0x9FFF || code in 0x3400..0x4DBF

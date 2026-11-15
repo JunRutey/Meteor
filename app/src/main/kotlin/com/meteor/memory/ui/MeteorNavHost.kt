@@ -132,6 +132,9 @@ private const val ROUTE_IMAGE = "gallery/{token}"
 private const val ROUTE_AI = "ai?personId={personId}"
 private const val ROUTE_PERSONA = "ai/persona/{personId}"
 
+/** Read-only preview of the diary written for [date]. */
+private fun diaryViewRoute(date: LocalDate): String = "diary/view/$date"
+
 private val MAIN_FADE_ROUTES = setOf(
     ROUTE_SETTINGS,
     ROUTE_SEARCH,
@@ -295,6 +298,7 @@ fun MeteorNavHost(
             val month by viewModel.month.collectAsStateWithLifecycle()
             val moods by viewModel.moods.collectAsStateWithLifecycle()
             val selectedDate by viewModel.selectedDate.collectAsStateWithLifecycle()
+            val homeTab by viewModel.homeTab.collectAsStateWithLifecycle()
             val diaryDates by viewModel.diaryDates.collectAsStateWithLifecycle()
             val imageDates by viewModel.imageDates.collectAsStateWithLifecycle()
 
@@ -310,6 +314,8 @@ fun MeteorNavHost(
                 appName = stringResource(R.string.app_name),
                 onOpenSearch = { navController.navigate(ROUTE_SEARCH) },
                 onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
+                selectedTab = homeTab,
+                onSelectTab = viewModel::selectHomeTab,
                 lifeContent = {
                     LifeTab(
                         viewModel = lifeViewModel,
@@ -331,7 +337,7 @@ fun MeteorNavHost(
                         onSelectDate = viewModel::selectDate,
                         onPickMood = viewModel::setMood,
                         onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
-                        onOpenDiary = { date -> navController.navigate("diary/view/$date") },
+                        onOpenDiary = { date -> navController.navigate(diaryViewRoute(date)) },
                         onEditDiary = { date -> navController.navigate("$ROUTE_DIARY_EDIT/$date") },
                         onOpenImages = { date -> navController.navigate("gallery?date=$date") },
                         onPickImage = { date ->
@@ -639,11 +645,27 @@ fun MeteorNavHost(
             val state by viewModel.state.collectAsStateWithLifecycle()
             val query by viewModel.query.collectAsStateWithLifecycle()
 
+            // Search is opened from the home screen, which stays below it on
+            // the back stack. Reuse its view model so a mood hit can focus
+            // that day on the calendar after popping back.
+            val calendarEntry = remember(navController) {
+                runCatching { navController.getBackStackEntry(ROUTE_CALENDAR) }.getOrNull()
+            }
+            val calendarViewModel: CalendarViewModel? = if (calendarEntry != null) {
+                hiltViewModel<CalendarViewModel>(calendarEntry)
+            } else {
+                null
+            }
+
             SearchScreen(
                 state = state,
                 query = query,
                 onQueryChange = viewModel::onQueryChange,
-                onOpenDiary = { date -> navController.navigate("$ROUTE_DIARY_EDIT/$date") },
+                onOpenDiary = { date -> navController.navigate(diaryViewRoute(date)) },
+                onOpenMood = { date ->
+                    calendarViewModel?.showDate(date)
+                    navController.popBackStack(ROUTE_CALENDAR, inclusive = false)
+                },
                 onBack = { navController.popBackStack() },
             )
         }

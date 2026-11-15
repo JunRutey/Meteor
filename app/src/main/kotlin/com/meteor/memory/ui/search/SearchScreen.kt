@@ -55,6 +55,7 @@ fun SearchScreen(
     query: String,
     onQueryChange: (String) -> Unit,
     onOpenDiary: (java.time.LocalDate) -> Unit,
+    onOpenMood: (java.time.LocalDate) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -177,7 +178,11 @@ fun SearchScreen(
                             ResultCard(
                                 row = row,
                                 onClick = {
-                                    if (row.type == RecordType.DIARY) onOpenDiary(row.date)
+                                    when (row.type) {
+                                        RecordType.DIARY -> onOpenDiary(row.date)
+                                        RecordType.MOOD -> onOpenMood(row.date)
+                                        else -> Unit
+                                    }
                                 },
                             )
                         }
