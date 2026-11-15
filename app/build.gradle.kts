@@ -6,19 +6,6 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
-// Legacy (R3 retired): dropping :core-index or :core-notify still selects its
-// no-op app implementation and removes the dependency, but this is no longer a
-// requirement and no longer verified by CI. See AGENTS.md §3.
-val excludedModules: Set<String> =
-    (providers.gradleProperty("meteor.excludeModules").orNull ?: "")
-        .split(',')
-        .map { it.trim() }
-        .filter { it.isNotEmpty() }
-        .toSet()
-
-val indexEnabled: Boolean = "core-index" !in excludedModules
-val notificationsEnabled: Boolean = "core-notify" !in excludedModules
-
 android {
     namespace = "com.meteor.memory"
     compileSdk = libs.versions.compileSdk.get().toInt()
@@ -35,13 +22,6 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
-    }
-
-    sourceSets {
-        getByName("main") {
-            java.srcDir(if (indexEnabled) "src/indexEnabled/kotlin" else "src/indexDisabled/kotlin")
-            java.srcDir(if (notificationsEnabled) "src/notificationsEnabled/kotlin" else "src/notificationsDisabled/kotlin")
-        }
     }
 
     buildTypes {
@@ -95,13 +75,9 @@ dependencies {
     implementation(project(":core-storage"))
     implementation(project(":core-crypto"))
     implementation(project(":core-time"))
-    if (notificationsEnabled) {
-        implementation(project(":core-notify"))
-    }
+    implementation(project(":core-notify"))
     implementation(project(":core-log"))
-    if (indexEnabled) {
-        implementation(project(":core-index"))
-    }
+    implementation(project(":core-index"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.animation)

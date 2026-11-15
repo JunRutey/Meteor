@@ -14,8 +14,8 @@ internal fun personLink(personId: String): String = "$PERSON_LINK_PREFIX$personI
  *
  * Same reasoning as ADR-015 (no native tokenizer): CJK runs become overlapping
  * bigrams, latin/digit runs become lowercase words. It is intentionally *not*
- * `:core-index`'s `CjkTokenizer` — `:feature-ai` must keep building when
- * `:core-index` is excluded (archive R3).
+ * `:core-index`'s `CjkTokenizer` — `:feature-ai` takes no dependency on
+ * `:core-index`, so the local engine still works on its own.
  *
  * Note this is a lexical splitter, not a word segmenter: it hardcodes no
  * language data at all, so there is no dictionary to maintain or to leak.

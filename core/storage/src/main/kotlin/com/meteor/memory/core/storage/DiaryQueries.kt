@@ -9,8 +9,8 @@ import java.time.format.DateTimeFormatter
  * Read/list access for one record family.
  *
  * Deliberately NOT part of the frozen `StorageRouter` contract: routing alone
- * cannot enumerate, so browsing lives in this additive interface. Removing it
- * leaves `StorageRouter` and every stored file untouched (archive R2/R3).
+ * cannot enumerate, so browsing lives in this additive interface. It owns no
+ * state — every file it reads is routed by `StorageRouter`.
  */
 interface DiaryQueries {
     /** All diary dates present on disk, newest first. */
