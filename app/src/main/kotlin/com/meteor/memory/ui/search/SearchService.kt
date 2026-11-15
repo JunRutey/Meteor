@@ -10,6 +10,15 @@ data class SearchMatch(
     val type: RecordType,
     val timestamp: Instant,
     val snippet: String,
+    /**
+     * Archive-relative path of the record, e.g.
+     * `时光轴/心情/日记/2026/2026-11-15.md`.
+     *
+     * The timestamp is only the last save time, so a diary back-filled for an
+     * older day must be addressed by the date in this path. Empty for in-memory
+     * attachment hits, which have no archive record.
+     */
+    val sourcePath: String = "",
     val score: Double = 0.0,
 )
 

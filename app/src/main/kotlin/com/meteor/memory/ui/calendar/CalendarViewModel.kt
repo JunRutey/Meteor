@@ -1,6 +1,7 @@
 package com.meteor.memory.ui.calendar
 
 import android.content.Context
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meteor.memory.core.storage.ImageStore
@@ -9,7 +10,10 @@ import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.storage.Mood
 import com.meteor.memory.core.storage.MoodQueries
+import com.meteor.memory.core.storage.RecordType
+import com.meteor.memory.core.storage.StorageRouter
 import com.meteor.memory.feature.editor.ImageCompressor
+import com.meteor.memory.ui.search.SearchService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -26,10 +30,13 @@ import javax.inject.Inject
 
 @HiltViewModel
 class CalendarViewModel @Inject constructor(
+    private val savedStateHandle: SavedStateHandle,
     private val moodQueries: MoodQueries,
     private val diaryQueries: DiaryQueries,
     private val appLog: AppLog,
     private val imageStore: ImageStore,
+    private val searchService: SearchService,
+    private val storageRouter: StorageRouter,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -38,6 +45,10 @@ class CalendarViewModel @Inject constructor(
 
     private val _selectedDate = MutableStateFlow<LocalDate?>(LocalDate.now())
     val selectedDate: StateFlow<LocalDate?> = _selectedDate.asStateFlow()
+
+    /** Home tab: 0 = life, 1 = diary. Kept here so search can switch tabs. */
+    private val _homeTab = MutableStateFlow(savedStateHandle.get<Int>(KEY_HOME_TAB) ?: 0)
+    val homeTab: StateFlow<Int> = _homeTab.asStateFlow()
 
     private val _moods = MutableStateFlow<Map<LocalDate, Mood>>(emptyMap())
     val moods: StateFlow<Map<LocalDate, Mood>> = _moods.asStateFlow()
@@ -72,12 +83,44 @@ class CalendarViewModel @Inject constructor(
         _selectedDate.value = date
     }
 
+    fun selectHomeTab(tab: Int) {
+        if (_homeTab.value == tab) return
+        _homeTab.value = tab
+        savedStateHandle[KEY_HOME_TAB] = tab
+    }
+
+    /**
+     * Focuses [date] on the home calendar — used when a mood search result is
+     * opened. Switches to the diary tab and moves the month when the date is
+     * outside the month currently shown.
+     */
+    fun showDate(date: LocalDate) {
+        selectHomeTab(HOME_TAB_DIARY)
+        _selectedDate.value = date
+        val target = YearMonth.from(date)
+        if (_month.value != target) {
+            _month.value = target
+            load()
+        }
+    }
+
     fun setMood(date: LocalDate, mood: Mood) {
         viewModelScope.launch {
-            withContext(Dispatchers.IO) { moodQueries.save(date, mood) }
+            val stored = withContext(Dispatchers.IO) {
+                moodQueries.save(date, mood)
+                runCatching {
+                    storageRouter.read(storageRouter.route(null, RecordType.MOOD, date))
+                }.getOrNull()
+            }
             appLog.debug(TAG, "mood saved $date=${mood.code}")
             _selectedDate.value = date
             load()
+            // Mood rows are searchable by their label, so a new mood has to
+            // reach the index now instead of waiting for the next launch.
+            if (stored != null) {
+                runCatching { searchService.indexDocument(stored) }
+                    .onFailure { appLog.warn(TAG, "mood index update failed", it) }
+            }
         }
     }
 
@@ -142,5 +185,7 @@ class CalendarViewModel @Inject constructor(
 
     private companion object {
         const val TAG = "Calendar"
+        const val HOME_TAB_DIARY = 1
+        const val KEY_HOME_TAB = "homeTab"
     }
 }

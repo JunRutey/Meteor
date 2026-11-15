@@ -1,6 +1,7 @@
 package com.meteor.memory.core.index
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -76,5 +77,19 @@ class CjkTokenizerTest {
     fun `quotes inside tokens are neutralised`() {
         val expression = CjkTokenizer.matchExpression("say \"hi\"")
         assertEquals("\"say\" OR \"hi\"", expression)
+    }
+
+    @Test
+    fun `lone chinese character needs substring fallback`() {
+        // `心` has no bigram token of its own, so FTS alone cannot find `心情`.
+        assertTrue(CjkTokenizer.needsSubstringFallback(CjkTokenizer.tokenize("心")))
+        assertTrue(CjkTokenizer.needsSubstringFallback(CjkTokenizer.tokenize("心 天气")))
+    }
+
+    @Test
+    fun `multi character and latin queries stay on FTS`() {
+        assertFalse(CjkTokenizer.needsSubstringFallback(CjkTokenizer.tokenize("心情")))
+        assertFalse(CjkTokenizer.needsSubstringFallback(CjkTokenizer.tokenize("hello")))
+        assertFalse(CjkTokenizer.needsSubstringFallback(emptyList()))
     }
 }

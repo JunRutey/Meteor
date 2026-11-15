@@ -194,9 +194,20 @@ class MeteorIndex(
      * Narrows rows using whichever engine is available. `LIKE` has no notion of
      * tokens, so it matches the raw bigrams as substrings, which is exactly the
      * behaviour the tokenizer produces for Chinese anyway.
+     *
+     * A lone CJK character has to come down this path even when FTS exists:
+     * bigram indexing stores `心情` as one token, so an FTS `MATCH` for `心`
+     * finds nothing. Substring matching does what the user means.
      */
     private fun queryCandidates(terms: List<String>, plan: QueryPlan): List<Candidate> {
-        val backend = database.backend
+        val backend = if (
+            database.backend != SearchBackend.LIKE &&
+            CjkTokenizer.needsSubstringFallback(terms)
+        ) {
+            SearchBackend.LIKE
+        } else {
+            database.backend
+        }
         val arguments = mutableListOf<String>()
 
         val sql = StringBuilder("SELECT ")

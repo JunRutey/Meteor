@@ -7,7 +7,11 @@ import com.meteor.memory.core.index.MeteorIndex
 import com.meteor.memory.core.index.QueryPlan
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.Document
+import com.meteor.memory.core.storage.Mood
 import com.meteor.memory.core.storage.RecordScanner
+import com.meteor.memory.core.storage.RecordType
+import com.meteor.memory.feature.calendar.R as CalendarR
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
@@ -23,6 +27,7 @@ class IndexSearchService @Inject constructor(
     private val index: MeteorIndex,
     private val appLog: AppLog,
     private val attachmentTextIndex: AttachmentTextIndex,
+    @ApplicationContext private val context: Context,
 ) : SearchService {
 
     private val rebuildMutex = Mutex()
@@ -43,6 +48,7 @@ class IndexSearchService @Inject constructor(
                 type = hit.type,
                 timestamp = hit.timestamp,
                 snippet = hit.snippet,
+                sourcePath = hit.sourcePath,
                 score = hit.score,
             )
         }
@@ -67,7 +73,7 @@ class IndexSearchService @Inject constructor(
     }.getOrNull()
 
     override suspend fun indexDocument(document: Document) {
-        index.upsert(document)
+        index.upsert(searchableDocument(document) { mood -> context.getString(mood.labelRes()) })
     }
 
     override suspend fun removeRecord(sourcePath: String) {
@@ -136,6 +142,30 @@ class IndexSearchService @Inject constructor(
     }
 }
 
+/**
+ * Full-text view of one record.
+ *
+ * A mood is stored as a stable code (`happy`) instead of the word the user
+ * sees, so indexing the raw body would make `开心` unsearchable. [labelOf]
+ * resolves the code through resources; only the index copy is replaced, the
+ * archive record itself never changes. Other record types are indexed as-is.
+ */
+internal fun searchableDocument(document: Document, labelOf: (Mood) -> String): Document {
+    if (document.type != RecordType.MOOD) return document
+    val mood = Mood.fromCode(document.body.trim()) ?: return document
+    return document.copy(body = labelOf(mood))
+}
+
+private fun Mood.labelRes(): Int = when (this) {
+    Mood.HAPPY -> CalendarR.string.mood_happy
+    Mood.CALM -> CalendarR.string.mood_calm
+    Mood.EXCITED -> CalendarR.string.mood_excited
+    Mood.TIRED -> CalendarR.string.mood_tired
+    Mood.SAD -> CalendarR.string.mood_sad
+    Mood.ANGRY -> CalendarR.string.mood_angry
+    Mood.EMM -> CalendarR.string.mood_emm
+}
+
 /** Kept next to the implementation so the wiring disappears with the module. */
 @dagger.Module
 @dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)
@@ -149,7 +179,13 @@ object SearchModule {
     ): MeteorIndex = MeteorIndex(
         context = context,
         rootDir = File(context.filesDir, com.meteor.memory.core.storage.StorageLayout.ROOT_NAME),
-        scanner = scanner,
+        // A launch rebuild walks the scanner, so enrich there as well as in
+        // indexDocument() — both paths must feed the same searchable text.
+        scanner = RecordScanner {
+            scanner.scan().map { document ->
+                searchableDocument(document) { mood -> context.getString(mood.labelRes()) }
+            }
+        },
     )
 
     @dagger.Provides
@@ -158,7 +194,8 @@ object SearchModule {
         index: MeteorIndex,
         appLog: AppLog,
         attachmentTextIndex: AttachmentTextIndex,
-    ): SearchService = IndexSearchService(index, appLog, attachmentTextIndex)
+        @dagger.hilt.android.qualifiers.ApplicationContext context: Context,
+    ): SearchService = IndexSearchService(index, appLog, attachmentTextIndex, context)
 
     @dagger.Provides
     @Singleton

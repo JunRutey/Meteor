@@ -157,6 +157,10 @@ internal fun BirthDatePicker(
     val settledLunarDate = lunarConversion
         ?.takeIf { it.selection == lunarSelection }
         ?.gregorianDate
+    // Same reason as above: the Gregorian date under the wheels must keep
+    // showing the last completed conversion instead of blinking out while the
+    // next one runs. It is replaced as soon as the new result lands.
+    val shownLunarDate = settledLunarDate ?: lunarConversion?.gregorianDate
 
     val selectedLunarMonth = lunarMonths.firstOrNull {
         it.month == lunarMonth && it.leapMonth == leapMonth
@@ -394,7 +398,7 @@ internal fun BirthDatePicker(
         if (pickerExpanded) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 if (useLunar) {
-                    settledLunarDate?.let { date ->
+                    shownLunarDate?.let { date ->
                         Text(
                             text = stringResource(
                                 R.string.birth_date_value,

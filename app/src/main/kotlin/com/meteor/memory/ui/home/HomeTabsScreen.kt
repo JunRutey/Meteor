@@ -18,11 +18,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Path
@@ -44,11 +40,12 @@ fun HomeTabsScreen(
     appName: String,
     onOpenSearch: () -> Unit,
     onOpenSettings: () -> Unit,
+    selectedTab: Int,
+    onSelectTab: (Int) -> Unit,
     lifeContent: @Composable () -> Unit,
     diaryContent: @Composable () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var selectedTab by rememberSaveable { mutableStateOf(0) }
     val tabStateHolder = rememberSaveableStateHolder()
     Column(modifier.fillMaxSize()) {
         HomeHeader(
@@ -63,7 +60,7 @@ fun HomeTabsScreen(
         }
         HomeTabBar(
             selectedTab = selectedTab,
-            onSelect = { selectedTab = it },
+            onSelect = onSelectTab,
         )
     }
 }
