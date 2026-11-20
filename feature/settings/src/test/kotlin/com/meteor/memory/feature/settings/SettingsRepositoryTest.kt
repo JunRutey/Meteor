@@ -46,6 +46,49 @@ class SettingsRepositoryTest {
     }
 
     @Test
+    fun defaultPeopleTagsAreSeededOnlyOnce() = runBlocking {
+        val store = FakePreferencesDataStore(mutablePreferencesOf())
+        val repository = SettingsRepository(store)
+
+        repository.seedPeopleTags(listOf("family", "friend", "former"))
+        // The edit page may be the next screen opened; the marker must make the
+        // second call a no-op instead of adding or resurrecting anything.
+        repository.seedPeopleTags(listOf("family", "friend", "former", "other"))
+
+        assertEquals(
+            setOf("family", "friend", "former"),
+            repository.settings.first().peopleTags,
+        )
+    }
+
+    @Test
+    fun deletedDefaultPeopleTagIsNotSeededAgain() = runBlocking {
+        val store = FakePreferencesDataStore(mutablePreferencesOf())
+        val repository = SettingsRepository(store)
+        val defaults = listOf("family", "friend", "former")
+
+        repository.seedPeopleTags(defaults)
+        repository.removePeopleTag("friend")
+        repository.seedPeopleTags(defaults)
+
+        assertEquals(setOf("family", "former"), repository.settings.first().peopleTags)
+    }
+
+    @Test
+    fun seedingPeopleTagsKeepsTagsRememberedBeforeTheUpgrade() = runBlocking {
+        val store = FakePreferencesDataStore(mutablePreferencesOf())
+        val repository = SettingsRepository(store)
+
+        repository.addPeopleTag("colleague")
+        repository.seedPeopleTags(listOf(" family ", "", "friend", "former"))
+
+        assertEquals(
+            setOf("colleague", "family", "friend", "former"),
+            repository.settings.first().peopleTags,
+        )
+    }
+
+    @Test
     fun peopleTagsPersistAndRemoveIdempotently() = runBlocking {
         val store = FakePreferencesDataStore(mutablePreferencesOf())
         val repository = SettingsRepository(store)

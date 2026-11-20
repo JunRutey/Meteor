@@ -175,6 +175,29 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     }
 
     /**
+     * ADR-045: seeds the built-in people labels once, so the tag row is not empty
+     * on first open.
+     *
+     * The labels live in `:feature-people` resources; the caller resolves them
+     * and passes them in, which keeps this module free of localized text and of
+     * a dependency on another feature module. The marker is written in the same
+     * edit as the tags, so a crash between the two cannot re-seed a deleted tag.
+     * Deleting one of the seeded tags later is a plain [removePeopleTag]; the
+     * marker stays set and a second call does nothing.
+     */
+    suspend fun seedPeopleTags(defaultTags: List<String>) = store.edit { prefs ->
+        if (prefs[KEY_PEOPLE_TAGS_SEEDED] == true) return@edit
+        val seeded = (prefs[KEY_PEOPLE_TAGS].orEmpty() + defaultTags)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+            .take(MAX_PEOPLE_TAGS)
+            .toSet()
+        prefs[KEY_PEOPLE_TAGS] = seeded
+        prefs[KEY_PEOPLE_TAGS_SEEDED] = true
+    }
+
+    /**
      * DeepSeek-only release: legacy OpenAI/custom preferences are reset to the
      * DeepSeek preset so an upgrade cannot send requests with an incompatible
      * base URL or model id.
@@ -282,6 +305,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val KEY_AI_WRITE_DIARY = booleanPreferencesKey("ai_write_diary")
         val KEY_AI_WRITE_PEOPLE = booleanPreferencesKey("ai_write_people")
         val KEY_PEOPLE_TAGS = stringSetPreferencesKey("people_tags")
+        /** ADR-045: one-shot marker so deleted default tags are never re-seeded. */
+        val KEY_PEOPLE_TAGS_SEEDED = booleanPreferencesKey("people_tags_seeded")
         val KEY_AI_TTS_VOICE = stringPreferencesKey("ai_tts_voice")
         val KEY_AI_TOTAL_PROMPT_TOKENS = longPreferencesKey("ai_total_prompt_tokens")
         val KEY_AI_TOTAL_COMPLETION_TOKENS = longPreferencesKey("ai_total_completion_tokens")

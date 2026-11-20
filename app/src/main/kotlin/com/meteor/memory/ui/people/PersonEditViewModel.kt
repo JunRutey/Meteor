@@ -1,5 +1,6 @@
 package com.meteor.memory.ui.people
 
+import android.content.Context
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -19,6 +20,7 @@ import com.meteor.memory.feature.people.PeopleTagLibrary
 import com.meteor.memory.feature.settings.SettingsRepository
 import com.meteor.memory.ui.common.decodeImages
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -67,6 +69,7 @@ class PersonEditViewModel @Inject constructor(
     private val imageStore: ImageStore,
     private val storageRouter: StorageRouter,
     private val settingsRepository: SettingsRepository,
+    @ApplicationContext private val context: Context,
     private val appLog: AppLog,
 ) : ViewModel() {
 
@@ -89,6 +92,10 @@ class PersonEditViewModel @Inject constructor(
                 runCatching { personQueries.read(personId) }.getOrNull()
             }
             val customTags = withContext(Dispatchers.IO) {
+                // ADR-045: the edit page can be the first people screen opened,
+                // so it seeds the built-in labels too. Idempotent once for all.
+                runCatching { settingsRepository.seedPeopleTags(defaultPeopleTags(context)) }
+                    .onFailure { appLog.warn(TAG, "people tag seed failed", it) }
                 val stored = runCatching { settingsRepository.settings.first().peopleTags }
                     .getOrDefault(emptySet<String>())
                 // Remembered labels plus this profile's own labels. Other

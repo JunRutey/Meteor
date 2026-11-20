@@ -56,21 +56,14 @@ fun relationLabel(relation: Relation?): String = stringResource(
 /**
  * Every label to render for one person.
  *
- * Built-in relations now behave like custom tags: they live in the same tag
- * list and are multi-selectable. A profile may still carry only the legacy
- * `relation` field, so fold that label back in unless the tag list already has
- * it. An empty result means "未分类".
+ * Built-in relations are ordinary tags now (ADR-045), so the tag list is the
+ * source of truth. A profile may still carry only the legacy `relation` field,
+ * so fold that label back in unless the tag list already has it. An empty
+ * result means 未分类.
  */
 @Composable
-internal fun personTagLabels(relation: Relation?, tags: List<String>): List<String> {
-    val legacyLabel = relation?.let { relationLabel(it) }
-    val merged = if (legacyLabel != null && legacyLabel !in tags) {
-        listOf(legacyLabel) + tags
-    } else {
-        tags
-    }
-    return merged.filter { it.isNotBlank() }.distinct()
-}
+internal fun personTagLabels(relation: Relation?, tags: List<String>): List<String> =
+    PeopleTagLibrary.selectedTags(tags, relation?.let { relationLabel(it) })
 
 @Composable
 fun PeopleListScreen(
@@ -198,10 +191,11 @@ private fun CreatePersonDialog(
     onDismiss: () -> Unit,
     onConfirm: (String, Relation?, List<String>) -> Unit,
 ) {
-    val defaultRelationLabel = relationLabel(Relation.FRIEND)
     var name by remember { mutableStateOf("") }
-    var relation by remember { mutableStateOf<Relation?>(Relation.FRIEND) }
-    var tags by remember { mutableStateOf(listOf(defaultRelationLabel)) }
+    // ADR-045: a new person starts 未分类. The old 朋友 preselection was saved as
+    // a real relation and could not be removed before creating the profile.
+    var relation by remember { mutableStateOf(PeopleTagLibrary.NEW_PERSON_RELATION) }
+    var tags by remember { mutableStateOf(PeopleTagLibrary.NEW_PERSON_TAGS) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
