@@ -6,7 +6,7 @@
 密钥由设备 Keystore 保管，不可导出、不上传、无云端同步。AI 是可选能力，默认关闭，
 仅接入官方 DeepSeek。
 
-> 当前版本 **v1.3.1**。功能与隐私的细节见 [AI 功能与隐私](docs/AI.md) 与
+> 当前版本 **v1.3.2**。功能与隐私的细节见 [AI 功能与隐私](docs/AI.md) 与
 > [加密与安全](docs/SECURITY.md)，设计取舍见 [ADR](docs/adr)，
 > 历次发布见 [发布说明](docs/releases)。
 
@@ -17,18 +17,21 @@
   [ADR-021](docs/adr/ADR-021-editor-is-plain-text.md)
 - **图片与相册**：图片按天分组浏览，单张查看器居中显示，支持分享与删除。详见
   [ADR-037](docs/adr/ADR-037-image-viewer-share-delete.md)
-- **冷启动**：先居中显示应用图标，再进入锁屏、引导或首页。详见
-  [ADR-038](docs/adr/ADR-038-cold-start-splash.md)
+- **冷启动**：专用高分辨率图标居中显示，农历生日在 Splash 阶段预热，再进入锁屏、
+  引导或首页。详见 [ADR-038](docs/adr/ADR-038-cold-start-splash.md)、
+  [ADR-044](docs/adr/ADR-044-startup-life-prewarm.md)
 - **全文搜索**：CJK 分词，支持单字与心情标签检索，FTS5 → FTS4 → LIKE 运行时降级。
   详见 [ADR-015](docs/adr/ADR-015-cjk-bigram-tokenizer.md)、
   [ADR-016](docs/adr/ADR-016-fts-runtime-backend-fallback.md)
 - **心情日历**：心情按天记录，一天最多三个，可点选与取消，日历着色。详见
   [ADR-017](docs/adr/ADR-017-mood-as-record-and-hand-rolled-calendar.md)、
   [ADR-035](docs/adr/ADR-035-multi-mood-per-day.md)
-- **人物档案**：加密 `profile.md`，支持自定义标签的添加、选择与删除，以及编辑与删除人物。详见
+- **人物档案**：加密 `profile.md`，家人/朋友/绝交的朋友与自定义标签统一为可删除标签，
+  支持添加、选择与删除标签，以及编辑与删除人物。详见
   [ADR-014](docs/adr/ADR-014-person-directory-uses-person-id.md)、
   [ADR-034](docs/adr/ADR-034-person-deletion-custom-tags-and-detail-redesign.md)、
-  [ADR-036](docs/adr/ADR-036-custom-tag-deletion.md)
+  [ADR-036](docs/adr/ADR-036-custom-tag-deletion.md)、
+  [ADR-045](docs/adr/ADR-045-unified-person-tags.md)
 - **生辰与提醒**：实时年龄、公历/农历生日倒计时；每日 8:00–9:00 随机写日记提醒，
   由通知总开关统一控制下载通知与提醒。详见
   [ADR-033](docs/adr/ADR-033-daily-reminder-and-notification-channels.md)、
@@ -97,7 +100,7 @@
 | v1.0 | AI 对话重做、朗读与累计用量、人物删除与自定义标签、DeepSeek 收敛 | ✅ 已发布 |
 | v1.1 | 诊断日志覆盖、系统文件选择器导出、出生日期滚轮打磨 | ✅ 已发布 |
 | v1.2 | 自定义标签删除、图片查看器分享与删除、冷启动图标过渡 | ✅ 已发布 |
-| v1.3 | 通知总开关与每日随机提醒、备份覆盖出生日期与设置、AI 工具无固定上限、关于/打赏页重做 | ✅ 已发布（1.3.0–1.3.1） |
+| v1.3 | 通知总开关与每日随机提醒、备份覆盖出生日期与设置、AI 工具无固定上限、关于/打赏页重做、Splash 与农历预热、人物标签统一、正文输入布局 | ✅ 已发布（1.3.0–1.3.2） |
 
 ## 加密与隐私
 
