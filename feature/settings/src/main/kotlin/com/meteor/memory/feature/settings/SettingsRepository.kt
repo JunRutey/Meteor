@@ -153,6 +153,18 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     }
 
     /**
+     * Forgets one custom people tag in a single DataStore edit; idempotent.
+     *
+     * Only the remembered chip list changes. Profiles that already store the
+     * same label keep it, so deleting a tag can never edit someone else's file.
+     */
+    suspend fun removePeopleTag(tag: String) = store.edit { prefs ->
+        val current = prefs[KEY_PEOPLE_TAGS].orEmpty()
+        if (tag !in current) return@edit
+        prefs[KEY_PEOPLE_TAGS] = current - tag
+    }
+
+    /**
      * DeepSeek-only release: legacy OpenAI/custom preferences are reset to the
      * DeepSeek preset so an upgrade cannot send requests with an incompatible
      * base URL or model id.

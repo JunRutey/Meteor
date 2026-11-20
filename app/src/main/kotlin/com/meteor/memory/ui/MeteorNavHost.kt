@@ -1,6 +1,7 @@
 package com.meteor.memory.ui
 
 import android.Manifest
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -55,6 +56,7 @@ import com.meteor.memory.feature.ai.aiProviderLabel
 import com.meteor.memory.feature.calendar.CalendarScreen
 import com.meteor.memory.feature.gallery.GalleryScreen
 import com.meteor.memory.feature.gallery.ImageViewerScreen
+import com.meteor.memory.feature.gallery.R as GalleryR
 import com.meteor.memory.feature.people.PeopleListScreen
 import com.meteor.memory.feature.people.PeopleRow
 import com.meteor.memory.feature.people.PersonDetailScreen
@@ -386,6 +388,7 @@ fun MeteorNavHost(
                 availableTags = availableTags,
                 onCreate = viewModel::create,
                 onAddTag = viewModel::addTag,
+                onDeleteTag = viewModel::removeTag,
                 onOpen = { personId -> navController.navigate("people/$personId") },
                 onBack = { navController.popBackStack() },
             )
@@ -483,6 +486,7 @@ fun MeteorNavHost(
                 onRelationChanged = viewModel::onRelationChanged,
                 onTagsChanged = viewModel::onTagsChanged,
                 onAddTag = viewModel::addTag,
+                onDeleteTag = viewModel::removeTag,
                 onNoteChanged = viewModel::onNoteChanged,
                 onNotesChanged = viewModel::onNotesChanged,
                 onInsertLink = viewModel::insertLink,
@@ -528,15 +532,48 @@ fun MeteorNavHost(
             arguments = listOf(navArgument(ImageViewerViewModel.ARG_TOKEN) { type = NavType.StringType }),
         ) {
             val viewModel: ImageViewerViewModel = hiltViewModel()
-            val bitmap by viewModel.bitmap.collectAsStateWithLifecycle()
-            val loading by viewModel.loading.collectAsStateWithLifecycle()
+            val state by viewModel.state.collectAsStateWithLifecycle()
+            val context = LocalContext.current
+
+            LaunchedEffect(state.deleted) {
+                if (state.deleted) navController.popBackStack()
+            }
+
+            LaunchedEffect(state.shareRequest) {
+                val request = state.shareRequest ?: return@LaunchedEffect
+                val send = Intent(Intent.ACTION_SEND).apply {
+                    type = request.mimeType
+                    putExtra(Intent.EXTRA_STREAM, request.uri)
+                    clipData = ClipData.newUri(
+                        context.contentResolver,
+                        context.getString(GalleryR.string.gallery_share_clip_label),
+                        request.uri,
+                    )
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                val launched = runCatching {
+                    context.startActivity(
+                        Intent.createChooser(
+                            send,
+                            context.getString(GalleryR.string.gallery_share_chooser),
+                        ),
+                    )
+                }.isSuccess
+                if (launched) viewModel.onShareLaunched() else viewModel.onShareLaunchedFailed()
+            }
 
             ImageViewerScreen(
-                bitmap = bitmap,
-                caption = stringResource(R.string.home_open_gallery),
+                bitmap = state.bitmap,
+                caption = stringResource(GalleryR.string.gallery_title),
+                dateLabel = state.dateLabel,
                 onBack = { navController.popBackStack() },
-                loading = loading,
+                onShare = viewModel::share,
+                onDelete = viewModel::delete,
+                loading = state.loading,
                 animationsEnabled = animationsEnabled,
+                deleting = state.deleting,
+                sharing = state.sharing,
+                error = state.error,
             )
         }
 

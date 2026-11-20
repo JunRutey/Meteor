@@ -15,4 +15,16 @@
         <item name="android:windowLightNavigationBar">true</item>
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
+
+    <!--
+        Cold-start splash (ADR-038). The system shows the Meteor icon on a plain
+        paper-coloured window while the root state (lock preference + onboarding
+        gate) is still resolving; `MainActivity` releases it once the shell knows
+        what it is allowed to render. The post theme is the normal app theme.
+    -->
+    <style name="Theme.Meteor.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/Theme.Meteor</item>
+    </style>
 </resources>

@@ -7,10 +7,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -44,6 +46,10 @@ import com.meteor.memory.core.storage.Relation
  * and the filesystem schema depend on their stable codes. One relation can be
  * selected at a time (tap it again to clear), while custom tags are remembered
  * in settings and can be toggled independently — selecting several is allowed.
+ *
+ * Built-in relation chips deliberately have no delete affordance: they are
+ * part of the file format. Custom chips carry a small × that removes the label
+ * from the remembered library (and from this selection) after confirmation.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -53,9 +59,11 @@ internal fun PersonTagEditor(
     availableTags: List<String>,
     onSelectionChanged: (List<String>, Relation?) -> Unit,
     onAddTag: (String) -> Unit,
+    onDeleteTag: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
+    var pendingDelete by remember { mutableStateOf<String?>(null) }
 
     val noneLabel = relationLabel(null)
     val relationChoices = Relation.entries.map { it to relationLabel(it) }
@@ -115,11 +123,11 @@ internal fun PersonTagEditor(
             }
             visibleCustomTags.forEach { tag ->
                 val selected = tag in selectedTags
-                TagChip(
+                CustomTagChip(
                     label = tag,
                     selected = selected,
-                    role = Role.Checkbox,
                     onClick = { toggleTag(tag, selected) },
+                    onDelete = { pendingDelete = tag },
                 )
             }
             AddTagChip(onClick = { showAddDialog = true })
@@ -148,6 +156,30 @@ internal fun PersonTagEditor(
                     }
                 }
                 showAddDialog = false
+            },
+        )
+    }
+
+    pendingDelete?.let { tag ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text(stringResource(R.string.people_tag_delete_title)) },
+            text = { Text(stringResource(R.string.people_tag_delete_body, tag)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        if (tag in selectedTags) applySelection(selectedTags - tag)
+                        onDeleteTag(tag)
+                        pendingDelete = null
+                    },
+                ) {
+                    Text(stringResource(R.string.people_tag_delete_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) {
+                    Text(stringResource(R.string.people_cancel))
+                }
             },
         )
     }
@@ -194,6 +226,67 @@ private fun TagChip(
             },
             maxLines = 1,
         )
+    }
+}
+
+@Composable
+private fun CustomTagChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val deleteDescription = stringResource(R.string.people_tag_delete_description, label)
+    val contentColor = if (selected) {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        border = BorderStroke(
+            1.dp,
+            if (selected) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+            } else {
+                MaterialTheme.colorScheme.outlineVariant
+            },
+        ),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = label,
+                modifier = Modifier
+                    .selectable(
+                        selected = selected,
+                        role = Role.Checkbox,
+                        onClick = onClick,
+                    )
+                    .padding(start = 12.dp, top = 7.dp, bottom = 7.dp, end = 2.dp),
+                style = MaterialTheme.typography.labelLarge,
+                color = contentColor,
+                maxLines = 1,
+            )
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .clickable(role = Role.Button, onClick = onDelete)
+                    .semantics { contentDescription = deleteDescription },
+                contentAlignment = Alignment.Center,
+            ) {
+                PersonIcon(
+                    kind = PersonIconKind.Close,
+                    iconSize = 10.dp,
+                    tint = contentColor.copy(alpha = 0.72f),
+                )
+            }
+        }
     }
 }
 

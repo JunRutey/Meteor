@@ -6,6 +6,7 @@ import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.PersonProfileCodec
 import com.meteor.memory.core.storage.PersonQueries
 import com.meteor.memory.core.storage.Relation
+import com.meteor.memory.feature.people.PeopleTagLibrary
 import com.meteor.memory.feature.settings.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -45,11 +46,12 @@ class PeopleViewModel @Inject constructor(
                 runCatching { settingsRepository.settings.first().peopleTags }
                     .getOrDefault(emptySet<String>())
             }
+            // Only the remembered library feeds the create dialog. Labels that
+            // exist on some other profile must not crawl back in after a delete.
+            // Union with the in-memory list so a just-added tag survives a
+            // refresh that races the DataStore write.
             _customTags.update { current ->
-                (current + stored + entries.flatMap { it.tags })
-                    .filter { it.isNotBlank() }
-                    .distinct()
-                    .sorted()
+                PeopleTagLibrary.available(current, stored)
             }
         }
     }
@@ -73,6 +75,20 @@ class PeopleViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching { settingsRepository.addPeopleTag(tag) }
                 .onFailure { appLog.warn(TAG, "people tag persist failed", it) }
+        }
+    }
+
+    /**
+     * Forgets a tag in the library. Profiles that already store it are left
+     * untouched; the create dialog drops it from its own selection locally.
+     */
+    fun removeTag(raw: String) {
+        val tag = PersonProfileCodec.normalizeTags(listOf(raw)).firstOrNull() ?: return
+        _customTags.update { current -> current - tag }
+
+        viewModelScope.launch {
+            runCatching { settingsRepository.removePeopleTag(tag) }
+                .onFailure { appLog.warn(TAG, "people tag delete failed", it) }
         }
     }
 

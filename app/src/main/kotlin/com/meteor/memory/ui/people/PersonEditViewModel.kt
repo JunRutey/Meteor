@@ -15,6 +15,7 @@ import com.meteor.memory.core.storage.Relation
 import com.meteor.memory.core.storage.StorageRouter
 import com.meteor.memory.feature.editor.EditorModule
 import com.meteor.memory.feature.editor.MarkdownEditing
+import com.meteor.memory.feature.people.PeopleTagLibrary
 import com.meteor.memory.feature.settings.SettingsRepository
 import com.meteor.memory.ui.common.decodeImages
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -90,12 +91,9 @@ class PersonEditViewModel @Inject constructor(
             val customTags = withContext(Dispatchers.IO) {
                 val stored = runCatching { settingsRepository.settings.first().peopleTags }
                     .getOrDefault(emptySet<String>())
-                val fromPeople = runCatching { personQueries.list().flatMap { it.tags } }
-                    .getOrDefault(emptyList<String>())
-                (stored + fromPeople + profile?.tags.orEmpty())
-                    .filter { it.isNotBlank() }
-                    .distinct()
-                    .sorted()
+                // Remembered labels plus this profile's own labels. Other
+                // people's tags stay out so a deleted chip cannot bounce back.
+                PeopleTagLibrary.available(stored, profile?.tags.orEmpty())
             }
             _state.update {
                 it.copy(
@@ -135,6 +133,26 @@ class PersonEditViewModel @Inject constructor(
         viewModelScope.launch {
             runCatching { settingsRepository.addPeopleTag(tag) }
                 .onFailure { appLog.warn(TAG, "people tag persist failed", it) }
+        }
+    }
+
+    /**
+     * Deletes a tag from the remembered library and, when this person is using
+     * it, from the current selection as well. Other profiles keep their saved
+     * labels; the profile file only changes when the user saves.
+     */
+    fun removeTag(raw: String) {
+        val tag = PersonProfileCodec.normalizeTags(listOf(raw)).firstOrNull() ?: return
+        _state.update { state ->
+            state.copy(
+                customTags = state.customTags - tag,
+                tags = state.tags - tag,
+                saved = false,
+            )
+        }
+        viewModelScope.launch {
+            runCatching { settingsRepository.removePeopleTag(tag) }
+                .onFailure { appLog.warn(TAG, "people tag delete failed", it) }
         }
     }
 

@@ -4,6 +4,7 @@ import android.content.ComponentCallbacks2
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.compose.setContent
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
@@ -11,6 +12,7 @@ import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.feature.settings.SettingsRepository
 import com.meteor.memory.ui.MeteorRoot
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -30,7 +32,19 @@ class MainActivity : FragmentActivity() {
     @Inject
     lateinit var settingsRepository: SettingsRepository
 
+    /**
+     * Set once [MeteorRoot] has resolved the lock preference and the onboarding
+     * gate. Until then the system splash keeps the Meteor icon on screen, so no
+     * placeholder or half-resolved gate is ever shown. This is **not** an unlock.
+     */
+    @Volatile
+    private var contentReady: Boolean = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Must run before super.onCreate so the platform splash is adopted
+        // instead of the plain window background (ADR-038).
+        installSplashScreen().setKeepOnScreenCondition { !contentReady }
+
         super.onCreate(savedInstanceState)
 
         // Edge-to-edge in one place (ADR-024): the app draws behind the bars and
@@ -61,7 +75,18 @@ class MainActivity : FragmentActivity() {
         }
 
         setContent {
-            MeteorRoot(versionName = BuildConfig.VERSION_NAME)
+            MeteorRoot(
+                versionName = BuildConfig.VERSION_NAME,
+                onContentReady = { contentReady = true },
+            )
+        }
+
+        // Safety valve: if the root state never resolves, hand over to the shell
+        // anyway instead of leaving the splash up forever. The lock gate still
+        // decides what may be rendered; releasing the splash unlocks nothing.
+        lifecycleScope.launch {
+            delay(SPLASH_MAX_WAIT_MS)
+            contentReady = true
         }
     }
 
@@ -102,5 +127,6 @@ class MainActivity : FragmentActivity() {
     private companion object {
         const val TAG = "ScreenPrivacy"
         const val LIFECYCLE_TAG = "Lifecycle"
+        const val SPLASH_MAX_WAIT_MS = 5_000L
     }
 }

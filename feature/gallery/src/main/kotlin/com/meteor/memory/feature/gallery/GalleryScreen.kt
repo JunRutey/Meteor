@@ -14,6 +14,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -49,7 +51,11 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
 /** One decrypted thumbnail. Decoding happens outside this module. */
 data class GalleryItem(
@@ -89,58 +95,22 @@ fun GalleryScreen(
         modifier = modifier.fillMaxSize().padding(top = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column {
-                Text(
-                    text = title ?: stringResource(R.string.gallery_title),
-                    style = MaterialTheme.typography.titleLarge,
-                )
-                if (selection.isEmpty() && days.isNotEmpty()) {
-                    Text(
-                        text = stringResource(R.string.gallery_hint),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            TextButton(onClick = onBack) { Text(stringResource(R.string.gallery_back)) }
-        }
+        GalleryHeader(
+            title = title ?: stringResource(R.string.gallery_title),
+            showHint = selection.isEmpty() && days.isNotEmpty(),
+            onBack = onBack,
+        )
 
         when {
-            loading -> Text(
-                text = stringResource(R.string.gallery_loading),
-                style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .background(
-                        MaterialTheme.colorScheme.surface,
-                        RoundedCornerShape(18.dp),
-                    )
-                    .padding(16.dp),
-            )
+            loading -> PlaceholderCard(text = stringResource(R.string.gallery_loading))
 
-            days.isEmpty() -> Text(
-                text = stringResource(R.string.gallery_empty),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .background(
-                        MaterialTheme.colorScheme.surface,
-                        RoundedCornerShape(18.dp),
-                    )
-                    .padding(16.dp),
-            )
+            days.isEmpty() -> PlaceholderCard(text = stringResource(R.string.gallery_empty))
 
             else -> LazyVerticalGrid(
                 columns = GridCells.Fixed(COLUMNS),
-                modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.weight(1f).padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(TILE_GAP),
+                horizontalArrangement = Arrangement.spacedBy(TILE_GAP),
             ) {
                 days.forEachIndexed { index, day ->
                     item(
@@ -225,6 +195,63 @@ fun GalleryScreen(
 }
 
 @Composable
+private fun GalleryHeader(title: String, showHint: Boolean, onBack: () -> Unit) {
+    val backLabel = stringResource(R.string.gallery_back)
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 56.dp)
+            .padding(start = 4.dp, end = 16.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clickable(onClick = onBack)
+                .semantics { contentDescription = backLabel },
+            contentAlignment = Alignment.Center,
+        ) {
+            GalleryIcon(GalleryIconKind.Back, iconSize = 22.dp)
+        }
+        Column(
+            modifier = Modifier.weight(1f).padding(horizontal = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = title,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            if (showHint) {
+                Text(
+                    text = stringResource(R.string.gallery_hint),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaceholderCard(text: String) {
+    Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(20.dp),
+        )
+    }
+}
+
+@Composable
 private fun DayHeader(label: String) {
     Surface(
         color = MaterialTheme.colorScheme.primaryContainer,
@@ -251,7 +278,7 @@ private fun GalleryTile(
     Box(
         modifier = Modifier
             .aspectRatio(1f)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(12.dp))
             // pointerInput instead of combinedClickable: no experimental opt-in.
             .pointerInput(item.token, selecting) {
                 detectTapGestures(
@@ -291,10 +318,10 @@ private fun GalleryTile(
                     .background(MaterialTheme.colorScheme.primary),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(
-                    text = "✓",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onPrimary,
+                GalleryIcon(
+                    kind = GalleryIconKind.Check,
+                    iconSize = 12.dp,
+                    tint = MaterialTheme.colorScheme.onPrimary,
                 )
             }
         }
@@ -335,4 +362,5 @@ private fun Set<String>.toggle(token: String): Set<String> =
     if (token in this) this - token else this + token
 
 private const val COLUMNS = 3
+private val TILE_GAP = 8.dp
 private val SELECTED_SCRIM = Color(0x66000000)
