@@ -1,11 +1,5 @@
 package com.meteor.memory.feature.gallery
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -104,29 +98,15 @@ fun ImageViewerScreen(
                 bitmap == null -> MissingImageCard()
 
                 else -> {
-                    AnimatedVisibility(
-                        visible = true,
+                    // Keep the bare Image here: AnimatedVisibility's ColumnScope
+                    // overload cannot be resolved inside this Box, and a static
+                    // centered image is what the viewer actually needs.
+                    Image(
+                        bitmap = bitmap,
+                        contentDescription = caption,
                         modifier = Modifier.fillMaxSize(),
-                        enter = if (animationsEnabled) {
-                            fadeIn(tween(durationMillis = 220, easing = FastOutSlowInEasing)) +
-                                scaleIn(
-                                    initialScale = 0.985f,
-                                    animationSpec = tween(
-                                        durationMillis = 260,
-                                        easing = FastOutSlowInEasing,
-                                    ),
-                                )
-                        } else {
-                            EnterTransition.None
-                        },
-                    ) {
-                        Image(
-                            bitmap = bitmap,
-                            contentDescription = caption,
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Fit,
-                        )
-                    }
+                        contentScale = ContentScale.Fit,
+                    )
                 }
             }
         }
