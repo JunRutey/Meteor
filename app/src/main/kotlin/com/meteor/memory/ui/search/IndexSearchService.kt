@@ -145,15 +145,17 @@ class IndexSearchService @Inject constructor(
 /**
  * Full-text view of one record.
  *
- * A mood is stored as a stable code (`happy`) instead of the word the user
+ * A mood is stored as stable codes (`happy`) instead of the word the user
  * sees, so indexing the raw body would make `开心` unsearchable. [labelOf]
- * resolves the code through resources; only the index copy is replaced, the
- * archive record itself never changes. Other record types are indexed as-is.
+ * resolves every code through resources; only the index copy is replaced, the
+ * archive record itself never changes. A day can carry several moods, so all
+ * labels are indexed. Other record types are indexed as-is.
  */
 internal fun searchableDocument(document: Document, labelOf: (Mood) -> String): Document {
     if (document.type != RecordType.MOOD) return document
-    val mood = Mood.fromCode(document.body.trim()) ?: return document
-    return document.copy(body = labelOf(mood))
+    val moods = Mood.decode(document.body)
+    if (moods.isEmpty()) return document
+    return document.copy(body = moods.joinToString(" ") { labelOf(it) })
 }
 
 private fun Mood.labelRes(): Int = when (this) {

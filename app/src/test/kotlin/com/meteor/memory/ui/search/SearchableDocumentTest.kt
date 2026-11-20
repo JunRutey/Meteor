@@ -25,6 +25,20 @@ class SearchableDocumentTest {
     }
 
     @Test
+    fun `every mood of a day is indexed`() {
+        val moods = document(RecordType.MOOD, "happy\nsad")
+
+        assertEquals("开心 难过", searchableDocument(moods, ::labelOf).body)
+    }
+
+    @Test
+    fun `unknown mood codes are dropped instead of indexed raw`() {
+        val mood = document(RecordType.MOOD, "future-mood\nhappy")
+
+        assertEquals("开心", searchableDocument(mood, ::labelOf).body)
+    }
+
+    @Test
     fun `unknown mood code is left as stored`() {
         val mood = document(RecordType.MOOD, "future-mood")
 

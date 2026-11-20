@@ -335,7 +335,7 @@ fun MeteorNavHost(
                         onNextMonth = viewModel::nextMonth,
                         onToday = viewModel::goToToday,
                         onSelectDate = viewModel::selectDate,
-                        onPickMood = viewModel::setMood,
+                        onToggleMood = viewModel::toggleMood,
                         onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
                         onOpenDiary = { date -> navController.navigate(diaryViewRoute(date)) },
                         onEditDiary = { date -> navController.navigate("$ROUTE_DIARY_EDIT/$date") },
