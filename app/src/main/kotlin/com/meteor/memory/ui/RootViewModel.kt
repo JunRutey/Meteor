@@ -436,10 +436,12 @@ class RootViewModel @Inject constructor(
          * once the share sheet is actually on screen, so the gap between
          * `startActivity` and that callback is the sheet's cold start — hundreds
          * of milliseconds to a few seconds, longer on a loaded device. A tight
-         * window would simply reopen the original bug on slow devices. The case
-         * where the sheet never stops us at all (dialog-style OEM panels) is
-         * closed from the other side: [onReturnToForeground] runs on ON_RESUME,
-         * so the window is dropped as soon as we are visible again.
+         * window would simply reopen the original bug on slow devices.
+         *
+         * Widening the window does not widen the leak surface, because the window
+         * is closed by the next foreground event rather than by the clock: the
+         * dialog-style panels that never stop us at all are handled from the other
+         * side, since [onReturnToForeground] also runs on ON_RESUME.
          */
         const val SYSTEM_SCREEN_GRACE_MS = 60_000L
 
