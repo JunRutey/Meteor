@@ -3,7 +3,8 @@
 > 本文是 [README](../README.md) 中 AI 部分的展开说明。功能取舍见
 > [ADR-027](adr/ADR-027-ai-networked-skills-agent.md)，工具权限边界见
 > [ADR-030](adr/ADR-030-ai-tool-permissions.md) 与
-> [ADR-032](adr/ADR-032-ai-write-confirmation-and-scoped-deletion.md)。
+> [ADR-032](adr/ADR-032-ai-write-confirmation-and-scoped-deletion.md)，
+> 工具循环不设固定步数上限见 [ADR-041](adr/ADR-041-unlimited-ai-tool-calls.md)。
 
 AI 默认关闭，随时可在设置里关闭。v1.0 起对话界面按 DeepSeek 式布局重做，并收敛为仅接入
 官方 DeepSeek。
@@ -50,8 +51,9 @@ AI 默认关闭，随时可在设置里关闭。v1.0 起对话界面按 DeepSeek
 - **流式回答**：请求带 `stream: true`，回答逐字出现；停留在底部时聊天列表自动跟随，
   向上翻看历史时不会被拉回底部。开启思考档位时，思维链（`reasoning_content`）会实时
   显示在可折叠的「思考过程」里。
-- **工具链可见**：模型调用档案工具时会显示工具名、参数摘要和执行状态，
-  整个 Agent 循环（最多 6 步）在界面上是可见的。
+- **工具链可见**：模型调用档案工具时会显示工具名、参数摘要和执行状态；
+  Agent 循环在模型不再返回工具调用时结束，不设固定步数/单轮调用数/累计字符上限，
+  过程在界面上是可见的。单条工具结果仍按 2500 字截断，避免一条超大记录撑爆上下文。
 - **联网搜索与链接阅读**：可单独切换到 DeepSeek 联网模式，使用服务端搜索和阅读链接，
   并显示搜索过程与引用来源。该模式与本机档案工具分开；只预取少量相关档案片段，
   不开放命令执行、任意文件、密钥或备份操作。思考档位开启时会使用深度思考搜索，
