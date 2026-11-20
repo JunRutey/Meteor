@@ -6,7 +6,7 @@
 密钥由设备 Keystore 保管，不可导出、不上传、无云端同步。AI 是可选能力，默认关闭，
 仅接入官方 DeepSeek。
 
-> 当前版本 **v1.2.0**。功能与隐私的细节见 [AI 功能与隐私](docs/AI.md) 与
+> 当前版本 **v1.3.0**。功能与隐私的细节见 [AI 功能与隐私](docs/AI.md) 与
 > [加密与安全](docs/SECURITY.md)，设计取舍见 [ADR](docs/adr)，
 > 历次发布见 [发布说明](docs/releases)。
 
@@ -29,14 +29,17 @@
   [ADR-014](docs/adr/ADR-014-person-directory-uses-person-id.md)、
   [ADR-034](docs/adr/ADR-034-person-deletion-custom-tags-and-detail-redesign.md)、
   [ADR-036](docs/adr/ADR-036-custom-tag-deletion.md)
-- **生辰与提醒**：实时年龄、公历/农历生日倒计时；每日写日记提醒。详见
-  [ADR-033](docs/adr/ADR-033-daily-reminder-and-notification-channels.md)
+- **生辰与提醒**：实时年龄、公历/农历生日倒计时；每日 8:00–9:00 随机写日记提醒，
+  由通知总开关统一控制下载通知与提醒。详见
+  [ADR-033](docs/adr/ADR-033-daily-reminder-and-notification-channels.md)、
+  [ADR-039](docs/adr/ADR-039-notification-master-random-window.md)
 - **AI 助手**（默认关闭）：DeepSeek 官方 API、本机档案工具、联网搜索、文件输入、
   朗读回答、加密多会话。详见 [AI 功能与隐私](docs/AI.md)
-- **备份与恢复**：明文 zip 导出，按新设备密钥重新加密导入。
-  详见 [加密与安全](docs/SECURITY.md)
-- **诊断与更新**：诊断日志可导出；启动时检查 GitHub Release，通知栏显示下载进度。
-  详见 [加密与安全](docs/SECURITY.md)
+- **备份与恢复**：明文 zip 导出，覆盖日记、心情、人物、图片、附件、AI 会话、出生日期与
+  非密钥设置；按新设备密钥重新加密导入。API Key、应用锁与禁止截屏不进入备份。详见
+  [加密与安全](docs/SECURITY.md)、[ADR-040](docs/adr/ADR-040-backup-coverage.md)
+- **诊断与更新**：诊断日志可导出；启动时检查 GitHub Release，通知总开关开启时在通知栏
+  显示下载进度。详见 [加密与安全](docs/SECURITY.md)
 
 ## 构建
 
@@ -90,6 +93,7 @@
 | v1.0 | AI 对话重做、朗读与累计用量、人物删除与自定义标签、DeepSeek 收敛 | ✅ 已发布 |
 | v1.1 | 诊断日志覆盖、系统文件选择器导出、出生日期滚轮打磨 | ✅ 已发布 |
 | v1.2 | 自定义标签删除、图片查看器分享与删除、冷启动图标过渡 | ✅ 已发布 |
+| v1.3 | 通知总开关与每日随机提醒、备份覆盖出生日期与设置 | ✅ 已发布 |
 
 ## 加密与隐私
 
