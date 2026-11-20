@@ -62,6 +62,25 @@ class ImageViewerViewModel @Inject constructor(
     private val _state = MutableStateFlow(ImageViewerState())
     val state: StateFlow<ImageViewerState> = _state.asStateFlow()
 
+    /**
+     * The decrypted bytes [load] already produced.
+     *
+     * Sharing needs the original file, not the downsampled bitmap, and decrypting
+     * the whole file a second time allocates several copies of it (file bytes,
+     * two `copyOfRange` slices, cipher output) at the exact moment the viewer
+     * already holds a 2048 px bitmap — the worst moment to ask for a large
+     * allocation on a low-memory device. Keeping the bytes until the share copy is
+     * written removes that second decrypt; [releaseLoadedBytes] drops them again.
+     *
+     * Scope: plaintext held **in memory only**, for as long as this viewer lives.
+     * Nothing is written to disk here (the share copy under `cacheDir/share` is
+     * the only file, and it is pruned), and the field is cleared as soon as the
+     * share is handed over, fails, or the image is deleted. It is a short-lived
+     * hand-off buffer, not a cache: never re-use it across viewers.
+     */
+    @Volatile
+    private var loadedBytes: ByteArray? = null
+
     init {
         viewModelScope.launch {
             try {
@@ -72,7 +91,10 @@ class ImageViewerViewModel @Inject constructor(
                 if (loaded?.bitmap == null) appLog.warn(TAG, "image missing or undecodable")
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (error: Exception) {
+            } catch (error: Throwable) {
+                // Throwable, not Exception: an OutOfMemoryError while decoding a
+                // large image must degrade to the "missing image" card instead of
+                // killing the process.
                 appLog.warn(TAG, "image load failed", error)
             } finally {
                 _state.update { it.copy(loading = false) }
@@ -90,6 +112,7 @@ class ImageViewerViewModel @Inject constructor(
             }
             if (removed) {
                 appLog.info(TAG, "image deleted")
+                releaseLoadedBytes()
                 _state.update { it.copy(deleting = false, deleted = true) }
             } else {
                 appLog.warn(TAG, "image delete failed")
@@ -122,7 +145,11 @@ class ImageViewerViewModel @Inject constructor(
                 }
             } catch (cancelled: CancellationException) {
                 throw cancelled
-            } catch (error: Exception) {
+            } catch (error: Throwable) {
+                // Throwable, not Exception: this is the one path that cannot be
+                // allowed to end the process. Anything thrown here — including an
+                // OutOfMemoryError or a provider-side RuntimeException from
+                // FileProvider — has to become the in-place ShareFailed message.
                 appLog.warn(TAG, "share failed", error)
                 _state.update {
                     it.copy(sharing = false, error = ImageViewerError.ShareFailed)
@@ -133,19 +160,34 @@ class ImageViewerViewModel @Inject constructor(
 
     /** Called once the chooser was shown; the request is one-shot. */
     fun onShareLaunched() {
+        releaseLoadedBytes()
         _state.update { it.copy(shareRequest = null) }
     }
 
-    /** Called when an activity for the share intent could not be started. */
-    fun onShareLaunchedFailed() {
-        appLog.warn(TAG, "no activity for share intent")
+    /**
+     * Called when the share intent could not be built or started.
+     *
+     * [error] is whatever the caller caught while handing the intent to the
+     * system; it is logged so a report can distinguish "no app can share images"
+     * from "our own provider refused the URI".
+     */
+    fun onShareLaunchedFailed(error: Throwable? = null) {
+        releaseLoadedBytes()
+        appLog.warn(TAG, "no activity for share intent", error)
         _state.update { it.copy(shareRequest = null, error = ImageViewerError.ShareFailed) }
+    }
+
+    /** Drops the plaintext copy once the share copy exists on disk. */
+    private fun releaseLoadedBytes() {
+        loadedBytes = null
     }
 
     private class Loaded(val bitmap: ImageBitmap?, val dateLabel: String?)
 
     private fun load(): Loaded {
         val bytes = imageStore.load(token) ?: return Loaded(null, null)
+        // Kept for [buildShareRequest] so a share does not decrypt the file again.
+        loadedBytes = bytes
         val options = sampledImageOptions(bytes, MAX_IMAGE_EDGE)
         val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
             ?.asImageBitmap()
@@ -160,7 +202,7 @@ class ImageViewerViewModel @Inject constructor(
     }
 
     private fun buildShareRequest(): ShareRequest? {
-        val bytes = imageStore.load(token) ?: return null
+        val bytes = loadedBytes ?: imageStore.load(token) ?: return null
         val mimeType = ImageShareFile.mimeType(bytes)
         val dir = File(context.cacheDir, SHARE_DIR)
         if (!dir.isDirectory && !dir.mkdirs()) return null

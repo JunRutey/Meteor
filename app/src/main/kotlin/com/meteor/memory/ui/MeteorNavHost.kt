@@ -2,6 +2,7 @@ package com.meteor.memory.ui
 
 import android.Manifest
 import android.content.ClipData
+import android.content.ClipDescription
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -556,25 +557,43 @@ fun MeteorNavHost(
 
             LaunchedEffect(state.shareRequest) {
                 val request = state.shareRequest ?: return@LaunchedEffect
-                val send = Intent(Intent.ACTION_SEND).apply {
-                    type = request.mimeType
-                    putExtra(Intent.EXTRA_STREAM, request.uri)
-                    clipData = ClipData.newUri(
-                        context.contentResolver,
-                        context.getString(GalleryR.string.gallery_share_clip_label),
-                        request.uri,
-                    )
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }
+                // Everything in this block can throw: getString() raises
+                // Resources.NotFoundException on a bad id, building the ClipData
+                // and handing the intent to the chooser both go through the
+                // framework, and a FileProvider that refuses the URI throws too.
+                // A throw inside a LaunchedEffect has no owner — it escapes into
+                // the composition's coroutine and ends the process, which is
+                // exactly "tap share and the app disappears". So the whole block
+                // runs inside runCatching and any failure lands on the same
+                // in-place ShareFailed state as an unreadable image.
                 val launched = runCatching {
+                    val label = context.getString(GalleryR.string.gallery_share_clip_label)
+                    val send = Intent(Intent.ACTION_SEND).apply {
+                        type = request.mimeType
+                        putExtra(Intent.EXTRA_STREAM, request.uri)
+                        // Public constructor + our own description instead of
+                        // ClipData.newUri: the resolver overload asks our own
+                        // FileProvider for the MIME type on the main thread — a
+                        // binder round-trip just to rediscover what the file
+                        // header already told us — and newRawUri would label the
+                        // clip "text/uri-list" while the intent says image/*.
+                        clipData = ClipData(
+                            ClipDescription(label, arrayOf(request.mimeType)),
+                            ClipData.Item(request.uri),
+                        )
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
                     context.startActivity(
                         Intent.createChooser(
                             send,
                             context.getString(GalleryR.string.gallery_share_chooser),
                         ),
                     )
-                }.isSuccess
-                if (launched) viewModel.onShareLaunched() else viewModel.onShareLaunchedFailed()
+                }
+                launched.fold(
+                    onSuccess = { viewModel.onShareLaunched() },
+                    onFailure = { error -> viewModel.onShareLaunchedFailed(error) },
+                )
             }
 
             ImageViewerScreen(
