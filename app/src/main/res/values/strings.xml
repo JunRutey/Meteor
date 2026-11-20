@@ -165,10 +165,19 @@
     <string name="about_title">关于</string>
     <string name="about_back">返回</string>
     <string name="about_version">Meteor %1$s</string>
-    <string name="about_repository">GitHub 仓库 · JunRutey/Meteor</string>
+    <string name="about_repository">项目仓库</string>
+    <string name="about_discussions">讨论</string>
+    <string name="about_feedback">问题反馈</string>
+    <string name="about_feedback_title">问题反馈</string>
+    <string name="about_feedback_issues">GitHub 议题</string>
+    <string name="about_feedback_email">邮箱反馈</string>
     <string name="about_donate">打赏</string>
     <string name="about_donate_unavailable">打赏二维码暂不可用。</string>
     <string name="about_changelog">更新日志</string>
+    <string name="about_changelog_empty">暂无更新日志。</string>
+    <string name="about_changelog_version_title">更新日志 · %1$s</string>
+    <string name="about_changelog_version_empty">这个版本没有可显示的更新内容。</string>
+    <string name="about_link_unavailable">没有找到可以打开该链接的应用。</string>
 
     <string name="chats_title">记录</string>
     <string name="chats_back">返回</string>
