@@ -70,6 +70,32 @@ class SettingsRepositoryTest {
         assertEquals(setOf("classmate"), repository.settings.first().peopleTags)
     }
 
+    @Test
+    fun notificationsMasterSwitchUsesLegacyReminderValue() = runBlocking {
+        val store = FakePreferencesDataStore(
+            mutablePreferencesOf(booleanPreferencesKey("diary_reminder_enabled") to false),
+        )
+        val repository = SettingsRepository(store)
+
+        assertFalse(repository.settings.first().notificationsEnabled)
+
+        repository.migrateNotificationsMasterSwitch()
+
+        assertFalse(repository.settings.first().notificationsEnabled)
+    }
+
+    @Test
+    fun notificationsMasterSwitchDefaultsOnWhenLegacyKeyWasNeverTouched() = runBlocking {
+        val store = FakePreferencesDataStore(mutablePreferencesOf())
+        val repository = SettingsRepository(store)
+
+        assertTrue(repository.settings.first().notificationsEnabled)
+
+        repository.migrateNotificationsMasterSwitch()
+
+        assertTrue(repository.settings.first().notificationsEnabled)
+    }
+
     private class FakePreferencesDataStore(
         initial: Preferences,
     ) : DataStore<Preferences> {

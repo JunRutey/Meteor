@@ -9,7 +9,9 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import java.time.LocalDate
 
 /**
  * Single source of truth for user preferences (archive R11 / ADR-013).
@@ -39,9 +41,11 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             autoBackupEnabled = prefs[KEY_AUTO_BACKUP] ?: true,
             backupRetention = prefs[KEY_BACKUP_RETENTION] ?: AppSettings.DEFAULT_BACKUP_RETENTION,
             autoCheckForUpdates = prefs[KEY_AUTO_CHECK_FOR_UPDATES] ?: true,
-            diaryReminderEnabled = prefs[KEY_DIARY_REMINDER_ENABLED] ?: false,
-            diaryReminderTimeMinutes = (prefs[KEY_DIARY_REMINDER_TIME] ?: AppSettings.DEFAULT_DIARY_REMINDER_TIME_MINUTES)
-                .coerceIn(0, 1439),
+            // ADR-039: the old daily-reminder switch is the migration source for
+            // the new master switch. Once the master key exists it always wins.
+            notificationsEnabled = prefs[KEY_NOTIFICATIONS_ENABLED]
+                ?: prefs[KEY_DIARY_REMINDER_ENABLED]
+                ?: true,
             aiEnabled = prefs[KEY_AI_ENABLED] ?: false,
             aiConsentAccepted = prefs[KEY_AI_CONSENT] ?: false,
             aiProvider = prefs[KEY_AI_PROVIDER] ?: AppSettings.DEFAULT_AI_PROVIDER,
@@ -88,11 +92,17 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     suspend fun setAutoCheckForUpdates(enabled: Boolean) =
         store.edit { it[KEY_AUTO_CHECK_FOR_UPDATES] = enabled }
 
-    suspend fun setDiaryReminderEnabled(enabled: Boolean) =
-        store.edit { it[KEY_DIARY_REMINDER_ENABLED] = enabled }
+    suspend fun setNotificationsEnabled(enabled: Boolean) =
+        store.edit { it[KEY_NOTIFICATIONS_ENABLED] = enabled }
 
-    suspend fun setDiaryReminderTimeMinutes(minutes: Int) =
-        store.edit { it[KEY_DIARY_REMINDER_TIME] = minutes.coerceIn(0, 1439) }
+    /** Local date of the last posted daily reminder; avoids a duplicate after a restart. */
+    suspend fun reminderLastSentDate(): LocalDate? =
+        store.data.first()[KEY_REMINDER_LAST_SENT_DATE]?.let { stored ->
+            runCatching { LocalDate.parse(stored) }.getOrNull()
+        }
+
+    suspend fun setReminderLastSentDate(date: LocalDate) =
+        store.edit { it[KEY_REMINDER_LAST_SENT_DATE] = date.toString() }
 
     suspend fun setAiEnabled(enabled: Boolean) = store.edit { it[KEY_AI_ENABLED] = enabled }
 
@@ -192,6 +202,20 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         }
     }
 
+    /**
+     * ADR-039: writes the new notification master switch once, so the old
+     * per-day switch stays a pure migration source.
+     *
+     * Installs that explicitly turned the old reminder off keep that choice;
+     * installs that never touched it keep the update notification behaviour
+     * they always had (on). Idempotent: an existing master key always wins.
+     */
+    suspend fun migrateNotificationsMasterSwitch() = store.edit { prefs ->
+        if (KEY_NOTIFICATIONS_ENABLED !in prefs) {
+            prefs[KEY_NOTIFICATIONS_ENABLED] = prefs[KEY_DIARY_REMINDER_ENABLED] ?: true
+        }
+    }
+
     private companion object {
         val KEY_DARK_MODE = stringPreferencesKey("dark_mode")
         val KEY_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
@@ -204,7 +228,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val KEY_BACKUP_RETENTION = intPreferencesKey("backup_retention")
         val KEY_AUTO_CHECK_FOR_UPDATES = booleanPreferencesKey("auto_check_for_updates")
         val KEY_DIARY_REMINDER_ENABLED = booleanPreferencesKey("diary_reminder_enabled")
-        val KEY_DIARY_REMINDER_TIME = intPreferencesKey("diary_reminder_time_minutes")
+        val KEY_NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
+        val KEY_REMINDER_LAST_SENT_DATE = stringPreferencesKey("reminder_last_sent_local_date")
         val KEY_AI_ENABLED = booleanPreferencesKey("ai_enabled")
         val KEY_AI_CONSENT = booleanPreferencesKey("ai_consent_accepted")
         val KEY_AI_PROVIDER = stringPreferencesKey("ai_provider")

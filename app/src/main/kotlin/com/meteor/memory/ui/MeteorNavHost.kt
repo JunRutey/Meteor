@@ -721,7 +721,7 @@ fun MeteorNavHost(
             val viewModel: SettingsViewModel = hiltViewModel()
             val settings by viewModel.settings.collectAsStateWithLifecycle()
             val logSizeBytes by viewModel.logSizeBytes.collectAsStateWithLifecycle()
-            val reminderNotificationsAllowed by viewModel.reminderNotificationsAllowed
+            val notificationsAllowed by viewModel.notificationsAllowed
                 .collectAsStateWithLifecycle()
             val canScheduleExactAlarms by viewModel.canScheduleExactAlarms.collectAsStateWithLifecycle()
             val updateState by viewModel.updateState.collectAsStateWithLifecycle()
@@ -733,7 +733,7 @@ fun MeteorNavHost(
             ) { granted ->
                 if (granted) {
                     notificationPermissionDenied = false
-                    viewModel.setDiaryReminderEnabled(true)
+                    viewModel.setNotificationsEnabled(true)
                 } else {
                     notificationPermissionDenied = true
                 }
@@ -769,12 +769,12 @@ fun MeteorNavHost(
                 onCheckUpdates = viewModel::checkForUpdates,
                 onInstallUpdate = viewModel::installUpdate,
                 logSizeBytes = logSizeBytes,
-                reminderNotificationsAllowed = reminderNotificationsAllowed,
+                notificationsAllowed = notificationsAllowed,
                 canScheduleExactAlarms = canScheduleExactAlarms,
                 notificationPermissionDenied = notificationPermissionDenied,
-                onReminderEnabledChanged = { enabled ->
+                onNotificationsEnabledChanged = { enabled ->
                     if (!enabled) {
-                        viewModel.setDiaryReminderEnabled(false)
+                        viewModel.setNotificationsEnabled(false)
                     } else if (
                         Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
                         ContextCompat.checkSelfPermission(
@@ -783,12 +783,11 @@ fun MeteorNavHost(
                         ) == PackageManager.PERMISSION_GRANTED
                     ) {
                         notificationPermissionDenied = false
-                        viewModel.setDiaryReminderEnabled(true)
+                        viewModel.setNotificationsEnabled(true)
                     } else {
                         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                     }
                 },
-                onReminderTimeChanged = viewModel::setDiaryReminderTimeMinutes,
                 onOpenExactAlarmSettings = viewModel::openExactAlarmSettings,
                 onOpenNotificationSettings = viewModel::openNotificationSettings,
                 onDismissNotificationPermissionDenied = { notificationPermissionDenied = false },

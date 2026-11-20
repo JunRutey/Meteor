@@ -51,10 +51,10 @@ class SettingsViewModel @Inject constructor(
     private val updateService: UpdateService,
 ) : ViewModel() {
 
-    private val _reminderNotificationsAllowed =
+    private val _notificationsAllowed =
         MutableStateFlow(notificationFeature.canPostDailyReminder())
-    val reminderNotificationsAllowed: StateFlow<Boolean> =
-        _reminderNotificationsAllowed.asStateFlow()
+    val notificationsAllowed: StateFlow<Boolean> =
+        _notificationsAllowed.asStateFlow()
 
     private val _canScheduleExactAlarms = MutableStateFlow(notificationFeature.canScheduleExactAlarms())
     val canScheduleExactAlarms: StateFlow<Boolean> = _canScheduleExactAlarms.asStateFlow()
@@ -149,25 +149,17 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun setDiaryReminderEnabled(enabled: Boolean) {
+    fun setNotificationsEnabled(enabled: Boolean) {
         viewModelScope.launch {
-            repository.setDiaryReminderEnabled(enabled)
+            repository.setNotificationsEnabled(enabled)
             notificationFeature.syncReminder()
             refreshNotificationPermissions()
-            appLog.info(TAG, "daily reminder=$enabled")
-        }
-    }
-
-    fun setDiaryReminderTimeMinutes(minutes: Int) {
-        viewModelScope.launch {
-            repository.setDiaryReminderTimeMinutes(minutes)
-            notificationFeature.syncReminder()
-            appLog.info(TAG, "daily reminder time=${minutes}min")
+            appLog.info(TAG, "notifications enabled=$enabled")
         }
     }
 
     fun refreshNotificationPermissions() {
-        _reminderNotificationsAllowed.value = notificationFeature.canPostDailyReminder()
+        _notificationsAllowed.value = notificationFeature.canPostDailyReminder()
         _canScheduleExactAlarms.value = notificationFeature.canScheduleExactAlarms()
         viewModelScope.launch { notificationFeature.syncReminder() }
     }

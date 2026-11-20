@@ -84,6 +84,7 @@ class RootViewModel @Inject constructor(
         viewModelScope.launch {
             markLegacyInstallAsOnboarded()
             settingsRepository.migrateAiToDeepSeekOnly()
+            settingsRepository.migrateNotificationsMasterSwitch()
             settingsRepository.settings
                 .map { it.onboardingCompleted }
                 .distinctUntilChanged()
