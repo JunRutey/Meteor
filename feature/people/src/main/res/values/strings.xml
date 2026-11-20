@@ -51,6 +51,10 @@
     <string name="people_tag_input_label">标签名</string>
     <string name="people_tag_hint">比如「同事」</string>
     <string name="people_tag_add">添加</string>
+    <string name="people_tag_delete_description">删除标签「%1$s」</string>
+    <string name="people_tag_delete_title">删除这个标签？</string>
+    <string name="people_tag_delete_body">只会把「%1$s」从标签库移除，不会删除任何人物的档案。其他人物档案里已经保存的标签不受影响。</string>
+    <string name="people_tag_delete_confirm">删除</string>
     <string name="people_tag_limit">最多同时选择 %1$d 个标签</string>
 
     <string name="people_detail_title">人物档案</string>

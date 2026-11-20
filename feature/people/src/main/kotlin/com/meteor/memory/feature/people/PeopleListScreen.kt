@@ -78,6 +78,7 @@ fun PeopleListScreen(
     availableTags: List<String>,
     onCreate: (String, Relation?, List<String>) -> Unit,
     onAddTag: (String) -> Unit,
+    onDeleteTag: (String) -> Unit,
     onOpen: (String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -179,6 +180,7 @@ fun PeopleListScreen(
         CreatePersonDialog(
             availableTags = availableTags,
             onAddTag = onAddTag,
+            onDeleteTag = onDeleteTag,
             onDismiss = { showCreate = false },
             onConfirm = { name, relation, tags ->
                 showCreate = false
@@ -192,6 +194,7 @@ fun PeopleListScreen(
 private fun CreatePersonDialog(
     availableTags: List<String>,
     onAddTag: (String) -> Unit,
+    onDeleteTag: (String) -> Unit,
     onDismiss: () -> Unit,
     onConfirm: (String, Relation?, List<String>) -> Unit,
 ) {
@@ -228,6 +231,7 @@ private fun CreatePersonDialog(
                         relation = derived
                     },
                     onAddTag = onAddTag,
+                    onDeleteTag = onDeleteTag,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }

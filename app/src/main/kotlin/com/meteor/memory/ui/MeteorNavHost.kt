@@ -386,6 +386,7 @@ fun MeteorNavHost(
                 availableTags = availableTags,
                 onCreate = viewModel::create,
                 onAddTag = viewModel::addTag,
+                onDeleteTag = viewModel::removeTag,
                 onOpen = { personId -> navController.navigate("people/$personId") },
                 onBack = { navController.popBackStack() },
             )
@@ -483,6 +484,7 @@ fun MeteorNavHost(
                 onRelationChanged = viewModel::onRelationChanged,
                 onTagsChanged = viewModel::onTagsChanged,
                 onAddTag = viewModel::addTag,
+                onDeleteTag = viewModel::removeTag,
                 onNoteChanged = viewModel::onNoteChanged,
                 onNotesChanged = viewModel::onNotesChanged,
                 onInsertLink = viewModel::insertLink,

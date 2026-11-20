@@ -72,6 +72,7 @@ fun PersonEditScreen(
     onRelationChanged: (Relation?) -> Unit,
     onTagsChanged: (List<String>) -> Unit,
     onAddTag: (String) -> Unit,
+    onDeleteTag: (String) -> Unit,
     onNoteChanged: (String) -> Unit,
     onNotesChanged: (String) -> Unit,
     onInsertLink: (String, String?) -> Unit,
@@ -136,6 +137,7 @@ fun PersonEditScreen(
                                 onRelationChanged(derived)
                             },
                             onAddTag = onAddTag,
+                            onDeleteTag = onDeleteTag,
                             modifier = Modifier.fillMaxWidth(),
                         )
 
