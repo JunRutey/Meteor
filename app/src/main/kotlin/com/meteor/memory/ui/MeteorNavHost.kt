@@ -223,11 +223,20 @@ private fun LifeTab(
     )
 }
 
+/**
+ * Every destination of the app.
+ *
+ * [onSystemScreenOpened] is called right after this graph successfully starts an
+ * activity of its own (today: the share sheet). Such a transition also stops our
+ * activity, so the shell has to know it was deliberate and must not re-arm the
+ * app lock while the person is only picking a share target.
+ */
 @Composable
 fun MeteorNavHost(
     versionName: String,
     animationsEnabled: Boolean = true,
     aiEnabled: Boolean = false,
+    onSystemScreenOpened: () -> Unit = {},
 ) {
     val navController = rememberNavController()
 
@@ -589,6 +598,14 @@ fun MeteorNavHost(
                             context.getString(GalleryR.string.gallery_share_chooser),
                         ),
                     )
+                    // The share sheet moves us to the background; the shell must
+                    // not read that as "the person left the app" and re-arm the
+                    // lock under the viewer (see RootViewModel.beginSystemTransition).
+                    // Called only after the launch actually succeeded, so a share
+                    // that failed never leaves a window with the gate held open;
+                    // the ON_STOP it refers to arrives as a later main-thread
+                    // message and cannot run before this line.
+                    onSystemScreenOpened()
                 }
                 launched.fold(
                     onSuccess = { viewModel.onShareLaunched() },

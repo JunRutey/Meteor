@@ -84,7 +84,14 @@ fun MeteorRoot(versionName: String, onContentReady: () -> Unit = {}) {
                 Lifecycle.Event.ON_STOP -> viewModel.onEnterBackground()
                 // Return from system settings: the credential the user just set
                 // up has to become usable without restarting the app.
-                Lifecycle.Event.ON_START -> viewModel.refreshLockAvailability()
+                // We are the foreground app again, so an ON_STOP from now on is a
+                // real background trip and must arm the gate even if a screen we
+                // started ourselves (the share sheet) triggered the previous one.
+                Lifecycle.Event.ON_START -> {
+                    viewModel.onReturnToForeground()
+                    viewModel.refreshLockAvailability()
+                }
+
                 else -> Unit
             }
         }
@@ -133,6 +140,7 @@ fun MeteorRoot(versionName: String, onContentReady: () -> Unit = {}) {
                             versionName = versionName,
                             animationsEnabled = settings.animationsEnabled,
                             aiEnabled = settings.aiEnabled,
+                            onSystemScreenOpened = viewModel::beginSystemTransition,
                         )
 
                         OnboardingGate.FAILED -> OnboardingLoadFailureScreen(
