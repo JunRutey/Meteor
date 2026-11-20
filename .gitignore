@@ -21,6 +21,8 @@ captures/
 
 # Local-only tooling (session CA bundle, scratch)
 .tools/
+# Agent/workspace memory: local session state, never part of the archive sources
+.workbuddy/
 
 secrets.properties
 *.env
