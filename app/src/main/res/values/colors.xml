@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#FFFFFF</color>
+    <!-- Matches MeteorLight.background so the splash hands over without a flash. -->
+    <color name="splash_background">#F4F8FC</color>
 </resources>

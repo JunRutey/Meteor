@@ -11,7 +11,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -38,7 +42,7 @@ import com.meteor.memory.ui.theme.MeteorTheme
  * keyboard. Individual screens must not add their own `imePadding()`.
  */
 @Composable
-fun MeteorRoot(versionName: String) {
+fun MeteorRoot(versionName: String, onContentReady: () -> Unit = {}) {
     val viewModel: RootViewModel = hiltViewModel()
 
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -46,6 +50,20 @@ fun MeteorRoot(versionName: String) {
     val unlockFailed by viewModel.unlockFailed.collectAsStateWithLifecycle()
     val noDeviceCredential by viewModel.noDeviceCredential.collectAsStateWithLifecycle()
     val onboardingGate by viewModel.onboardingGate.collectAsStateWithLifecycle()
+
+    // Cold-start splash hand-over (ADR-038). The system splash may leave only
+    // once the shell knows whether to show the lock gate or the onboarding
+    // flow; this flag says "resolved", not "unlocked".
+    var contentReadyReported by remember { mutableStateOf(false) }
+    LaunchedEffect(locked, onboardingGate) {
+        if (!contentReadyReported &&
+            locked != null &&
+            onboardingGate != OnboardingGate.LOADING
+        ) {
+            contentReadyReported = true
+            onContentReady()
+        }
+    }
 
     val darkTheme = when (settings.darkMode) {
         DarkMode.FOLLOW_SYSTEM -> isSystemInDarkTheme()
