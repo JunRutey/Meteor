@@ -172,6 +172,14 @@
     <string name="about_feedback_issues">GitHub 议题</string>
     <string name="about_feedback_email">邮箱反馈</string>
     <string name="about_donate">打赏</string>
+    <string name="about_donate_alipay_title">支付宝</string>
+    <string name="about_donate_alipay_desc">使用支付宝扫一扫或打开链接完成打赏。</string>
+    <string name="about_donate_alipay_action">支付宝打赏</string>
+    <string name="about_donate_wechat_title">微信</string>
+    <string name="about_donate_wechat_desc">使用微信扫一扫识别赞赏码。</string>
+    <string name="about_donate_wechat_code">微信赞赏码</string>
+    <string name="about_donate_note">打赏是自愿支持，不会解锁任何功能或数据。</string>
+    <string name="about_donate_open_failed">没有找到可以打开支付宝的应用，请稍后重试。</string>
     <string name="about_donate_unavailable">打赏二维码暂不可用。</string>
     <string name="about_changelog">更新日志</string>
     <string name="about_changelog_empty">暂无更新日志。</string>

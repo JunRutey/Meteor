@@ -66,6 +66,7 @@ import com.meteor.memory.feature.people.PersonRecordRow
 import com.meteor.memory.feature.settings.SettingsScreen
 import com.meteor.memory.feature.settings.R as SettingsR
 import com.meteor.memory.ui.about.AboutScreen
+import com.meteor.memory.ui.about.ALIPAY_DONATE_URL
 import com.meteor.memory.ui.about.ChangelogScreen
 import com.meteor.memory.ui.about.ChangelogVersionScreen
 import com.meteor.memory.ui.about.DISCUSSIONS_URL
@@ -898,7 +899,12 @@ fun MeteorNavHost(
         }
 
         composable(ROUTE_ABOUT_DONATE) {
-            DonateScreen(onBack = { navController.popBackStack() })
+            val context = LocalContext.current
+            val openFailed = stringResource(R.string.about_donate_open_failed)
+            DonateScreen(
+                onOpenAlipay = { context.openInBrowser(ALIPAY_DONATE_URL, openFailed) },
+                onBack = { navController.popBackStack() },
+            )
         }
 
         composable(ROUTE_ABOUT_CHANGELOG) {

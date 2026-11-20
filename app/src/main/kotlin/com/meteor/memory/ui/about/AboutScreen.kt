@@ -13,15 +13,18 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -30,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
@@ -41,6 +45,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meteor.memory.R
@@ -140,11 +145,13 @@ fun FeedbackScreen(
 }
 
 /**
- * Donation page. Kept in the same visual language as the About page: a title
- * bar plus a rounded card with the WeChat appreciation code.
+ * Donation page. Alipay opens the maintainer's payment page through an
+ * external intent; WeChat stays a centred, width-capped appreciation code.
+ * Donations never unlock features or data.
  */
 @Composable
 fun DonateScreen(
+    onOpenAlipay: () -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -157,20 +164,84 @@ fun DonateScreen(
         modifier = modifier,
     ) {
         item {
-            if (donate != null) {
-                Image(
-                    bitmap = donate.asImageBitmap(),
-                    contentDescription = stringResource(R.string.about_donate),
-                    modifier = Modifier.fillMaxWidth(),
-                    contentScale = ContentScale.Fit,
-                )
-            } else {
+            Column {
                 Text(
-                    text = stringResource(R.string.about_donate_unavailable),
+                    text = stringResource(R.string.about_donate_alipay_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = stringResource(R.string.about_donate_alipay_desc),
+                    modifier = Modifier.padding(top = 4.dp),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 22.sp,
                 )
+                Button(
+                    onClick = onOpenAlipay,
+                    modifier = Modifier.fillMaxWidth().padding(top = 14.dp).height(48.dp),
+                    shape = RoundedCornerShape(24.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.about_donate_alipay_action),
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
             }
+        }
+        item {
+            Spacer(Modifier.height(20.dp))
+            AboutHairline()
+            Spacer(Modifier.height(20.dp))
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = stringResource(R.string.about_donate_wechat_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = stringResource(R.string.about_donate_wechat_desc),
+                    modifier = Modifier.padding(top = 4.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 22.sp,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(Modifier.height(14.dp))
+                if (donate != null) {
+                    Image(
+                        bitmap = donate.asImageBitmap(),
+                        contentDescription = stringResource(R.string.about_donate_wechat_code),
+                        modifier = Modifier
+                            .widthIn(max = 240.dp)
+                            .fillMaxWidth()
+                            .aspectRatio(donate.width.toFloat() / donate.height.toFloat())
+                            .clip(RoundedCornerShape(16.dp)),
+                        contentScale = ContentScale.Fit,
+                    )
+                } else {
+                    Text(
+                        text = stringResource(R.string.about_donate_unavailable),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+        }
+        item {
+            Spacer(Modifier.height(20.dp))
+            Text(
+                text = stringResource(R.string.about_donate_note),
+                modifier = Modifier.fillMaxWidth(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }
