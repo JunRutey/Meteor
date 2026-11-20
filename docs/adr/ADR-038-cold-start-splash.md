@@ -36,7 +36,7 @@ Meteor 的冷启动需要先异步读两件事才能决定首屏：
 ```xml
 <style name="Theme.Meteor.Splash" parent="Theme.SplashScreen">
     <item name="windowSplashScreenBackground">@color/splash_background</item>
-    <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+    <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
     <item name="postSplashScreenTheme">@style/Theme.Meteor</item>
 </style>
 ```
@@ -44,8 +44,39 @@ Meteor 的冷启动需要先异步读两件事才能决定首屏：
 - `splash_background` 在 `values/colors.xml` 为 `#F4F8FC`（与 `MeteorLight.background`
   一致），在 `values-night/colors.xml` 为 `#0F1720`（与 `MeteorDark.background` 一致），
   避免启动时闪一下相反的颜色；
-- 图标使用已有的自适应启动图标 `@mipmap/ic_launcher`，不新增图片资源；
+- 图标使用**专用的高分辨率启动图标** `@drawable/splash_icon`，不再复用
+  `@mipmap/ic_launcher`（理由见 2.1）；
 - `postSplashScreenTheme` 指回 `Theme.Meteor`，系统 splash 退出后应用恢复正常主题。
+
+### 2.1 专用启动图标：分辨率、透明背景与分工
+
+最初直接用自适应启动图标 `@mipmap/ic_launcher`，实际效果模糊且对比不足：
+
+- 自适应图标的前景 `ic_launcher_foreground.png` 在 xxxhdpi 只有 432×432，
+  legacy `ic_launcher.png` 只有 192×192。系统 Splash 按 288dp 画布绘制、再裁剪到
+  192dp 圆，xxxhdpi 下需要约 1152px 的源图，放大 2.7 倍后边缘与星形明显发糊。
+- 前景 PNG 虽然四角透明，但把一块白色圆角方底烤进了像素里（约 87% 像素 alpha=255，
+  背景接近纯白）。如果直接放大，深色纸张背景上的 Splash 会顶着一块白色方卡，
+  浅色背景下又几乎和底色融在一起。
+
+因此单独生成 `app/src/main/res/drawable-xxxhdpi/splash_icon.png`：
+
+- **尺寸 1152×1152（= 288dp @xxxhdpi）**，正好对应系统 Splash 的图标画布；
+  可见内容控制在中心 **192dp 圆（768px 直径）** 的安全区内，四周留出
+  ≥262px 的透明边距，避免被系统圆形蒙版裁掉。
+- **真正透明**：四角与边距 alpha=0，没有把白色圆角方底带进来；
+  流星与两颗星光来自启动图标前景，按饱和度从白底中分离，并保留流星内部的
+  白色星光（作为被流星轮廓包住的内部细节），再 LANCZOS 等比放大。
+- 生成后以 light（`#F4F8FC`）与 dark（`#0F1720`）两种纸张背景合成检查：
+  蓝色→紫色流星在两种底色上都清晰，深色背景下不再出现白色方卡。
+- 不设置 `windowSplashScreenIconBackgroundColor`：图标本身透明，
+  再加一个实心圆底只会多一层不必要的色块。
+
+**分工**：`@mipmap/ic_launcher` 仍是桌面/最近任务/系统设置里的应用图标，
+带自己的白色自适应底、由系统做遮罩；`@drawable/splash_icon` 只服务冷启动，
+是为 Splash 画布和安全区单独准备的透明高分辨率版本。两者视觉同源
+（同一颗流星与星光），但不共享同一个位图资源，避免为了启动清晰度去改桌面图标，
+也避免桌面图标的自适应底再次被烤进 Splash。
 
 `AndroidManifest.xml` 只把 `MainActivity` 的 `android:theme` 指向
 `@style/Theme.Meteor.Splash`；`application` 的默认主题保持 `Theme.Meteor`，其它组件
