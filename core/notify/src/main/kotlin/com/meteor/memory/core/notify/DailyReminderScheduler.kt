@@ -6,7 +6,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import java.time.LocalTime
 import java.time.ZonedDateTime
 
 enum class ReminderSchedulePrecision {
@@ -31,13 +30,12 @@ class DailyReminderScheduler(
     fun canScheduleExactAlarms(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()
 
-    fun scheduleDaily(
-        hour: Int,
-        minute: Int,
-        now: ZonedDateTime = ZonedDateTime.now(),
-    ): ReminderSchedulePrecision {
-        val next = DailyReminderPolicy.nextTrigger(now, LocalTime.of(hour, minute))
-        val triggerAtMillis = next.toInstant().toEpochMilli()
+    /**
+     * Arms the one-shot alarm for [trigger]. The receiver reschedules the next
+     * random window after every delivery, so this is never a repeating alarm.
+     */
+    fun scheduleAt(trigger: ZonedDateTime): ReminderSchedulePrecision {
+        val triggerAtMillis = trigger.toInstant().toEpochMilli()
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAtMillis, alarmIntent)
             return ReminderSchedulePrecision.INEXACT

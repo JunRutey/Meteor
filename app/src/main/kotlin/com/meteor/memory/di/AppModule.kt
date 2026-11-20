@@ -6,6 +6,8 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
 import com.meteor.memory.BuildConfig
+import com.meteor.memory.backup.SettingsSnapshotBackupModule
+import com.meteor.memory.backup.SettingsSnapshotStore
 import com.meteor.memory.core.backup.BackupModule
 import com.meteor.memory.core.backup.BackupRetentionProvider
 import com.meteor.memory.core.backup.ExternalBackupMirror
@@ -71,8 +73,6 @@ import javax.inject.Singleton
 /**
  * Composition root. `:app` is the only module that knows about Hilt, which keeps
  * every `:core-*` / `:feature-*` module free of the DI framework.
- *
- * Still unwired: [BackupModule] (lands with the backup implementation).
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -165,8 +165,15 @@ object AppModule {
     fun provideBirthdayProfileStore(
         @ApplicationContext context: Context,
         fileCrypto: FileCrypto,
-    ): BirthdayProfileStore =
-        BirthdayProfileStore(File(context.filesDir, "meteor_birth_profile"), fileCrypto)
+    ): BirthdayProfileStore {
+        val layout = StorageLayout(File(context.filesDir, StorageLayout.ROOT_NAME))
+        return BirthdayProfileStore(
+            file = layout.birthProfileFile(),
+            crypto = fileCrypto,
+            // Pre-v1.3.0 ciphertext location; migrated on first use (ADR-040).
+            legacyFile = File(context.filesDir, LEGACY_BIRTH_PROFILE_NAME),
+        )
+    }
 
     /** Chat history is encrypted with the same key and never scanned as records. */
     @Provides
@@ -245,6 +252,31 @@ object AppModule {
         return BackupRetentionProvider { cached.value }
     }
 
+    /**
+     * Encrypted settings snapshot inside the archive root (ADR-040). It is
+     * written by the backup decorator, not by the settings screen.
+     */
+    @Provides
+    @Singleton
+    fun provideSettingsSnapshotStore(
+        @ApplicationContext context: Context,
+        fileCrypto: FileCrypto,
+        settingsRepository: SettingsRepository,
+        appLog: AppLog,
+    ): SettingsSnapshotStore {
+        val layout = StorageLayout(File(context.filesDir, StorageLayout.ROOT_NAME))
+        return SettingsSnapshotStore(
+            file = layout.settingsSnapshotFile(),
+            crypto = fileCrypto,
+            settingsRepository = settingsRepository,
+            appLog = appLog,
+        )
+    }
+
+    /**
+     * The frozen [BackupModule] interface is untouched; this wires the app-level
+     * decorator that adds the birth profile and the settings snapshot (ADR-040).
+     */
     @Provides
     @Singleton
     fun provideBackupModule(
@@ -252,7 +284,15 @@ object AppModule {
         storageRouter: StorageRouter,
         retentionProvider: BackupRetentionProvider,
         mirror: ExternalBackupMirror,
-    ): BackupModule = PlaintextBackupModule(context, storageRouter, retentionProvider, mirror = mirror)
+        settingsSnapshotStore: SettingsSnapshotStore,
+        birthdayProfileStore: BirthdayProfileStore,
+        appLog: AppLog,
+    ): BackupModule = SettingsSnapshotBackupModule(
+        delegate = PlaintextBackupModule(context, storageRouter, retentionProvider, mirror = mirror),
+        settingsSnapshotStore = settingsSnapshotStore,
+        birthdayProfileStore = birthdayProfileStore,
+        appLog = appLog,
+    )
 
     @Provides
     @Singleton
@@ -312,4 +352,6 @@ object AppModule {
         appLog: AppLog,
     ): UpdateService = UpdateService(context, BuildConfig.VERSION_NAME, notificationFeature, appLog)
 
+    /** Pre-v1.3.0 birth profile ciphertext location directly under `filesDir`. */
+    private const val LEGACY_BIRTH_PROFILE_NAME = "meteor_birth_profile"
 }

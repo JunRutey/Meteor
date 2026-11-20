@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Meteor</string>
-    <string name="diary_reminder_notification_title">今天还没写日记</string>
-    <string name="diary_reminder_notification_body">花一点时间，记录今天的生活吧。</string>
+    <string name="diary_reminder_notification_title">你写日记了吗？</string>
+    <string name="diary_reminder_notification_body">距今天结束还有 %1$d 小时，时间正沿着星河向前，愿你记录下美好。</string>
     <string name="update_notification_downloading_title">正在下载 Meteor %1$s</string>
     <string name="update_notification_downloading_body">正在后台下载更新…</string>
     <string name="update_notification_progress">已下载 %1$d%%</string>
@@ -69,12 +69,12 @@
     <string name="onboarding_step">第 %1$d 步，共 4 步</string>
     <string name="onboarding_continue">继续</string>
     <string name="onboarding_intro_title">认识 Meteor</string>
-    <string name="onboarding_intro_body">Meteor 是你的本地记忆档案。\n\n记录日记与心情，整理人物档案和图片，搜索及导入聊天记录，并创建可迁移的加密档案备份。你也可以使用应用锁、主题和日记提醒等设置。\n\n可选 AI 默认关闭；只有你主动开启、配置 DeepSeek API Key 并同意后，提问和相关档案片段才会发送到 DeepSeek。\n\n日记正文在本机加密保存，没有账号，也没有 Meteor 自己的服务端。</string>
+    <string name="onboarding_intro_body">Meteor 是你的本地记忆档案。\n\n记录日记与心情，整理人物档案和图片，搜索及导入聊天记录，并创建可迁移的加密档案备份。你也可以使用应用锁、主题和通知等设置。\n\n可选 AI 默认关闭；只有你主动开启、配置 DeepSeek API Key 并同意后，提问和相关档案片段才会发送到 DeepSeek。\n\n日记正文在本机加密保存，没有账号，也没有 Meteor 自己的服务端。</string>
     <string name="onboarding_privacy_title">隐私条款</string>
-    <string name="onboarding_privacy_body">日记和出生日期保存在应用私有空间。出生日期使用设备 Keystore 的 AES-GCM 密钥加密；Meteor 不收集、不上传，也不跟踪你的生日。\n\n自动检查更新默认开启，会连接 GitHub 查询版本并在后台下载新版本（通知栏显示进度）；不会上传日记、档案或出生日期，可在设置中关闭。可选 AI 默认关闭，启用并完成配置后，提问和选中的档案片段会通过 HTTPS 直接发送到 DeepSeek，并受 DeepSeek 的隐私条款约束。\n\n通知只用于你选择开启的本地日记提醒，以及后台更新下载的进度。你可以跳过通知授权，也可以稍后在系统设置中修改。</string>
+    <string name="onboarding_privacy_body">日记和出生日期保存在应用私有空间。出生日期使用设备 Keystore 的 AES-GCM 密钥加密；Meteor 不收集、不上传，也不跟踪你的生日。\n\n自动检查更新默认开启，会连接 GitHub 查询版本并在后台下载新版本（通知栏显示进度）；不会上传日记、档案或出生日期，可在设置中关闭。可选 AI 默认关闭，启用并完成配置后，提问和选中的档案片段会通过 HTTPS 直接发送到 DeepSeek，并受 DeepSeek 的隐私条款约束。\n\n通知总开关默认开启，用于本地每日写日记提醒和后台更新下载进度；你可以随时在设置中关闭，也可以跳过通知授权或稍后在系统设置中修改。</string>
     <string name="onboarding_permissions_title">通知权限</string>
-    <string name="onboarding_permissions_body">允许通知后，Meteor 才能在你开启日记提醒时发送提醒，并在后台下载更新时显示进度。此处不会自动开启提醒；你也可以跳过，之后再决定。</string>
-    <string name="onboarding_permissions_not_required">此 Android 版本不需要单独申请通知权限。日记提醒仍需你之后在设置中主动开启。</string>
+    <string name="onboarding_permissions_body">通知总开关默认开启，包含后台更新下载进度，以及每天 8:00–9:00 之间随机发送的写日记提醒；你可以随时在设置里关闭。此处只申请系统通知权限，也可以跳过，之后再到系统设置中允许。</string>
+    <string name="onboarding_permissions_not_required">此 Android 版本不需要单独申请通知权限。通知总开关默认开启，包含更新下载进度与每日写日记提醒，可随时在设置中关闭。</string>
     <string name="onboarding_allow_notifications">允许通知</string>
     <string name="onboarding_permissions_continue">继续</string>
     <string name="onboarding_skip_permission">暂不允许</string>

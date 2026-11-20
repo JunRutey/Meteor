@@ -1,8 +1,6 @@
 package com.meteor.memory.feature.settings
 
-import android.app.TimePickerDialog
 import android.os.Build
-import android.text.format.DateFormat
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -40,7 +38,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -79,11 +76,10 @@ fun SettingsScreen(
     onCheckUpdates: () -> Unit,
     onInstallUpdate: () -> Unit,
     logSizeBytes: Long,
-    reminderNotificationsAllowed: Boolean,
+    notificationsAllowed: Boolean,
     canScheduleExactAlarms: Boolean,
     notificationPermissionDenied: Boolean,
-    onReminderEnabledChanged: (Boolean) -> Unit,
-    onReminderTimeChanged: (Int) -> Unit,
+    onNotificationsEnabledChanged: (Boolean) -> Unit,
     onOpenExactAlarmSettings: () -> Unit,
     onOpenNotificationSettings: () -> Unit,
     onDismissNotificationPermissionDenied: () -> Unit,
@@ -176,14 +172,12 @@ fun SettingsScreen(
             }
 
             SettingsSection(title = stringResource(R.string.settings_section_notifications)) {
-                ReminderSettingsSection(
-                    enabled = settings.diaryReminderEnabled,
-                    timeMinutes = settings.diaryReminderTimeMinutes,
-                    reminderNotificationsAllowed = reminderNotificationsAllowed,
+                NotificationSettingsSection(
+                    enabled = settings.notificationsEnabled,
+                    notificationsAllowed = notificationsAllowed,
                     canScheduleExactAlarms = canScheduleExactAlarms,
                     permissionDenied = notificationPermissionDenied,
-                    onEnabledChange = onReminderEnabledChanged,
-                    onTimeChanged = onReminderTimeChanged,
+                    onEnabledChange = onNotificationsEnabledChanged,
                     onOpenExactAlarmSettings = onOpenExactAlarmSettings,
                     onOpenNotificationSettings = onOpenNotificationSettings,
                     onDismissPermissionDenied = onDismissNotificationPermissionDenied,
@@ -551,68 +545,30 @@ private fun ChevronIcon(previous: Boolean, tint: Color) {
 }
 
 @Composable
-private fun ReminderSettingsSection(
+private fun NotificationSettingsSection(
     enabled: Boolean,
-    timeMinutes: Int,
-    reminderNotificationsAllowed: Boolean,
+    notificationsAllowed: Boolean,
     canScheduleExactAlarms: Boolean,
     permissionDenied: Boolean,
     onEnabledChange: (Boolean) -> Unit,
-    onTimeChanged: (Int) -> Unit,
     onOpenExactAlarmSettings: () -> Unit,
     onOpenNotificationSettings: () -> Unit,
     onDismissPermissionDenied: () -> Unit,
 ) {
-    val context = LocalContext.current
-
     ToggleRow(
-        title = stringResource(R.string.settings_diary_reminder),
-        subtitle = stringResource(R.string.settings_diary_reminder_desc),
+        title = stringResource(R.string.settings_notifications_enabled),
+        subtitle = stringResource(R.string.settings_notifications_desc),
         checked = enabled,
         onCheckedChange = onEnabledChange,
     )
 
-    val hour = timeMinutes / 60
-    val minute = timeMinutes % 60
-    val time = java.util.Calendar.getInstance().apply {
-        set(java.util.Calendar.HOUR_OF_DAY, hour)
-        set(java.util.Calendar.MINUTE, minute)
-        set(java.util.Calendar.SECOND, 0)
-    }.time
-
-    Hairline()
-    SettingsRow(
-        onClick = {
-            TimePickerDialog(
-                context,
-                { _, selectedHour, selectedMinute ->
-                    onTimeChanged(selectedHour * 60 + selectedMinute)
-                },
-                hour,
-                minute,
-                DateFormat.is24HourFormat(context),
-            ).show()
-        },
-    ) {
-        TitleBlock(
-            title = stringResource(R.string.settings_diary_reminder_time),
-            subtitle = stringResource(R.string.settings_diary_reminder_time_desc),
-        )
-        Text(
-            text = DateFormat.getTimeFormat(context).format(time),
-            fontSize = 17.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.primary,
-        )
-    }
-
     if (enabled) {
-        if (!reminderNotificationsAllowed) {
+        if (!notificationsAllowed) {
             Hairline()
             SettingsRow {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = stringResource(R.string.settings_diary_reminder_notification_unavailable),
+                        text = stringResource(R.string.settings_notifications_unavailable),
                         fontSize = 13.sp,
                         lineHeight = 18.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -624,32 +580,20 @@ private fun ReminderSettingsSection(
             }
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        // Exact alarms are only surfaced when the system withholds them; the
+        // reminder still fires with inexact precision (ADR-039).
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !canScheduleExactAlarms) {
             Hairline()
             SettingsRow {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = stringResource(
-                            if (canScheduleExactAlarms) {
-                                R.string.settings_exact_alarm_available
-                            } else {
-                                R.string.settings_exact_alarm_unavailable
-                            },
-                        ),
+                        text = stringResource(R.string.settings_exact_alarm_unavailable),
                         fontSize = 13.sp,
                         lineHeight = 18.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     TextButton(onClick = onOpenExactAlarmSettings) {
-                        Text(
-                            text = stringResource(
-                                if (canScheduleExactAlarms) {
-                                    R.string.settings_open_exact_alarm_settings
-                                } else {
-                                    R.string.settings_request_exact_alarm_settings
-                                },
-                            ),
-                        )
+                        Text(text = stringResource(R.string.settings_request_exact_alarm_settings))
                     }
                 }
             }

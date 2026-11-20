@@ -83,4 +83,14 @@ class StorageLayoutTest {
     fun `images stay under legacy images person`() {
         assertTrue(relative(layout.imagesDir("Abc_123")).endsWith("数字遗产/图片/Abc_123"))
     }
+
+    @Test
+    fun `birth profile lives beside the self profile`() {
+        assertEquals("记忆档案/自己/birth_profile.bin", relative(layout.birthProfileFile()))
+    }
+
+    @Test
+    fun `settings snapshot lives in its own directory inside the archive`() {
+        assertEquals("设置/backup-settings.json", relative(layout.settingsSnapshotFile()))
+    }
 }

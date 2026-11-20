@@ -70,6 +70,59 @@ class SettingsRepositoryTest {
         assertEquals(setOf("classmate"), repository.settings.first().peopleTags)
     }
 
+    @Test
+    fun notificationsMasterSwitchUsesLegacyReminderValue() = runBlocking {
+        val store = FakePreferencesDataStore(
+            mutablePreferencesOf(booleanPreferencesKey("diary_reminder_enabled") to false),
+        )
+        val repository = SettingsRepository(store)
+
+        assertFalse(repository.settings.first().notificationsEnabled)
+
+        repository.migrateNotificationsMasterSwitch()
+
+        assertFalse(repository.settings.first().notificationsEnabled)
+    }
+
+    @Test
+    fun notificationsMasterSwitchDefaultsOnWhenLegacyKeyWasNeverTouched() = runBlocking {
+        val store = FakePreferencesDataStore(mutablePreferencesOf())
+        val repository = SettingsRepository(store)
+
+        assertTrue(repository.settings.first().notificationsEnabled)
+
+        repository.migrateNotificationsMasterSwitch()
+
+        assertTrue(repository.settings.first().notificationsEnabled)
+    }
+
+    @Test
+    fun backupSnapshotKeepsDeviceSecurityPreferences() = runBlocking {
+        val store = FakePreferencesDataStore(
+            mutablePreferencesOf(
+                booleanPreferencesKey("app_lock_enabled") to true,
+                booleanPreferencesKey("screenshot_protection_enabled") to true,
+            ),
+        )
+        val repository = SettingsRepository(store)
+
+        repository.applyBackupSnapshot(
+            AppSettings(
+                darkMode = DarkMode.DARK,
+                appLockEnabled = false,
+                screenshotProtectionEnabled = false,
+                notificationsEnabled = false,
+            ),
+        )
+
+        val restored = repository.settings.first()
+        assertEquals(DarkMode.DARK, restored.darkMode)
+        assertFalse(restored.notificationsEnabled)
+        // Device-bound security choices are never imported from a backup.
+        assertTrue(restored.appLockEnabled)
+        assertTrue(restored.screenshotProtectionEnabled)
+    }
+
     private class FakePreferencesDataStore(
         initial: Preferences,
     ) : DataStore<Preferences> {
