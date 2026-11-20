@@ -13,17 +13,16 @@ data class AgentResult(
 )
 
 /**
- * Bounded tool loop. Read tools run directly; tools marked as requiring approval
- * fail closed without an explicit decision from the app listener. Every request
- * and result is charged against a budget (ADR-027).
+ * Tool loop with no fixed step or call budget (ADR-041). Read tools run
+ * directly; tools marked as requiring approval fail closed without an explicit
+ * decision from the app listener. The loop ends when the model returns an
+ * answer without tool calls. Only the size of one tool result is capped, so a
+ * single oversized record cannot flood the context window.
  */
 class AiAgent(
     private val provider: AiProvider,
     private val tools: Toolbox,
-    private val maxSteps: Int = 6,
-    private val maxToolCallsPerStep: Int = 4,
     private val maxToolResultChars: Int = 2500,
-    private val maxTotalToolChars: Int = 24000,
     private val listener: AiChatListener? = null,
     private val providerOptions: AiProviderOptions = AiProviderOptions(),
 ) {
@@ -35,10 +34,9 @@ class AiAgent(
         val specs = tools.specs()
         var steps = 0
         var toolCalls = 0
-        var toolChars = 0
         var usage = AiUsage()
 
-        while (steps < maxSteps) {
+        while (true) {
             steps++
             val completion = if (listener == null) {
                 provider.completeWithOptions(
@@ -88,7 +86,7 @@ class AiAgent(
                 )
             }
 
-            val calls = completion.toolCalls.take(maxToolCallsPerStep)
+            val calls = completion.toolCalls
             toolCalls += calls.size
             messages += AiMessage(
                 role = AiRole.ASSISTANT,
@@ -102,7 +100,6 @@ class AiAgent(
                 .map { AiToolApproval(it.name, it.arguments) }
             val approved = approvals.isEmpty() || listener?.onToolApprovals(approvals) == true
 
-            var budgetReached = false
             for (call in calls) {
                 listener?.onToolCall(call.name, call.arguments)
                 val result = if (
@@ -114,21 +111,8 @@ class AiAgent(
                     tools.execute(call.name, call.arguments, allowedPersonId).take(maxToolResultChars)
                 }
                 listener?.onToolResult(call.name, result)
-                toolChars += result.length
                 messages += AiMessage.tool(call.id, result)
-                if (toolChars >= maxTotalToolChars) {
-                    budgetReached = true
-                    break
-                }
             }
-            if (budgetReached) messages += AiMessage.user(TOOL_BUDGET_NOTE)
         }
-
-        throw AiProviderException(0, "step-limit")
-    }
-
-    private companion object {
-        const val TOOL_BUDGET_NOTE =
-            "Tool budget reached. Answer the user now using only the evidence you already retrieved."
     }
 }

@@ -60,30 +60,33 @@ class AiAgentTest {
     }
 
     @Test
-    fun `caps tool calls per step`() = runBlocking {
+    fun `executes every tool call the model returns in one step`() = runBlocking {
         val calls = (1..10).map { AiToolCall("c$it", "search_archive", "{}") }
         val provider = FakeProvider(AiCompletion(null, calls), AiCompletion("done", emptyList()))
         val toolbox = FakeToolbox()
 
-        AiAgent(provider, toolbox, maxToolCallsPerStep = 4)
-            .run(conversation(), allowedPersonId = null)
+        val result = AiAgent(provider, toolbox).run(conversation(), allowedPersonId = null)
 
-        assertEquals(4, toolbox.calls.size)
+        assertEquals(10, toolbox.calls.size)
+        assertEquals(10, result.toolCalls)
+        assertEquals(2, result.steps)
+        assertEquals("done", result.content)
     }
 
     @Test
-    fun `gives up after the step limit instead of looping forever`() {
-        val replies = (1..10)
-            .map { AiCompletion(null, listOf(AiToolCall("c$it", "search_archive", "{}"))) }
-            .toTypedArray()
-        val agent = AiAgent(FakeProvider(*replies), FakeToolbox(), maxSteps = 3)
+    fun `keeps going past six tool rounds and still returns the final answer`() = runBlocking {
+        val replies = (1..8).map { round ->
+            AiCompletion(null, listOf(AiToolCall("c$round", "search_archive", "{}")))
+        } + AiCompletion("final answer", emptyList())
+        val provider = FakeProvider(*replies.toTypedArray())
+        val toolbox = FakeToolbox()
 
-        val error = assertThrows(
-            AiProviderException::class.java,
-            ThrowingRunnable { runBlocking { agent.run(conversation(), allowedPersonId = null) } },
-        )
+        val result = AiAgent(provider, toolbox).run(conversation(), allowedPersonId = null)
 
-        assertEquals("step-limit", error.message)
+        assertEquals(8, toolbox.calls.size)
+        assertEquals(8, result.toolCalls)
+        assertEquals(9, result.steps)
+        assertEquals("final answer", result.content)
     }
 
     @Test

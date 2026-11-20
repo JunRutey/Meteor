@@ -67,7 +67,6 @@ fun SettingsScreen(
     onVerboseLoggingChanged: (Boolean) -> Unit,
     onOpenAbout: () -> Unit,
     onOpenDonate: () -> Unit,
-    onOpenChangelog: () -> Unit,
     onOpenBirthDate: () -> Unit,
     onAutoCheckForUpdatesChanged: (Boolean) -> Unit,
     updateStatusText: String,
@@ -269,11 +268,6 @@ fun SettingsScreen(
                 ChevronRow(
                     title = stringResource(R.string.settings_about_donate),
                     onClick = onOpenDonate,
-                )
-                Hairline()
-                ChevronRow(
-                    title = stringResource(R.string.settings_about_changelog),
-                    onClick = onOpenChangelog,
                 )
             }
         }

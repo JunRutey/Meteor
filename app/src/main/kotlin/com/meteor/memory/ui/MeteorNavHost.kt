@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContentTransitionScope
@@ -65,8 +66,16 @@ import com.meteor.memory.feature.people.PersonRecordRow
 import com.meteor.memory.feature.settings.SettingsScreen
 import com.meteor.memory.feature.settings.R as SettingsR
 import com.meteor.memory.ui.about.AboutScreen
+import com.meteor.memory.ui.about.ALIPAY_DONATE_URL
 import com.meteor.memory.ui.about.ChangelogScreen
+import com.meteor.memory.ui.about.ChangelogVersionScreen
+import com.meteor.memory.ui.about.DISCUSSIONS_URL
 import com.meteor.memory.ui.about.DonateScreen
+import com.meteor.memory.ui.about.FeedbackScreen
+import com.meteor.memory.ui.about.ISSUES_URL
+import com.meteor.memory.ui.about.REPOSITORY_URL
+import com.meteor.memory.ui.about.SUPPORT_EMAIL
+import com.meteor.memory.ui.about.mailtoUrl
 import com.meteor.memory.ui.ai.AiBlocked
 import com.meteor.memory.ui.ai.AiViewModel
 import com.meteor.memory.ui.ai.PersonaViewModel
@@ -121,7 +130,10 @@ private const val ROUTE_DIARY_EDIT = "diary/edit"
 private const val ROUTE_DIARY_VIEW = "diary/view/{date}"
 private const val ROUTE_ABOUT = "about"
 private const val ROUTE_ABOUT_DONATE = "about/donate"
+private const val ROUTE_ABOUT_FEEDBACK = "about/feedback"
 private const val ROUTE_ABOUT_CHANGELOG = "about/changelog"
+private const val ROUTE_ABOUT_CHANGELOG_VERSION = "about/changelog/{version}"
+private const val ARG_CHANGELOG_VERSION = "version"
 private const val ROUTE_CHATS = "chats"
 private const val ROUTE_DIAGNOSTICS = "diagnostics"
 private const val ROUTE_SEARCH = "search"
@@ -136,6 +148,9 @@ private const val ROUTE_PERSONA = "ai/persona/{personId}"
 
 /** Read-only preview of the diary written for [date]. */
 private fun diaryViewRoute(date: LocalDate): String = "diary/view/$date"
+
+private fun changelogVersionRoute(number: String): String =
+    "$ROUTE_ABOUT_CHANGELOG/${Uri.encode(number)}"
 
 private val MAIN_FADE_ROUTES = setOf(
     ROUTE_SETTINGS,
@@ -161,12 +176,12 @@ private fun fadeThroughEnterTransition(): EnterTransition =
 private fun fadeThroughExitTransition(): ExitTransition =
     fadeOut(tween(durationMillis = SETTINGS_EXIT_MS, easing = FastOutLinearInEasing))
 
-/** Shown in the About section; must match README.md. */
-private const val REPOSITORY_URL = "https://github.com/JunRutey/Meteor"
-
-private fun Context.openInBrowser(url: String) {
-    runCatching {
+private fun Context.openInBrowser(url: String, failureMessage: String? = null) {
+    val opened = runCatching {
         startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }.isSuccess
+    if (!opened && failureMessage != null) {
+        Toast.makeText(this, failureMessage, Toast.LENGTH_SHORT).show()
     }
 }
 
@@ -759,7 +774,6 @@ fun MeteorNavHost(
                 onVerboseLoggingChanged = viewModel::setVerboseLogging,
                 onOpenAbout = { navController.navigate(ROUTE_ABOUT) },
                 onOpenDonate = { navController.navigate(ROUTE_ABOUT_DONATE) },
-                onOpenChangelog = { navController.navigate(ROUTE_ABOUT_CHANGELOG) },
                 onOpenBirthDate = { navController.navigate(ROUTE_BIRTH_DATE) },
                 onAutoCheckForUpdatesChanged = viewModel::setAutoCheckForUpdates,
                 updateStatusText = updateStatusText(updateState),
@@ -863,19 +877,53 @@ fun MeteorNavHost(
 
         composable(ROUTE_ABOUT) {
             val context = LocalContext.current
+            val linkUnavailable = stringResource(R.string.about_link_unavailable)
             AboutScreen(
                 versionName = versionName,
-                onOpenRepository = { context.openInBrowser(REPOSITORY_URL) },
+                onOpenChangelog = { navController.navigate(ROUTE_ABOUT_CHANGELOG) },
+                onOpenRepository = { context.openInBrowser(REPOSITORY_URL, linkUnavailable) },
+                onOpenDiscussions = { context.openInBrowser(DISCUSSIONS_URL, linkUnavailable) },
+                onOpenFeedback = { navController.navigate(ROUTE_ABOUT_FEEDBACK) },
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(ROUTE_ABOUT_FEEDBACK) {
+            val context = LocalContext.current
+            val linkUnavailable = stringResource(R.string.about_link_unavailable)
+            FeedbackScreen(
+                onOpenIssues = { context.openInBrowser(ISSUES_URL, linkUnavailable) },
+                onOpenEmail = { context.openInBrowser(mailtoUrl(SUPPORT_EMAIL), linkUnavailable) },
                 onBack = { navController.popBackStack() },
             )
         }
 
         composable(ROUTE_ABOUT_DONATE) {
-            DonateScreen(onBack = { navController.popBackStack() })
+            val context = LocalContext.current
+            val openFailed = stringResource(R.string.about_donate_open_failed)
+            DonateScreen(
+                onOpenAlipay = { context.openInBrowser(ALIPAY_DONATE_URL, openFailed) },
+                onBack = { navController.popBackStack() },
+            )
         }
 
         composable(ROUTE_ABOUT_CHANGELOG) {
-            ChangelogScreen(onBack = { navController.popBackStack() })
+            ChangelogScreen(
+                onOpenVersion = { number ->
+                    navController.navigate(changelogVersionRoute(number))
+                },
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(
+            route = ROUTE_ABOUT_CHANGELOG_VERSION,
+            arguments = listOf(navArgument(ARG_CHANGELOG_VERSION) { type = NavType.StringType }),
+        ) { entry ->
+            ChangelogVersionScreen(
+                versionNumber = entry.arguments?.getString(ARG_CHANGELOG_VERSION).orEmpty(),
+                onBack = { navController.popBackStack() },
+            )
         }
 
         composable(ROUTE_CHATS) {
@@ -1027,7 +1075,6 @@ private fun aiErrorText(code: Int, detail: String?): String? {
         detail == "not-configured" || detail == "missing-api-key" -> stringResource(AiR.string.ai_need_config)
         detail == "empty-response" -> stringResource(AiR.string.ai_error_empty)
         detail == "content-filter" -> stringResource(AiR.string.ai_error_content_filter)
-        detail == "step-limit" -> stringResource(AiR.string.ai_error_step_limit)
         detail == "tts-unavailable" -> stringResource(AiR.string.ai_speech_unavailable)
         detail == "tts-failed" -> stringResource(AiR.string.ai_speech_failed)
         code == 401 || code == 403 -> stringResource(AiR.string.ai_error_auth)
