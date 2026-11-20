@@ -6,24 +6,29 @@
 密钥由设备 Keystore 保管，不可导出、不上传、无云端同步。AI 是可选能力，默认关闭，
 仅接入官方 DeepSeek。
 
-> 当前版本 **v1.1.1**。功能与隐私的细节见 [AI 功能与隐私](docs/AI.md) 与
+> 当前版本 **v1.2.0**。功能与隐私的细节见 [AI 功能与隐私](docs/AI.md) 与
 > [加密与安全](docs/SECURITY.md)，设计取舍见 [ADR](docs/adr)，
 > 历次发布见 [发布说明](docs/releases)。
 
 ## 功能概览
 
-- **日记与编辑**：Markdown 加粗、图片、链接；图片按天分组浏览。
+- **日记与编辑**：Markdown 加粗、图片、链接。
   详见 [ADR-019](docs/adr/ADR-019-editor-keeps-bold-images-links.md)、
   [ADR-021](docs/adr/ADR-021-editor-is-plain-text.md)
+- **图片与相册**：图片按天分组浏览，单张查看器居中显示，支持分享与删除。详见
+  [ADR-037](docs/adr/ADR-037-image-viewer-share-delete.md)
+- **冷启动**：先居中显示应用图标，再进入锁屏、引导或首页。详见
+  [ADR-038](docs/adr/ADR-038-cold-start-splash.md)
 - **全文搜索**：CJK 分词，支持单字与心情标签检索，FTS5 → FTS4 → LIKE 运行时降级。
   详见 [ADR-015](docs/adr/ADR-015-cjk-bigram-tokenizer.md)、
   [ADR-016](docs/adr/ADR-016-fts-runtime-backend-fallback.md)
 - **心情日历**：心情按天记录，一天最多三个，可点选与取消，日历着色。详见
   [ADR-017](docs/adr/ADR-017-mood-as-record-and-hand-rolled-calendar.md)、
   [ADR-035](docs/adr/ADR-035-multi-mood-per-day.md)
-- **人物档案**：加密 `profile.md`，支持自定义标签、编辑与删除。详见
+- **人物档案**：加密 `profile.md`，支持自定义标签的添加、选择与删除，以及编辑与删除人物。详见
   [ADR-014](docs/adr/ADR-014-person-directory-uses-person-id.md)、
-  [ADR-034](docs/adr/ADR-034-person-deletion-custom-tags-and-detail-redesign.md)
+  [ADR-034](docs/adr/ADR-034-person-deletion-custom-tags-and-detail-redesign.md)、
+  [ADR-036](docs/adr/ADR-036-custom-tag-deletion.md)
 - **生辰与提醒**：实时年龄、公历/农历生日倒计时；每日写日记提醒。详见
   [ADR-033](docs/adr/ADR-033-daily-reminder-and-notification-channels.md)
 - **AI 助手**（默认关闭）：DeepSeek 官方 API、本机档案工具、联网搜索、文件输入、
@@ -84,6 +89,7 @@
 | v0.10 | AI 联网搜索、文件输入、加密多会话 | ✅ 已发布 |
 | v1.0 | AI 对话重做、朗读与累计用量、人物删除与自定义标签、DeepSeek 收敛 | ✅ 已发布 |
 | v1.1 | 诊断日志覆盖、系统文件选择器导出、出生日期滚轮打磨 | ✅ 已发布 |
+| v1.2 | 自定义标签删除、图片查看器分享与删除、冷启动图标过渡 | ✅ 已发布 |
 
 ## 加密与隐私
 
