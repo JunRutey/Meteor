@@ -40,6 +40,20 @@ class StorageLayout(private val root: File) {
     fun imagesDir(personId: String?): File =
         File(root, "$LEGACY/$IMAGES/${requirePerson(personId)}")
 
+    /**
+     * Birth date ciphertext lives beside the self profile so a plaintext export
+     * includes it (ADR-040). It keeps the `.bin` suffix: [RecordScanner] only
+     * treats `.md` files as records, so this file is never parsed as one.
+     */
+    fun birthProfileFile(): File = File(File(root, "$ARCHIVE/$SELF"), BIRTH_PROFILE)
+
+    /**
+     * Encrypted settings snapshot written before a backup and applied after an
+     * import (ADR-040). It sits inside the archive root so the unchanged
+     * [StorageRouter] export/import path carries it automatically.
+     */
+    fun settingsSnapshotFile(): File = File(File(root, SETTINGS), SETTINGS_SNAPSHOT)
+
     fun legacyRoot(): File = File(root, LEGACY)
 
     private fun personDir(personId: String?): String =
@@ -67,6 +81,13 @@ class StorageLayout(private val root: File) {
         const val TIMELINE = "时光轴"
         const val MOOD = "心情"
         const val DIARY = "日记"
+
+        /** Encrypted birth profile stored next to the self profile (ADR-040). */
+        const val BIRTH_PROFILE = "birth_profile.bin"
+
+        /** App-level, non-record data inside the archive root. */
+        const val SETTINGS = "设置"
+        const val SETTINGS_SNAPSHOT = "backup-settings.json"
 
         const val DAY_PATTERN = "yyyy-MM-dd"
 

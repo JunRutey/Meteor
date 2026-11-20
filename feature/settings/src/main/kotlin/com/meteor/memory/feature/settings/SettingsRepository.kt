@@ -216,6 +216,48 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         }
     }
 
+    /** One read for the backup snapshot instead of one per field (ADR-040). */
+    suspend fun backupSnapshot(): AppSettings = settings.first()
+
+    /**
+     * Applies a restored snapshot in a single DataStore edit (ADR-040).
+     *
+     * Device-bound security preferences are left untouched: app lock and
+     * screenshot protection stay whatever this device has. AI consent and the
+     * API key are also not restored — consent must be given on this device and
+     * the key never leaves the SecretStore. The provider is coerced to the
+     * DeepSeek-only preset this release supports.
+     */
+    suspend fun applyBackupSnapshot(snapshot: AppSettings) = store.edit { prefs ->
+        prefs[KEY_DARK_MODE] = snapshot.darkMode.name
+        prefs[KEY_DYNAMIC_COLOR] = snapshot.dynamicColor
+        prefs[KEY_ANIMATIONS] = snapshot.animationsEnabled
+        prefs[KEY_FONT_SCALE] = snapshot.fontScale.name
+        prefs[KEY_VERBOSE_LOGGING] = snapshot.verboseLogging
+        prefs[KEY_AUTO_BACKUP] = snapshot.autoBackupEnabled
+        prefs[KEY_BACKUP_RETENTION] = snapshot.backupRetention.coerceIn(1, 30)
+        prefs[KEY_AUTO_CHECK_FOR_UPDATES] = snapshot.autoCheckForUpdates
+        prefs[KEY_NOTIFICATIONS_ENABLED] = snapshot.notificationsEnabled
+        prefs[KEY_AI_ENABLED] = snapshot.aiEnabled
+        prefs[KEY_AI_PROVIDER] = snapshot.aiProvider
+            .takeIf { it == AppSettings.DEFAULT_AI_PROVIDER }
+            ?: AppSettings.DEFAULT_AI_PROVIDER
+        prefs[KEY_AI_MODEL] = snapshot.aiModel.trim()
+        prefs[KEY_AI_REASONING] = snapshot.aiReasoning.trim()
+        prefs[KEY_AI_WRITE] = snapshot.aiWriteEnabled
+        prefs[KEY_AI_WRITE_DIARY] = snapshot.aiWriteDiary
+        prefs[KEY_AI_WRITE_PEOPLE] = snapshot.aiWritePeople
+        prefs[KEY_PEOPLE_TAGS] = snapshot.peopleTags.take(MAX_PEOPLE_TAGS).toSet()
+        prefs[KEY_AI_TTS_VOICE] = snapshot.aiTtsVoice.trim()
+        prefs[KEY_AI_TOTAL_PROMPT_TOKENS] = snapshot.aiTotalPromptTokens
+        prefs[KEY_AI_TOTAL_COMPLETION_TOKENS] = snapshot.aiTotalCompletionTokens
+        prefs[KEY_AI_TOTAL_CACHE_HIT_TOKENS] = snapshot.aiTotalCacheHitTokens
+        prefs[KEY_AI_TOTAL_CACHE_MISS_TOKENS] = snapshot.aiTotalCacheMissTokens
+        prefs[KEY_AI_TOTAL_ELAPSED_MS] = snapshot.aiTotalElapsedMs
+        prefs[KEY_AI_TOTAL_REQUESTS] = snapshot.aiTotalRequests
+        prefs[KEY_ONBOARDING_COMPLETED] = snapshot.onboardingCompleted
+    }
+
     private companion object {
         val KEY_DARK_MODE = stringPreferencesKey("dark_mode")
         val KEY_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")

@@ -96,6 +96,33 @@ class SettingsRepositoryTest {
         assertTrue(repository.settings.first().notificationsEnabled)
     }
 
+    @Test
+    fun backupSnapshotKeepsDeviceSecurityPreferences() = runBlocking {
+        val store = FakePreferencesDataStore(
+            mutablePreferencesOf(
+                booleanPreferencesKey("app_lock_enabled") to true,
+                booleanPreferencesKey("screenshot_protection_enabled") to true,
+            ),
+        )
+        val repository = SettingsRepository(store)
+
+        repository.applyBackupSnapshot(
+            AppSettings(
+                darkMode = DarkMode.DARK,
+                appLockEnabled = false,
+                screenshotProtectionEnabled = false,
+                notificationsEnabled = false,
+            ),
+        )
+
+        val restored = repository.settings.first()
+        assertEquals(DarkMode.DARK, restored.darkMode)
+        assertFalse(restored.notificationsEnabled)
+        // Device-bound security choices are never imported from a backup.
+        assertTrue(restored.appLockEnabled)
+        assertTrue(restored.screenshotProtectionEnabled)
+    }
+
     private class FakePreferencesDataStore(
         initial: Preferences,
     ) : DataStore<Preferences> {
