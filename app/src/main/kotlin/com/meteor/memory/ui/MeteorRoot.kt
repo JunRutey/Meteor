@@ -91,6 +91,11 @@ fun MeteorRoot(versionName: String, onContentReady: () -> Unit = {}) {
                     viewModel.onReturnToForeground()
                     viewModel.refreshLockAvailability()
                 }
+                // Some OEM share sheets are dialogs, so they only pause us and
+                // never produce ON_STOP; coming back then only produces ON_RESUME.
+                // Both events call the same idempotent handler, which is what
+                // closes the "own system screen" window in that case.
+                Lifecycle.Event.ON_RESUME -> viewModel.onReturnToForeground()
 
                 else -> Unit
             }

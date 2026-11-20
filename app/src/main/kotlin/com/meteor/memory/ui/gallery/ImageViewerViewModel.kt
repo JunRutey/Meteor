@@ -75,8 +75,9 @@ class ImageViewerViewModel @Inject constructor(
      * Scope: plaintext held **in memory only**, for as long as this viewer lives.
      * Nothing is written to disk here (the share copy under `cacheDir/share` is
      * the only file, and it is pruned), and the field is cleared as soon as the
-     * share is handed over, fails, or the image is deleted. It is a short-lived
-     * hand-off buffer, not a cache: never re-use it across viewers.
+     * share is handed over, fails, the image is deleted, or the view model is
+     * cleared. It is a short-lived hand-off buffer, not a cache: never re-use it
+     * across viewers.
      */
     @Volatile
     private var loadedBytes: ByteArray? = null
@@ -137,6 +138,11 @@ class ImageViewerViewModel @Inject constructor(
                 val request = withContext(Dispatchers.IO) { buildShareRequest() }
                 if (request == null) {
                     appLog.warn(TAG, "share failed: image unavailable")
+                    // Both failure branches must drop the plaintext here: with no
+                    // request there is nothing for the screen's LaunchedEffect to
+                    // hand over, so onShareLaunchedFailed() never runs and this is
+                    // the last place that can release it.
+                    releaseLoadedBytes()
                     _state.update {
                         it.copy(sharing = false, error = ImageViewerError.ShareFailed)
                     }
@@ -151,6 +157,7 @@ class ImageViewerViewModel @Inject constructor(
                 // OutOfMemoryError or a provider-side RuntimeException from
                 // FileProvider — has to become the in-place ShareFailed message.
                 appLog.warn(TAG, "share failed", error)
+                releaseLoadedBytes()
                 _state.update {
                     it.copy(sharing = false, error = ImageViewerError.ShareFailed)
                 }
@@ -182,15 +189,31 @@ class ImageViewerViewModel @Inject constructor(
         loadedBytes = null
     }
 
+    /**
+     * "Look but never share" is the common case: nothing above runs, so the
+     * plaintext must not outlive the viewer waiting for a GC pass.
+     *
+     * The bytes themselves cannot be wiped — a `ByteArray` cannot be zeroed once
+     * it has been handed to the cipher, and the JVM may have copied it — so all
+     * this guarantees is that this view model stops holding the reference.
+     */
+    override fun onCleared() {
+        releaseLoadedBytes()
+        super.onCleared()
+    }
+
     private class Loaded(val bitmap: ImageBitmap?, val dateLabel: String?)
 
     private fun load(): Loaded {
         val bytes = imageStore.load(token) ?: return Loaded(null, null)
-        // Kept for [buildShareRequest] so a share does not decrypt the file again.
-        loadedBytes = bytes
         val options = sampledImageOptions(bytes, MAX_IMAGE_EDGE)
         val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
             ?.asImageBitmap()
+        // Kept for [buildShareRequest] so a share does not decrypt the file again;
+        // only when there is a bitmap to share, because `enabled = bitmap != null`
+        // makes the button dead otherwise, and a failed decode is exactly the
+        // low-memory moment where holding the whole file buys nothing.
+        if (bitmap != null) loadedBytes = bytes
         val modifiedAt = imageStore.list().firstOrNull { it.token == token }?.modifiedAt
         val dateLabel = modifiedAt?.let { instant ->
             DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM)

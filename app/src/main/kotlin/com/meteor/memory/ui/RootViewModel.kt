@@ -303,11 +303,15 @@ class RootViewModel @Inject constructor(
             // the gate is skipped; the index rebuilds lazily on the next search.
             // This runs on every background transition — including the one the
             // share sheet causes — so an uncaught throw here would crash the app
-            // the moment the sheet opens.
-            runCatching { searchService.clearAttachmentIndex() }
-                .onFailure { failure ->
-                    appLog.warn(TAG, "attachment index clear failed", failure)
-                }
+            // the moment the sheet opens. Cancellation is rethrown rather than
+            // logged: it means the scope is going away, not that the clear failed.
+            try {
+                searchService.clearAttachmentIndex()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                appLog.warn(TAG, "attachment index clear failed", failure)
+            }
             if (wasEnabled) {
                 appLog.info(TAG, "entered background, lock re-armed")
                 _locked.value = true
@@ -326,13 +330,20 @@ class RootViewModel @Inject constructor(
     }
 
     /**
-     * Called on ON_START: the activity is the foreground app again.
+     * Called when the activity is the foreground app again — driven by **both**
+     * ON_START and ON_RESUME.
      *
      * Always closes the "own system screen" window, so the next background trip
-     * arms the gate normally. And if the trip was long, it applies the re-lock
-     * that the window skipped: a person who left through the share sheet by
-     * pressing Home never produces another ON_STOP, and the archive would stay
-     * unlocked for the rest of the process lifetime.
+     * arms the gate normally. ON_RESUME is what covers dialog-style share sheets
+     * (some OEMs inject them): they only pause us, so coming back produces
+     * ON_RESUME without any ON_START, and the window would otherwise stay armed
+     * and swallow the next real background trip. Calling this from both events is
+     * idempotent — it returns immediately once [backgroundSince] is 0.
+     *
+     * And if the trip was long, it applies the re-lock that the window skipped: a
+     * person who left through the share sheet by pressing Home never produces
+     * another ON_STOP, and the archive would stay unlocked for the rest of the
+     * process lifetime.
      */
     fun onReturnToForeground() {
         val since = backgroundSince
@@ -419,9 +430,16 @@ class RootViewModel @Inject constructor(
         const val ONBOARDING_TAG = "Onboarding"
 
         /**
-         * How long a screen we started ourselves may keep the gate open. Only
-         * has to survive until the matching ON_START normally; the cap exists so
-         * a lost lifecycle event degrades to "locks a little later", not "never".
+         * How long a screen we started ourselves may keep the gate open.
+         *
+         * Deliberately generous: the ON_STOP we are covering is delivered only
+         * once the share sheet is actually on screen, so the gap between
+         * `startActivity` and that callback is the sheet's cold start — hundreds
+         * of milliseconds to a few seconds, longer on a loaded device. A tight
+         * window would simply reopen the original bug on slow devices. The case
+         * where the sheet never stops us at all (dialog-style OEM panels) is
+         * closed from the other side: [onReturnToForeground] runs on ON_RESUME,
+         * so the window is dropped as soon as we are visible again.
          */
         const val SYSTEM_SCREEN_GRACE_MS = 60_000L
 
