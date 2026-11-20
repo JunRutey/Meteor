@@ -85,4 +85,37 @@ class ChineseLunarCalendarTest {
         assertNotNull(months.firstOrNull { it.month == 2 && !it.leapMonth })
         assertNotNull(months.firstOrNull { it.month == 2 && it.leapMonth })
     }
+
+    @Test
+    fun repeatedCallsAcrossInstancesReturnTheSameConversion() {
+        // The year cache is process-wide (ADR-044): the cold-start prewarm, the
+        // life clock and the picker construct separate calendars, so two
+        // instances must agree on every cached year they share.
+        val first = ChineseLunarCalendar()
+        val second = ChineseLunarCalendar()
+        val expected = LocalDate.of(2024, 2, 10)
+
+        repeat(3) {
+            assertEquals(expected, first.toGregorian(2024, 1, 1, false))
+            assertEquals(expected, second.toGregorian(2024, 1, 1, false))
+        }
+        assertEquals(first.monthsInYear(2023), second.monthsInYear(2023))
+    }
+
+    @Test
+    fun repeatedNextLunarBirthdayIsStable() {
+        val profile = BirthProfile.Lunar(
+            year = 2011,
+            month = 2,
+            day = 25,
+            leapMonth = false,
+            gregorianDate = LocalDate.of(2011, 3, 29),
+        )
+        val now = java.time.Instant.parse("2026-11-14T01:48:36Z")
+        val zone = java.time.ZoneId.of("Asia/Shanghai")
+
+        val expected = LocalDate.of(2027, 4, 1)
+        assertEquals(expected, calendar.nextBirthday(profile, now, zone))
+        assertEquals(expected, ChineseLunarCalendar().nextBirthday(profile, now, zone))
+    }
 }

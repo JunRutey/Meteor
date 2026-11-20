@@ -2,7 +2,8 @@
 
 - 状态：已接受
 - 日期：2026-11-20
-- 关联：ADR-024（edge-to-edge 与 insets）、ADR-031（隐藏桌面图标）
+- 关联：ADR-024（edge-to-edge 与 insets）、ADR-031（隐藏桌面图标）、
+  ADR-044（冷启动预热农历生日）
 
 ## 背景
 
@@ -103,6 +104,10 @@ override fun onCreate(savedInstanceState: Bundle?) {
 - 另外加一个 5 秒安全阀：若根状态因为异常始终不解析，也放行 splash，避免永久卡在
   启动画面。放行只代表「可以显示 Shell」，**不绕过应用锁**：`RootViewModel.locked`
   仍决定渲染锁屏、未解锁时不会出现任何明文内容。
+- ADR-044 之后，这个条件还额外等待 `lifePrewarm.isReady`，并用
+  `splashTimedOut` 让安全阀同时放行预热等待。完整的
+  `setKeepOnScreenCondition` 与预热细节见 [ADR-044](ADR-044-startup-life-prewarm.md)；
+  上面保留的是引入预热前的版本。
 
 ### 4. `MeteorRoot` 在根状态解析后回调一次
 
@@ -146,6 +151,8 @@ if (!contentReadyReported && locked != null && onboardingGate != OnboardingGate.
 
 - 启动图标的形状/裁剪由系统 splash 决定；Android 12 以下由 core-splashscreen 尽力
   回填，效果与 Android 12+ 不保证逐像素一致。
+- 专用图标是静态位图，不会随 `@mipmap/ic_launcher` 自动更新；品牌标志若改版，
+  需要重新生成 `drawable-xxxhdpi/splash_icon.png`（尺寸与安全区见 2.1）。
 - 5 秒安全阀是兜底：如果 DataStore 真的损坏，用户最多看 5 秒图标，然后看到已有的
   引导加载失败页，而不是永久停在启动画面。
 - splash 期间窗口仍设置 `FLAG_SECURE`（`MainActivity` 在 `super.onCreate` 后立即加），

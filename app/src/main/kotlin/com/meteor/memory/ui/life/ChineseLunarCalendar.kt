@@ -16,14 +16,6 @@ data class LunarMonth(
 
 class ChineseLunarCalendar {
 
-    /**
-     * Enumerating a lunar year costs roughly one ICU field read per Gregorian
-     * day, and the picker asks for the same year over and over while the user
-     * scrolls. Caching keeps a year to a single enumeration; the bound keeps
-     * the memory constant if someone drags through the whole year list.
-     */
-    private val yearCache = ConcurrentHashMap<Int, List<LunarDay>>()
-
     fun monthsInYear(year: Int): List<LunarMonth> =
         daysInYear(year)
             .groupBy { it.month to it.leapMonth }
@@ -70,11 +62,15 @@ class ChineseLunarCalendar {
 
     private fun daysInYear(year: Int): List<LunarDay> {
         require(year in BirthProfile.MIN_BIRTH_YEAR..MAX_LUNAR_YEAR)
-        yearCache[year]?.let { return it }
+        sharedYearCache[year]?.let { return it }
         val computed = enumerateDays(year)
-        if (yearCache.size >= MAX_CACHED_YEARS) yearCache.clear()
-        yearCache[year] = computed
-        return computed
+        // Keep the bound but only evict under the lock: the cache is shared by
+        // every caller on every thread now, and a torn "size check then clear"
+        // could drop the year another thread is about to read.
+        synchronized(sharedYearCache) {
+            if (sharedYearCache.size >= MAX_CACHED_YEARS) sharedYearCache.clear()
+            return sharedYearCache[year] ?: computed.also { sharedYearCache[year] = it }
+        }
     }
 
     private fun enumerateDays(year: Int): List<LunarDay> {
@@ -129,7 +125,15 @@ class ChineseLunarCalendar {
 
     private companion object {
         const val MAX_LUNAR_YEAR = 2200
+
+        // Enumerating a lunar year costs roughly one ICU field read per
+        // Gregorian day, and the prewarm, the life clock and the picker all ask
+        // for the same years. The cache is process-wide so one instance's work
+        // is visible to the others; the bound keeps memory constant if someone
+        // drags through the whole year list.
         const val MAX_CACHED_YEARS = 8
+        val sharedYearCache = ConcurrentHashMap<Int, List<LunarDay>>()
+
         val CHINA_ZONE_ID: ZoneId = ZoneId.of("Asia/Shanghai")
         val CHINA_TIME_ZONE: TimeZone = TimeZone.getTimeZone("Asia/Shanghai")
     }
