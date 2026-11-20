@@ -29,6 +29,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -61,6 +62,14 @@ fun MarkdownField(
     missingImages: Set<String> = emptySet(),
     resolveImage: (String) -> ImageBitmap? = { null },
     onActivate: (String) -> Unit = {},
+    /**
+     * Reports whether the plain-text field currently holds focus.
+     *
+     * The person editor uses it to shrink its identity card while the keyboard
+     * is open (ADR-046). Default is a no-op so the diary editor is unaffected.
+     * Preview replaces the field, so losing the field always reports `false`.
+     */
+    onFocusChanged: (Boolean) -> Unit = {},
     /** 日记页把「预览」放进页头胶囊时传 false，工具栏只留插入类动作。 */
     showPreviewAction: Boolean = true,
 ) {
@@ -73,6 +82,12 @@ fun MarkdownField(
     var draft by remember { mutableStateOf(text) }
     LaunchedEffect(text) {
         if (text != draft) draft = text
+    }
+
+    // Preview removes the text field, so nothing can keep focus. Report the blur
+    // explicitly instead of leaving a stale "focused" flag in the host screen.
+    LaunchedEffect(previewing) {
+        if (previewing) onFocusChanged(false)
     }
 
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -109,7 +124,10 @@ fun MarkdownField(
                     draft = value
                     onTextChanged(value)
                 },
-                modifier = Modifier.fillMaxWidth().weight(1f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .onFocusChanged { onFocusChanged(it.isFocused) },
                 enabled = enabled,
                 textStyle = MaterialTheme.typography.bodyLarge.copy(
                     fontSize = 17.sp,

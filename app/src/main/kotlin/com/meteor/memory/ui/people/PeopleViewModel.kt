@@ -1,5 +1,6 @@
 package com.meteor.memory.ui.people
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meteor.memory.core.log.AppLog
@@ -9,6 +10,7 @@ import com.meteor.memory.core.storage.Relation
 import com.meteor.memory.feature.people.PeopleTagLibrary
 import com.meteor.memory.feature.settings.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,6 +25,7 @@ import javax.inject.Inject
 class PeopleViewModel @Inject constructor(
     private val personQueries: PersonQueries,
     private val settingsRepository: SettingsRepository,
+    @ApplicationContext private val context: Context,
     private val appLog: AppLog,
 ) : ViewModel() {
 
@@ -43,6 +46,11 @@ class PeopleViewModel @Inject constructor(
             _people.value = entries
 
             val stored = withContext(Dispatchers.IO) {
+                // ADR-045: seed the three built-in labels once so the create
+                // dialog has chips on first use. The marker makes this a no-op
+                // after that, so a deleted default never comes back.
+                runCatching { settingsRepository.seedPeopleTags(defaultPeopleTags(context)) }
+                    .onFailure { appLog.warn(TAG, "people tag seed failed", it) }
                 runCatching { settingsRepository.settings.first().peopleTags }
                     .getOrDefault(emptySet<String>())
             }

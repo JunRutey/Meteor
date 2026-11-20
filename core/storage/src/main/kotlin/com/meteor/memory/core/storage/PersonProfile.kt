@@ -26,7 +26,8 @@ enum class Relation(val code: String) {
  * ("家人", "朋友", "绝交的朋友") and user-authored text ("同事", "大学同学").
  * [relation] is still written as the first selected built-in relation for AI
  * tools and old readers; a legacy file that only has `relation:` is folded back
- * into the tag chips by the UI.
+ * into the tag chips by the UI. Since ADR-045 the built-in labels are ordinary
+ * deletable tags too; [relation] is only their derived, machine-readable record.
  */
 data class PersonProfile(
     val displayName: String,

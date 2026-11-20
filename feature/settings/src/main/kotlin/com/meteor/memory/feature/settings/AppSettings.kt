@@ -61,9 +61,10 @@ data class AppSettings(
     /** Sub-grant of [aiWriteEnabled]: create/update person profiles (ADR-030). */
     val aiWritePeople: Boolean = true,
     /**
-     * Custom tags the user added in the people editor. They are remembered
-     * separately from any one profile so the tag chip stays available after the
-     * person is deleted or when creating a new person.
+     * Labels the user remembered in the people editor: the three built-in
+     * relation labels (seeded once, ADR-045) plus any user-authored tag. They
+     * are remembered separately from any one profile so the chip stays
+     * available after the person is deleted or when creating a new person.
      */
     val peopleTags: Set<String> = emptySet(),
     /** Read-aloud voice id: `stella` (female) or `tide` (male). */

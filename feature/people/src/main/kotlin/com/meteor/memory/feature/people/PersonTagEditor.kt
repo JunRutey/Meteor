@@ -42,14 +42,16 @@ import com.meteor.memory.core.storage.Relation
 /**
  * The tag row used by both the create dialog and the edit screen.
  *
- * The three archive buckets stay structured ([Relation]) because the AI tools
- * and the filesystem schema depend on their stable codes. One relation can be
- * selected at a time (tap it again to clear), while custom tags are remembered
- * in settings and can be toggled independently — selecting several is allowed.
+ * Since ADR-045 every label behaves the same way: the three former relation
+ * buckets (家人 / 朋友 / 绝交的朋友) are ordinary tags, rendered with the same
+ * [CustomTagChip] and the same ×/confirm deletion flow as user-authored labels.
+ * [Relation] is not selected through special chips anymore; it is derived from
+ * whichever built-in label is selected so `profile.md` keeps its `relation:`
+ * field for AI tools and old readers.
  *
- * Built-in relation chips deliberately have no delete affordance: they are
- * part of the file format. Custom chips carry a small × that removes the label
- * from the remembered library (and from this selection) after confirmation.
+ * 未分类 stays a special chip: it clears the whole selection and has no delete
+ * affordance. Custom chips carry a small × that removes the label from the
+ * remembered library (and from this selection) after confirmation.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -66,23 +68,22 @@ internal fun PersonTagEditor(
     var pendingDelete by remember { mutableStateOf<String?>(null) }
 
     val noneLabel = relationLabel(null)
-    val relationChoices = Relation.entries.map { it to relationLabel(it) }
-    val builtInLabels = (listOf(noneLabel) + relationChoices.map { it.second }).toSet()
+    val relationLabels = Relation.entries.associateWith { relationLabel(it) }
+    // 未分类 is an action, never a tag: it must not be deleted or remembered.
+    val nonDeletableLabels = setOf(noneLabel)
+    val legacyRelationLabel = relation?.let { relationLabels[it] }
 
-    // A profile written before this change stores relation separately; fold it
-    // into the selected chip set so built-in tags behave exactly like custom ones.
-    val selectedRelationLabel = relationChoices.firstOrNull { it.first == relation }?.second
-    val selectedTags = if (selectedRelationLabel != null) {
-        (tags + selectedRelationLabel).distinct()
-    } else {
-        tags.distinct()
-    }
-    val visibleCustomTags = (availableTags + tags)
-        .filter { it.isNotBlank() && it !in builtInLabels }
-        .distinct()
+    // Legacy profiles store `relation:` without the matching tag; fold it into
+    // the selected set so the built-in label is shown and deletable as a tag.
+    val selectedTags = PeopleTagLibrary.selectedTags(tags, legacyRelationLabel)
+    val visibleTags = PeopleTagLibrary.visibleTags(
+        available = availableTags,
+        selected = selectedTags,
+        excluded = nonDeletableLabels,
+    )
 
     fun derivedRelation(selected: List<String>): Relation? =
-        relationChoices.firstOrNull { (_, label) -> label in selected }?.first
+        PeopleTagLibrary.relationFor(selected, relationLabels)
 
     fun applySelection(selected: List<String>) {
         onSelectionChanged(selected.distinct(), derivedRelation(selected))
@@ -112,16 +113,7 @@ internal fun PersonTagEditor(
                 role = Role.RadioButton,
                 onClick = { applySelection(emptyList()) },
             )
-            relationChoices.forEach { (_, label) ->
-                val selected = label in selectedTags
-                TagChip(
-                    label = label,
-                    selected = selected,
-                    role = Role.Checkbox,
-                    onClick = { toggleTag(label, selected) },
-                )
-            }
-            visibleCustomTags.forEach { tag ->
+            visibleTags.forEach { tag ->
                 val selected = tag in selectedTags
                 CustomTagChip(
                     label = tag,
@@ -149,7 +141,7 @@ internal fun PersonTagEditor(
             onDismiss = { showAddDialog = false },
             onConfirm = { raw ->
                 val value = PersonProfileCodec.normalizeTags(listOf(raw)).firstOrNull()
-                if (value != null && value !in builtInLabels) {
+                if (value != null && value !in nonDeletableLabels) {
                     onAddTag(value)
                     if (value !in selectedTags && selectedTags.size < PersonProfileCodec.MAX_TAGS) {
                         applySelection(selectedTags + value)
