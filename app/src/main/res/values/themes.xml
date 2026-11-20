@@ -21,10 +21,19 @@
         paper-coloured window while the root state (lock preference + onboarding
         gate) is still resolving; `MainActivity` releases it once the shell knows
         what it is allowed to render. The post theme is the normal app theme.
+
+        A dedicated 1152px (288dp @xxxhdpi) transparent icon, not
+        `@mipmap/ic_launcher`: the adaptive launcher foreground is only 432px and
+        carries a white rounded-square background, which both blurs when the
+        splash scales it up and puts a white card on the dark paper background.
+        The splash icon is drawn inside the system's 192dp circle, so this
+        artwork keeps its content within the safe zone. No
+        `windowSplashScreenIconBackgroundColor`: the logo is transparent on
+        purpose, and a solid circle behind it would only add a second disc.
     -->
     <style name="Theme.Meteor.Splash" parent="Theme.SplashScreen">
         <item name="windowSplashScreenBackground">@color/splash_background</item>
-        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon</item>
         <item name="postSplashScreenTheme">@style/Theme.Meteor</item>
     </style>
 </resources>

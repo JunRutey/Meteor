@@ -26,6 +26,7 @@ data class BirthDateSettingsState(
 class BirthDateSettingsViewModel @Inject constructor(
     private val profileStore: BirthdayProfileStore,
     private val appLog: AppLog,
+    private val prewarm: LifeStartupPrewarm,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(BirthDateSettingsState())
@@ -53,6 +54,10 @@ class BirthDateSettingsViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) { profileStore.save(profile) }
+                // Keep the cold-start snapshot in step with the new profile so
+                // the life tab and a later process start do not fall back to
+                // the old birthday (ADR-044).
+                prewarm.updateAfterSave(profile)
                 _state.value = _state.value.copy(
                     saving = false,
                     initialProfile = profile,
