@@ -155,22 +155,25 @@ class ArchiveToolsTest {
     }
 
     private object NoMoods : MoodQueries {
-        override fun range(from: LocalDate, to: LocalDate): Map<LocalDate, Mood> = emptyMap()
+        override fun range(from: LocalDate, to: LocalDate): Map<LocalDate, List<Mood>> = emptyMap()
 
-        override fun read(date: LocalDate): Mood? = null
+        override fun read(date: LocalDate): List<Mood> = emptyList()
 
-        override fun save(date: LocalDate, mood: Mood) = Unit
+        override fun save(date: LocalDate, moods: List<Mood>) = Unit
     }
 
-    private class RecordingMoods : MoodQueries {
-        var saved: Pair<LocalDate, Mood>? = null
+    private class RecordingMoods(
+        private val days: Map<LocalDate, List<Mood>> = emptyMap(),
+    ) : MoodQueries {
+        var saved: Pair<LocalDate, List<Mood>>? = null
 
-        override fun range(from: LocalDate, to: LocalDate): Map<LocalDate, Mood> = emptyMap()
+        override fun range(from: LocalDate, to: LocalDate): Map<LocalDate, List<Mood>> =
+            days.filterKeys { it in from..to }
 
-        override fun read(date: LocalDate): Mood? = null
+        override fun read(date: LocalDate): List<Mood> = days[date].orEmpty()
 
-        override fun save(date: LocalDate, mood: Mood) {
-            saved = date to mood
+        override fun save(date: LocalDate, moods: List<Mood>) {
+            saved = date to moods
         }
     }
 
@@ -240,7 +243,32 @@ class ArchiveToolsTest {
         assertEquals(listOf("happy", "calm", "excited", "tired", "sad", "angry", "emm"), moodValues)
         assertFalse(archiveTools.requiresApproval(ArchiveTools.TOOL_SET_MOOD))
         assertTrue(JSONObject(result).optBoolean("saved"))
-        assertEquals(date to Mood.EMM, moods.saved)
+        assertEquals(date to listOf(Mood.EMM), moods.saved)
+    }
+
+    @Test
+    fun `read moods returns every mood of a day`() {
+        val day = LocalDate.parse("2026-03-08")
+        val moods = RecordingMoods(
+            mapOf(day to listOf(Mood.HAPPY, Mood.CALM, Mood.EXCITED)),
+        )
+        val archiveTools = tools(moods = moods)
+
+        val result = archiveTools.execute(
+            ArchiveTools.TOOL_READ_MOODS,
+            """{"from":"$day","to":"$day"}""",
+            allowedPersonId = null,
+        )
+
+        val rows = JSONArray(result)
+        assertEquals(1, rows.length())
+        val row = rows.getJSONObject(0)
+        assertEquals(day.toString(), row.getString("date"))
+        val codes = row.getJSONArray("moods")
+        assertEquals(
+            listOf("happy", "calm", "excited"),
+            (0 until codes.length()).map(codes::getString),
+        )
     }
 
     @Test

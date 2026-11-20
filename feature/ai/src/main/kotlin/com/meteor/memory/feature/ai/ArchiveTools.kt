@@ -400,11 +400,11 @@ class ArchiveTools(
         if (end < start) return errorJson("bad-range")
 
         val array = JSONArray()
-        moodQueries.range(start, end).entries.sortedBy { it.key }.forEach { (date, mood) ->
+        moodQueries.range(start, end).entries.sortedBy { it.key }.forEach { (date, moods) ->
             array.put(
                 JSONObject().apply {
                     put("date", date.toString())
-                    put("mood", mood.code)
+                    put("moods", JSONArray(moods.map { it.code }))
                 },
             )
         }
@@ -505,7 +505,7 @@ class ArchiveTools(
     private fun setMood(date: String, mood: String): String {
         val day = parseDate(date) ?: return errorJson("bad-date")
         val value = Mood.fromCode(mood.trim().lowercase()) ?: return errorJson("bad-mood")
-        moodQueries.save(day, value)
+        moodQueries.save(day, listOf(value))
         return JSONObject().put("saved", true)
             .put("date", day.toString())
             .put("mood", value.code)
@@ -780,7 +780,7 @@ class ArchiveTools(
             ),
             AiToolSpec(
                 name = TOOL_READ_MOODS,
-                description = "读取一段时间的每日心情：可用 from/to（YYYY-MM-DD），或用 days 表示最近 N 天。",
+                description = "读取一段时间的每日心情：每天返回 moods 数组（最多 ${Mood.MAX_PER_DAY} 个），可用 from/to（YYYY-MM-DD），或用 days 表示最近 N 天。",
                 parametersJson = """{"type":"object","properties":{"from":{"type":"string"},"to":{"type":"string"},"days":{"type":"integer"}},"required":[]}""",
             ),
             AiToolSpec(
@@ -821,7 +821,7 @@ class ArchiveTools(
             ),
             AiToolSpec(
                 name = TOOL_SET_MOOD,
-                description = "设置某一天的心情，不需要额外确认。可选值：happy/calm/excited/tired/sad/angry/emm。",
+                description = "设置某一天的心情，会覆盖当天已有的心情，不需要额外确认。可选值：happy/calm/excited/tired/sad/angry/emm。",
                 parametersJson = """{"type":"object","properties":{"date":{"type":"string"},"mood":{"type":"string","enum":["happy","calm","excited","tired","sad","angry","emm"]}},"required":["date","mood"]}""",
             ),
             AiToolSpec(

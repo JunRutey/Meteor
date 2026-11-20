@@ -4,13 +4,14 @@ import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.meteor.memory.core.storage.ImageStore
-import com.meteor.memory.core.storage.StorageLayout
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.DiaryQueries
+import com.meteor.memory.core.storage.Document
+import com.meteor.memory.core.storage.ImageStore
 import com.meteor.memory.core.storage.Mood
 import com.meteor.memory.core.storage.MoodQueries
 import com.meteor.memory.core.storage.RecordType
+import com.meteor.memory.core.storage.StorageLayout
 import com.meteor.memory.core.storage.StorageRouter
 import com.meteor.memory.feature.editor.ImageCompressor
 import com.meteor.memory.ui.search.SearchService
@@ -21,6 +22,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.LocalDate
@@ -50,8 +53,8 @@ class CalendarViewModel @Inject constructor(
     private val _homeTab = MutableStateFlow(savedStateHandle.get<Int>(KEY_HOME_TAB) ?: 0)
     val homeTab: StateFlow<Int> = _homeTab.asStateFlow()
 
-    private val _moods = MutableStateFlow<Map<LocalDate, Mood>>(emptyMap())
-    val moods: StateFlow<Map<LocalDate, Mood>> = _moods.asStateFlow()
+    private val _moods = MutableStateFlow<Map<LocalDate, List<Mood>>>(emptyMap())
+    val moods: StateFlow<Map<LocalDate, List<Mood>>> = _moods.asStateFlow()
 
     /** Days with a diary on disk — drives the ✓✓ next to the selected date. */
     private val _diaryDates = MutableStateFlow<Set<LocalDate>>(emptySet())
@@ -59,6 +62,12 @@ class CalendarViewModel @Inject constructor(
 
     private val _imageDates = MutableStateFlow<Set<LocalDate>>(emptySet())
     val imageDates: StateFlow<Set<LocalDate>> = _imageDates.asStateFlow()
+
+    /**
+     * Serializes mood read-modify-write cycles. Without it two quick taps read
+     * the same old selection and the second save silently drops the first mood.
+     */
+    private val moodWriteMutex = Mutex()
 
     init {
         refresh()
@@ -104,22 +113,36 @@ class CalendarViewModel @Inject constructor(
         }
     }
 
-    fun setMood(date: LocalDate, mood: Mood) {
+    /**
+     * Toggles one mood on [date]: tapping an already selected mood removes it,
+     * a new mood is appended while the day holds fewer than [Mood.MAX_PER_DAY].
+     */
+    fun toggleMood(date: LocalDate, mood: Mood) {
         viewModelScope.launch {
-            val stored = withContext(Dispatchers.IO) {
-                moodQueries.save(date, mood)
+            moodWriteMutex.withLock {
                 runCatching {
-                    storageRouter.read(storageRouter.route(null, RecordType.MOOD, date))
-                }.getOrNull()
-            }
-            appLog.debug(TAG, "mood saved $date=${mood.code}")
-            _selectedDate.value = date
-            load()
-            // Mood rows are searchable by their label, so a new mood has to
-            // reach the index now instead of waiting for the next launch.
-            if (stored != null) {
-                runCatching { searchService.indexDocument(stored) }
-                    .onFailure { appLog.warn(TAG, "mood index update failed", it) }
+                    val current = withContext(Dispatchers.IO) { moodQueries.read(date) }
+                    val next = Mood.toggled(current, mood)
+                    // A fourth mood is refused here as well as in the UI.
+                    if (next != current) {
+                        val stored = withContext(Dispatchers.IO) {
+                            moodQueries.save(date, next)
+                            moodRecord(date)
+                        }
+                        appLog.debug(TAG, "moods saved $date=${next.map { it.code }}")
+                        _selectedDate.value = date
+                        _moods.value = readMoods(_month.value)
+                        // Mood rows are searchable by their label, so the index
+                        // has to change now instead of waiting for the next launch.
+                        runCatching {
+                            if (stored == null) {
+                                searchService.removeRecord(moodSourcePath(date))
+                            } else {
+                                searchService.indexDocument(stored)
+                            }
+                        }.onFailure { appLog.warn(TAG, "mood index update failed", it) }
+                    }
+                }.onFailure { appLog.warn(TAG, "mood save failed", it) }
             }
         }
     }
@@ -127,10 +150,6 @@ class CalendarViewModel @Inject constructor(
     /** 一次性刷新：已写日记的日期 + 当天有图的日期。 */
     fun refresh() {
         viewModelScope.launch {
-            val current = _month.value
-            val moods = withContext(Dispatchers.IO) {
-                moodQueries.range(current.atDay(1), current.atEndOfMonth())
-            }
             val diary = withContext(Dispatchers.IO) {
                 runCatching { diaryQueries.dates().toSet() }.getOrDefault(emptySet())
             }
@@ -141,9 +160,13 @@ class CalendarViewModel @Inject constructor(
                         .toSet()
                 }.getOrDefault(emptySet())
             }
-            _moods.value = moods
             _diaryDates.value = diary
             _imageDates.value = images
+            moodWriteMutex.withLock {
+                // Re-read the month inside the lock: the user may have swiped
+                // while the diary/image IO above was running.
+                _moods.value = readMoods(_month.value)
+            }
         }
     }
 
@@ -173,15 +196,29 @@ class CalendarViewModel @Inject constructor(
 
     private fun load() {
         viewModelScope.launch {
-            loadMoods(_month.value)
+            moodWriteMutex.withLock {
+                _moods.value = readMoods(_month.value)
+            }
         }
     }
 
-    private suspend fun loadMoods(current: YearMonth) {
-        _moods.value = withContext(Dispatchers.IO) {
+    private suspend fun readMoods(current: YearMonth): Map<LocalDate, List<Mood>> =
+        withContext(Dispatchers.IO) {
             moodQueries.range(current.atDay(1), current.atEndOfMonth())
         }
+
+    /** The saved record, or null when the day no longer has any mood. */
+    private fun moodRecord(date: LocalDate): Document? {
+        val file = storageRouter.route(null, RecordType.MOOD, date)
+        if (!file.isFile) return null
+        return runCatching { storageRouter.read(file) }.getOrNull()
     }
+
+    /** Archive-relative path used by the search index. */
+    private fun moodSourcePath(date: LocalDate): String =
+        storageRouter.route(null, RecordType.MOOD, date)
+            .relativeTo(File(context.filesDir, StorageLayout.ROOT_NAME))
+            .invariantSeparatorsPath
 
     private companion object {
         const val TAG = "Calendar"

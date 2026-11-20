@@ -18,8 +18,9 @@
 - **全文搜索**：CJK 分词，支持单字与心情标签检索，FTS5 → FTS4 → LIKE 运行时降级。
   详见 [ADR-015](docs/adr/ADR-015-cjk-bigram-tokenizer.md)、
   [ADR-016](docs/adr/ADR-016-fts-runtime-backend-fallback.md)
-- **心情日历**：心情按天记录，日历着色。详见
-  [ADR-017](docs/adr/ADR-017-mood-as-record-and-hand-rolled-calendar.md)
+- **心情日历**：心情按天记录，一天最多三个，可点选与取消，日历着色。详见
+  [ADR-017](docs/adr/ADR-017-mood-as-record-and-hand-rolled-calendar.md)、
+  [ADR-035](docs/adr/ADR-035-multi-mood-per-day.md)
 - **人物档案**：加密 `profile.md`，支持自定义标签、编辑与删除。详见
   [ADR-014](docs/adr/ADR-014-person-directory-uses-person-id.md)、
   [ADR-034](docs/adr/ADR-034-person-deletion-custom-tags-and-detail-redesign.md)

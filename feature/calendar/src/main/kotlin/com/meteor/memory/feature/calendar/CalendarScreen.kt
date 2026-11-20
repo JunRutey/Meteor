@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -27,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -51,6 +53,9 @@ import java.time.YearMonth
 import java.time.format.TextStyle
 import java.util.Locale
 
+/** Dim unselected moods once the day already holds [Mood.MAX_PER_DAY]. */
+private const val MOOD_DISABLED_ALPHA = 0.35f
+
 /** Emoji shown on a day cell and in the picker. Presentation only. */
 fun Mood.emoji(): String = when (this) {
     Mood.HAPPY -> "😆"
@@ -66,6 +71,7 @@ fun Mood.emoji(): String = when (this) {
  * 首页「心情日历」：月份网格 + 本月统计 + 选中日卡片 + 快捷入口。
  *
  * 日历仍然手写（ADR-017）：格子只有几十个，手写比引入日历库更可控。
+ * 一天最多选 [Mood.MAX_PER_DAY] 个心情：点一次选中，再点一次取消（ADR-035）。
  * 视觉以设计稿 `docs/design/home.html` 为准：52dp 圆角日格、淡蓝统计条、
  * 20dp 圆角卡片、44dp 胶囊按钮与三宫格快捷入口。
  */
@@ -74,14 +80,14 @@ fun CalendarScreen(
     appName: String,
     month: YearMonth,
     today: LocalDate,
-    moods: Map<LocalDate, Mood>,
+    moods: Map<LocalDate, List<Mood>>,
     selectedDate: LocalDate?,
     diaryDates: Set<LocalDate>,
     imageDates: Set<LocalDate>,
     onPreviousMonth: () -> Unit,
     onNextMonth: () -> Unit,
     onSelectDate: (LocalDate) -> Unit,
-    onPickMood: (LocalDate, Mood) -> Unit,
+    onToggleMood: (LocalDate, Mood) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenDiary: (LocalDate) -> Unit,
     onEditDiary: (LocalDate) -> Unit,
@@ -139,10 +145,10 @@ fun CalendarScreen(
                 DayCard(
                     date = date,
                     today = today,
-                    mood = moods[date],
+                    moods = moods[date].orEmpty(),
                     hasDiary = date in diaryDates,
                     hasImages = date in imageDates,
-                    onPickMood = { mood -> onPickMood(date, mood) },
+                    onToggleMood = { mood -> onToggleMood(date, mood) },
                     onRightClick = {
                         if (date in diaryDates) onOpenDiary(date) else onEditDiary(date)
                     },
@@ -328,7 +334,7 @@ private fun WeekdayHeader() {
 private fun MonthGrid(
     month: YearMonth,
     today: LocalDate,
-    moods: Map<LocalDate, Mood>,
+    moods: Map<LocalDate, List<Mood>>,
     selectedDate: LocalDate?,
     onSelectDate: (LocalDate) -> Unit,
 ) {
@@ -345,7 +351,7 @@ private fun MonthGrid(
                         if (date != null) {
                             DayCell(
                                 date = date,
-                                mood = moods[date],
+                                moods = moods[date].orEmpty(),
                                 isFuture = date.isAfter(today),
                                 isSelected = date == selectedDate,
                                 onClick = { onSelectDate(date) },
@@ -362,7 +368,7 @@ private fun MonthGrid(
 @Composable
 private fun DayCell(
     date: LocalDate,
-    mood: Mood?,
+    moods: List<Mood>,
     isFuture: Boolean,
     isSelected: Boolean,
     onClick: () -> Unit,
@@ -392,8 +398,20 @@ private fun DayCell(
             fontWeight = FontWeight.Medium,
             color = numberColor,
         )
-        if (mood != null) {
-            Text(text = mood.emoji(), fontSize = 13.sp, lineHeight = 16.sp)
+        if (moods.isNotEmpty()) {
+            Row(horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+                moods.forEach { mood ->
+                    Text(
+                        text = mood.emoji(),
+                        fontSize = when (moods.size) {
+                            1 -> 13.sp
+                            2 -> 11.sp
+                            else -> 9.sp
+                        },
+                        lineHeight = 12.sp,
+                    )
+                }
+            }
         }
     }
 }
@@ -402,7 +420,7 @@ private fun DayCell(
 private fun MonthSummary(
     month: YearMonth,
     today: LocalDate,
-    moods: Map<LocalDate, Mood>,
+    moods: Map<LocalDate, List<Mood>>,
     diaryDates: Set<LocalDate>,
 ) {
     val recordedDays = remember(month, moods, diaryDates) {
@@ -438,10 +456,10 @@ private fun MonthSummary(
 private fun DayCard(
     date: LocalDate,
     today: LocalDate,
-    mood: Mood?,
+    moods: List<Mood>,
     hasDiary: Boolean,
     hasImages: Boolean,
-    onPickMood: (Mood) -> Unit,
+    onToggleMood: (Mood) -> Unit,
     onRightClick: () -> Unit,
     onLeftClick: () -> Unit,
 ) {
@@ -452,6 +470,7 @@ private fun DayCard(
         date.dayOfMonth,
         date.dayOfWeek.getDisplayName(TextStyle.SHORT, locale),
     )
+    val atLimit = moods.size >= Mood.MAX_PER_DAY
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -480,15 +499,19 @@ private fun DayCard(
                 )
                 if (hasDiary && !date.isAfter(today)) DoubleCheckMark()
             }
-            if (mood != null && !date.isAfter(today)) {
+            if (moods.isNotEmpty() && !date.isAfter(today)) {
+                val separator = stringResource(R.string.calendar_mood_separator)
+                val labels = moods.map { it.label() }
                 Text(
                     text = if (date == today) {
-                        stringResource(R.string.calendar_mood_today, mood.label())
+                        stringResource(R.string.calendar_mood_today, labels.joinToString(separator))
                     } else {
-                        mood.label()
+                        labels.joinToString(separator)
                     },
+                    modifier = Modifier.padding(start = 8.dp),
                     fontSize = 15.sp,
                     color = MaterialTheme.colorScheme.secondary,
+                    textAlign = TextAlign.End,
                 )
             }
         }
@@ -510,10 +533,15 @@ private fun DayCard(
             ) {
                 Mood.entries.forEach { candidate ->
                     val label = candidate.label()
-                    val selected = candidate == mood
+                    val selected = candidate in moods
+                    // A fourth mood is not selectable; deselect first. The
+                    // caption below explains the cap so the dimmed state reads
+                    // as "full", not "broken".
+                    val enabled = selected || !atLimit
                     Box(
                         modifier = Modifier
                             .size(40.dp)
+                            .alpha(if (enabled) 1f else MOOD_DISABLED_ALPHA)
                             .background(
                                 color = if (selected) {
                                     MaterialTheme.colorScheme.primaryContainer
@@ -533,7 +561,12 @@ private fun DayCard(
                                     Modifier
                                 },
                             )
-                            .clickable { onPickMood(candidate) }
+                            .toggleable(
+                                value = selected,
+                                enabled = enabled,
+                                role = Role.Checkbox,
+                                onValueChange = { onToggleMood(candidate) },
+                            )
                             .semantics { contentDescription = label },
                         contentAlignment = Alignment.Center,
                     ) {
@@ -541,6 +574,22 @@ private fun DayCard(
                     }
                 }
             }
+
+            Text(
+                text = if (moods.isEmpty()) {
+                    stringResource(R.string.calendar_mood_hint, Mood.MAX_PER_DAY)
+                } else {
+                    stringResource(
+                        R.string.calendar_mood_hint_selected,
+                        moods.size,
+                        Mood.MAX_PER_DAY,
+                    )
+                },
+                modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
 
             val leftLabel = if (hasImages) {
                 R.string.calendar_view_images
