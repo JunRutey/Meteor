@@ -1027,7 +1027,6 @@ private fun aiErrorText(code: Int, detail: String?): String? {
         detail == "not-configured" || detail == "missing-api-key" -> stringResource(AiR.string.ai_need_config)
         detail == "empty-response" -> stringResource(AiR.string.ai_error_empty)
         detail == "content-filter" -> stringResource(AiR.string.ai_error_content_filter)
-        detail == "step-limit" -> stringResource(AiR.string.ai_error_step_limit)
         detail == "tts-unavailable" -> stringResource(AiR.string.ai_speech_unavailable)
         detail == "tts-failed" -> stringResource(AiR.string.ai_speech_failed)
         code == 401 || code == 403 -> stringResource(AiR.string.ai_error_auth)
