@@ -348,7 +348,12 @@ fun MediaViewerScreen(
 
                     GalleryKind.VIDEO -> VideoPlayerCard(
                         ref = ref,
-                        modifier = Modifier.fillMaxSize(),
+                        // fillMaxWidth, not fillMaxSize: the card carries its own
+                        // 16:9 aspectRatio, but a caller that pins both width and
+                        // height wins — the modifier resolves the fixed height
+                        // first, so the card stretched to the whole viewer area
+                        // and the 16:9 video sat letterboxed inside it.
+                        modifier = Modifier.fillMaxWidth(),
                     )
 
                     GalleryKind.AUDIO -> AudioPlayerCard(
