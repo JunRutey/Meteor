@@ -128,7 +128,7 @@ class PlaintextBackupModule(
      * media path first produces a complete, correct archive in the cache and then
      * replaces just the `数字遗产/媒体/` part of it.
      */
-    private fun writeArchive(dest: Uri): ArchiveStats {
+    private suspend fun writeArchive(dest: Uri): ArchiveStats {
         val store = mediaStore
         if (store == null || !hasMedia()) {
             val (files, bytes) = countStoredFiles()
@@ -152,7 +152,7 @@ class PlaintextBackupModule(
      * Imports an archive, restoring media when — and only when — it carries a
      * manifest. Archives without one take the original code path byte for byte.
      */
-    private fun readArchive(src: Uri): ImportResult {
+    private suspend fun readArchive(src: Uri): ImportResult {
         val store = mediaStore ?: return legacyImport(src)
 
         // ZipFile needs random access, but a picked archive arrives as a stream.
@@ -175,7 +175,7 @@ class PlaintextBackupModule(
     }
 
     /** Records first, then media — both from the same verified archive file. */
-    private fun restoreWithMedia(
+    private suspend fun restoreWithMedia(
         source: File,
         importer: MediaArchiveImporter,
         manifest: String,
@@ -197,7 +197,7 @@ class PlaintextBackupModule(
     }
 
     /** The pre-ADR-057 import path, untouched. */
-    private fun legacyImport(src: Uri): ImportResult {
+    private suspend fun legacyImport(src: Uri): ImportResult {
         val entries = countArchiveEntries(src)
         router.importFrom(src)
         return ImportResult.Success(fileCount = entries, skipped = 0)
