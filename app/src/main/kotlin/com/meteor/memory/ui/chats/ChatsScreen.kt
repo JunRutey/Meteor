@@ -45,6 +45,7 @@ fun ChatsScreen(
     onDelete: (ChatAttachmentRow) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    showHeader: Boolean = true,
 ) {
     val context = LocalContext.current
     var personMenuExpanded by remember { mutableStateOf(false) }
@@ -58,16 +59,18 @@ fun ChatsScreen(
         modifier = modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                text = stringResource(R.string.chats_title),
-                style = MaterialTheme.typography.headlineSmall,
-            )
-            TextButton(onClick = onBack) { Text(text = stringResource(R.string.chats_back)) }
+        if (showHeader) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = stringResource(R.string.chats_title),
+                    style = MaterialTheme.typography.headlineSmall,
+                )
+                TextButton(onClick = onBack) { Text(text = stringResource(R.string.chats_back)) }
+            }
         }
 
         Surface(

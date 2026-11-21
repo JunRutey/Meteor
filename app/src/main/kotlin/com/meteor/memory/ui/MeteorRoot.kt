@@ -27,6 +27,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.meteor.memory.R
+import com.meteor.memory.feature.media.ProvideMediaHost
 import com.meteor.memory.feature.settings.DarkMode
 import com.meteor.memory.feature.settings.FontScale
 import com.meteor.memory.ui.life.OnboardingFlowScreen
@@ -141,12 +142,17 @@ fun MeteorRoot(versionName: String, onContentReady: () -> Unit = {}) {
                     false -> when (onboardingGate) {
                         OnboardingGate.LOADING -> StartupPlaceholder()
                         OnboardingGate.REQUIRED -> OnboardingFlowScreen()
-                        OnboardingGate.COMPLETE -> MeteorNavHost(
-                            versionName = versionName,
-                            animationsEnabled = settings.animationsEnabled,
-                            aiEnabled = settings.aiEnabled,
-                            onSystemScreenOpened = viewModel::beginSystemTransition,
-                        )
+                        // Media composables live deep inside the feature modules and
+                        // take no store parameter (ADR-052 §4), so the archive handles
+                        // are installed once here as a CompositionLocal.
+                        OnboardingGate.COMPLETE -> ProvideMediaHost(viewModel.mediaHost) {
+                            MeteorNavHost(
+                                versionName = versionName,
+                                animationsEnabled = settings.animationsEnabled,
+                                aiEnabled = settings.aiEnabled,
+                                onSystemScreenOpened = viewModel::beginSystemTransition,
+                            )
+                        }
 
                         OnboardingGate.FAILED -> OnboardingLoadFailureScreen(
                             onRetry = viewModel::retryOnboardingState,

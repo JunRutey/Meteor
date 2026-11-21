@@ -78,12 +78,20 @@ data class AppSettings(
     val aiTotalRequests: Int = 0,
     /** Whether the first-launch introduction and birth-date setup were completed. */
     val onboardingCompleted: Boolean = false,
+    /**
+     * Album grid ordering (ADR-054). Stored as the core-storage
+     * `AlbumSortMode` name (`SOURCE_DATE` | `IMPORT_DATE`); the feature-gallery
+     * UI owns its own enum and `:app` maps between them. Defaults to
+     * `IMPORT_DATE` so an upgrade keeps the exact ordering it always had.
+     */
+    val albumSortMode: String = DEFAULT_ALBUM_SORT_MODE,
 ) {
     companion object {
         const val DEFAULT_BACKUP_RETENTION = 7
         const val DEFAULT_AI_PROVIDER = "deepseek"
         const val DEFAULT_AI_REASONING = "auto"
         const val DEFAULT_AI_TTS_VOICE = "stella"
+        const val DEFAULT_ALBUM_SORT_MODE = "IMPORT_DATE"
     }
 }
 

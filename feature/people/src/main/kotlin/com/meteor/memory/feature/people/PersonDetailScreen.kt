@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meteor.memory.core.storage.Relation
 import com.meteor.memory.feature.editor.MarkdownPreview
+import com.meteor.memory.feature.editor.MediaBlockState
 
 /** One aggregated record shown on a person's page. */
 data class PersonRecordRow(
@@ -92,6 +93,29 @@ fun PersonDetailScreen(
     onDelete: () -> Unit = {},
     deleting: Boolean = false,
     deleteFailed: Boolean = false,
+    /** Owner of the media section; empty keeps the "add media" action inert. */
+    personId: String = "",
+    /** Pictures, videos and audio filed under this person (ADR-052 §5 E). */
+    media: List<PersonMediaRow> = emptyList(),
+    /**
+     * Opens the shared `media/{ref}` viewer/player route. The host owns the
+     * navigation; this screen never learns what a ref means.
+     */
+    onOpenMedia: (String) -> Unit = {},
+    /** Asks the host to open the in-app media picker for this person. */
+    onAddMedia: (String) -> Unit = {},
+    /** Asks the album repository to delete one media file (after confirmation). */
+    onDeleteMedia: (String) -> Unit = {},
+    mediaImporting: Boolean = false,
+    mediaImportSummary: PersonMediaImportSummary? = null,
+    mediaLoadFailed: Boolean = false,
+    mediaDeleteFailed: Boolean = false,
+    /**
+     * Tells the body renderer how to draw one `meteor://media/<id>` reference
+     * (ADR-052 §5 D, ADR-055). Default draws the neutral "still decrypting"
+     * frame, so a caller that does not resolve media sees no broken cards.
+     */
+    resolveMedia: (String) -> MediaBlockState = { MediaBlockState.Pending },
 ) {
     var confirmingDelete by rememberSaveable { mutableStateOf(false) }
 
@@ -147,9 +171,24 @@ fun PersonDetailScreen(
                             modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
                             resolveImage = resolveImage,
                             onActivate = onActivate,
+                            resolveMedia = resolveMedia,
                         )
                     }
                 }
+            }
+
+            item {
+                PersonMediaSection(
+                    personId = personId,
+                    rows = media,
+                    onOpenMedia = onOpenMedia,
+                    onAddMedia = onAddMedia,
+                    onDeleteMedia = onDeleteMedia,
+                    importing = mediaImporting,
+                    importSummary = mediaImportSummary,
+                    loadFailed = mediaLoadFailed,
+                    deleteFailed = mediaDeleteFailed,
+                )
             }
 
             item {
@@ -453,7 +492,7 @@ private fun SectionCard(
 }
 
 @Composable
-private fun SectionHeader(
+internal fun SectionHeader(
     title: String,
     action: String,
     onAction: () -> Unit,
@@ -536,7 +575,7 @@ private fun RecordCard(
 }
 
 @Composable
-private fun EmptyCard(message: String) {
+internal fun EmptyCard(message: String) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
@@ -553,7 +592,7 @@ private fun EmptyCard(message: String) {
 }
 
 @Composable
-private fun StatusLine(message: String, error: Boolean = false) {
+internal fun StatusLine(message: String, error: Boolean = false) {
     Text(
         text = message,
         modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),

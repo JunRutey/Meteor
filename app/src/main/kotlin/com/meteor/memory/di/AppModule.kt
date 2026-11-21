@@ -22,6 +22,7 @@ import com.meteor.memory.core.crypto.androidKeystoreSecretStore
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.log.FileAppLogger
 import com.meteor.memory.core.log.LogExporter
+import com.meteor.memory.core.storage.AlbumRepository
 import com.meteor.memory.core.storage.AiChatStore
 import com.meteor.memory.core.storage.ArchiveRecordDeleter
 import com.meteor.memory.core.storage.AttachmentStore
@@ -29,7 +30,9 @@ import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.storage.EncryptedAiChatStore
 import com.meteor.memory.core.storage.EncryptedAttachmentStore
 import com.meteor.memory.core.storage.EncryptedImageStore
+import com.meteor.memory.core.storage.EncryptedMediaStore
 import com.meteor.memory.core.storage.ImageStore
+import com.meteor.memory.core.storage.MediaStore
 import com.meteor.memory.core.storage.MoodQueries
 import com.meteor.memory.core.storage.PersonQueries
 import com.meteor.memory.core.storage.PrivateArchiveRecordDeleter
@@ -286,9 +289,16 @@ object AppModule {
         mirror: ExternalBackupMirror,
         settingsSnapshotStore: SettingsSnapshotStore,
         birthdayProfileStore: BirthdayProfileStore,
+        mediaStore: MediaStore,
         appLog: AppLog,
     ): BackupModule = SettingsSnapshotBackupModule(
-        delegate = PlaintextBackupModule(context, storageRouter, retentionProvider, mirror = mirror),
+        delegate = PlaintextBackupModule(
+            context = context,
+            router = storageRouter,
+            retentionProvider = retentionProvider,
+            mirror = mirror,
+            mediaStore = mediaStore,
+        ),
         settingsSnapshotStore = settingsSnapshotStore,
         birthdayProfileStore = birthdayProfileStore,
         appLog = appLog,
@@ -328,6 +338,25 @@ object AppModule {
         rootDir = File(context.filesDir, StorageLayout.ROOT_NAME),
         crypto = crypto,
     )
+
+    /** Unified media storage for images, video and audio (ADR-052). */
+    @Provides
+    @Singleton
+    fun provideMediaStore(
+        @ApplicationContext context: Context,
+        crypto: FileCrypto,
+    ): MediaStore = EncryptedMediaStore(
+        rootDir = File(context.filesDir, StorageLayout.ROOT_NAME),
+        crypto = crypto,
+    )
+
+    /** Album view over both the new media store and legacy images (ADR-052). */
+    @Provides
+    @Singleton
+    fun provideAlbumRepository(
+        mediaStore: MediaStore,
+        imageStore: ImageStore,
+    ): AlbumRepository = AlbumRepository(mediaStore, imageStore)
 
     @Provides
     @Singleton

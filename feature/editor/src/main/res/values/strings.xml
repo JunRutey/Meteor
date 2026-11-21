@@ -23,4 +23,20 @@
     <string name="editor_image_description_title">图片描述</string>
     <string name="editor_image_description_hint">写一句说明，例如「毕业那天的合影」</string>
     <string name="editor_image_description_confirm">保存</string>
+
+    <!-- ADR-052 / ADR-055: 视频、音频与新媒体引用 -->
+    <string name="editor_insert_media">插入</string>
+    <string name="editor_insert_image">图片</string>
+    <string name="editor_insert_video">视频</string>
+    <string name="editor_insert_audio">音频</string>
+    <string name="editor_media_video">［视频］</string>
+    <string name="editor_media_audio">［音频］</string>
+    <string name="editor_media_missing">无法显示</string>
+    <string name="editor_media_pending">正在载入…</string>
+    <string name="editor_media_inserting">正在处理媒体…</string>
+    <string name="editor_remove_media">删除媒体</string>
+    <string name="editor_remove_media_title">删除这段媒体？</string>
+    <string name="editor_remove_media_body">正文里的引用会一起删除，已加密的文件保留在相册里，可以随时再插回来。</string>
+    <string name="editor_media_description_add">添加描述</string>
+    <string name="editor_media_description_title">媒体描述</string>
 </resources>

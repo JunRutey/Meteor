@@ -140,6 +140,30 @@ class SettingsRepositoryTest {
     }
 
     @Test
+    fun albumSortModeDefaultsToImportDate() = runBlocking {
+        val store = FakePreferencesDataStore(mutablePreferencesOf())
+        val repository = SettingsRepository(store)
+
+        assertEquals("IMPORT_DATE", repository.settings.first().albumSortMode)
+    }
+
+    @Test
+    fun albumSortModePersistsAndRejectsUnknownNames() = runBlocking {
+        val store = FakePreferencesDataStore(mutablePreferencesOf())
+        val repository = SettingsRepository(store)
+
+        repository.setAlbumSortMode("SOURCE_DATE")
+        assertEquals("SOURCE_DATE", repository.settings.first().albumSortMode)
+
+        repository.setAlbumSortMode("IMPORT_DATE")
+        assertEquals("IMPORT_DATE", repository.settings.first().albumSortMode)
+
+        // Unknown names are ignored and the previous value is kept.
+        repository.setAlbumSortMode("NEWEST")
+        assertEquals("IMPORT_DATE", repository.settings.first().albumSortMode)
+    }
+
+    @Test
     fun backupSnapshotKeepsDeviceSecurityPreferences() = runBlocking {
         val store = FakePreferencesDataStore(
             mutablePreferencesOf(

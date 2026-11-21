@@ -35,7 +35,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meteor.memory.R
+import com.meteor.memory.core.storage.MediaKind
 import com.meteor.memory.feature.editor.MarkdownField
+import com.meteor.memory.feature.editor.MediaBlockState
+import com.meteor.memory.feature.media.MediaPickerScreen
+import com.meteor.memory.feature.media.PickedMedia
 import com.meteor.memory.feature.editor.R as EditorR
 
 /**
@@ -43,6 +47,11 @@ import com.meteor.memory.feature.editor.R as EditorR
  *
  * 正文仍然是纯文本 Markdown（ADR-021），视觉按设计稿：2dp 主题色描边的
  * 20dp 圆角输入框、17sp/26sp 行高、52dp 胶囊保存按钮。
+ *
+ * 插入图片 / 视频 / 音频（ADR-052 §5 D）：工具栏只报出想要的 kind，这一页负责
+ * 打开应用内选择器 [MediaPickerScreen]，选完交给 [onImportMedia]。导入（含归属
+ * 决定 `_self`）在 ViewModel 里，所以导航宿主只需要接一个回调，不必知道选择器
+ * 的存在。传 null 时退化为旧的单张图片入口（[onPickImage]）。
  */
 @Composable
 fun DiaryEditScreen(
@@ -57,130 +66,168 @@ fun DiaryEditScreen(
     resolveImage: (String) -> ImageBitmap? = { null },
     onActivate: (String) -> Unit = {},
     onImageCaptionChanged: (String, String) -> Unit = { _, _ -> },
+    /**
+     * 导入用户在媒体选择器里挑中的文件；null 表示这个宿主还没接入 ADR-052。
+     *
+     * 接入后工具栏出现「插入 → 图片 / 视频 / 音频」，日记的媒体一律归 `_self`
+     * （由 ViewModel 的 `personId = null` 决定）。
+     */
+    onImportMedia: ((List<PickedMedia>) -> Unit)? = null,
+    resolveMedia: (String) -> MediaBlockState = { MediaBlockState.Pending },
+    onRemoveMedia: (String) -> Unit = {},
+    onMediaCaptionChanged: (String, String) -> Unit = { _, _ -> },
 ) {
     // Purely a view concern: the record never stores whether it was last shown
     // as preview.
     var previewing by rememberSaveable { mutableStateOf(false) }
+    val mediaPicker = rememberDiaryMediaPicker()
 
-    Column(modifier = modifier.fillMaxSize()) {
-        DiaryScreenHeader(
-            dateLabel = diaryDayLabel(state.date),
-            onBack = onBack,
-            supportingContent = {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    // 只有「记录于」一行：日期本身已经在标题里，再放一行裸的
-                    // 时间戳就是同一个时刻显示两遍（保存后尤其明显）。
-                    state.recordedAtLabel?.let { stamped ->
-                        Text(
-                            text = stringResource(R.string.diary_signed_at, stamped),
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+    Box(modifier = modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            DiaryScreenHeader(
+                dateLabel = diaryDayLabel(state.date),
+                onBack = onBack,
+                supportingContent = {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        // 只有「记录于」一行：日期本身已经在标题里，再放一行裸的
+                        // 时间戳就是同一个时刻显示两遍（保存后尤其明显）。
+                        state.recordedAtLabel?.let { stamped ->
+                            Text(
+                                text = stringResource(R.string.diary_signed_at, stamped),
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        if (state.isInserting) {
+                            Text(
+                                text = insertingLabel(state),
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
-                    if (state.isInsertingImage) {
-                        Text(
-                            text = stringResource(R.string.diary_adding_image),
-                            fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-            },
-            actions = {
-                PreviewChip(
-                    previewing = previewing,
-                    enabled = !state.isSaving,
-                    onToggle = { previewing = !previewing },
-                )
-            },
-        )
-
-        MarkdownField(
-            text = state.text,
-            previewing = previewing,
-            onTextChanged = onTextChanged,
-            onPreviewToggle = { previewing = !previewing },
-            onInsertLink = onInsertLink,
-            onPickImage = onPickImage,
-            onRemoveImage = onRemoveImage,
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = 16.dp, end = 16.dp, top = 12.dp),
-            placeholder = { Text(text = stringResource(R.string.diary_hint)) },
-            missingImages = state.missingImages,
-            resolveImage = resolveImage,
-            onActivate = onActivate,
-            showPreviewAction = false,
-            onImageCaptionChanged = onImageCaptionChanged,
-        )
-
-        state.error?.let { message ->
-            Text(
-                text = message,
-                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp),
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.error,
+                },
+                actions = {
+                    PreviewChip(
+                        previewing = previewing,
+                        enabled = !state.isSaving,
+                        onToggle = { previewing = !previewing },
+                    )
+                },
             )
-        }
 
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 20.dp, end = 20.dp, top = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                LockGlyph()
+            MarkdownField(
+                text = state.text,
+                previewing = previewing,
+                onTextChanged = onTextChanged,
+                onPreviewToggle = { previewing = !previewing },
+                onInsertLink = onInsertLink,
+                onPickImage = onPickImage,
+                onRemoveImage = onRemoveImage,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 16.dp, end = 16.dp, top = 12.dp),
+                placeholder = { Text(text = stringResource(R.string.diary_hint)) },
+                missingImages = state.missingImages,
+                resolveImage = resolveImage,
+                onActivate = onActivate,
+                showPreviewAction = false,
+                onImageCaptionChanged = onImageCaptionChanged,
+                onPickMedia = if (onImportMedia != null) mediaPicker::open else null,
+                mediaInserting = state.isInserting,
+                resolveMedia = resolveMedia,
+                onRemoveMedia = onRemoveMedia,
+                onMediaCaptionChanged = onMediaCaptionChanged,
+            )
+
+            state.error?.let { message ->
                 Text(
-                    text = stringResource(R.string.diary_only_local),
+                    text = message,
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 8.dp),
                     fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.error,
                 )
             }
-            Text(
-                text = if (state.saved) {
-                    stringResource(R.string.diary_saved)
-                } else {
-                    stringResource(R.string.diary_char_count, state.text.length)
-                },
-                fontSize = 13.sp,
-                color = if (state.saved) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            )
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, end = 20.dp, top = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    LockGlyph()
+                    Text(
+                        text = stringResource(R.string.diary_only_local),
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    text = if (state.saved) {
+                        stringResource(R.string.diary_saved)
+                    } else {
+                        stringResource(R.string.diary_char_count, state.text.length)
+                    },
+                    fontSize = 13.sp,
+                    color = if (state.saved) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+            }
+
+            Button(
+                onClick = onSave,
+                enabled = !state.isSaving && !state.isInserting,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp)
+                    .height(52.dp),
+                shape = RoundedCornerShape(26.dp),
+            ) {
+                Text(
+                    text = if (state.isSaving || state.isInserting) {
+                        insertingLabel(state)
+                    } else {
+                        stringResource(R.string.diary_save)
+                    },
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
         }
 
-        Button(
-            onClick = onSave,
-            enabled = !state.isSaving && !state.isInsertingImage,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp)
-                .height(52.dp),
-            shape = RoundedCornerShape(26.dp),
-        ) {
-            Text(
-                text = stringResource(
-                    when {
-                        state.isSaving -> R.string.diary_saving
-                        state.isInsertingImage -> R.string.diary_adding_image
-                        else -> R.string.diary_save
-                    },
-                ),
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
-            )
+        // The picker is a full-screen surface drawn above the editor: it replaces
+        // the page while open, so the editing surface keeps its state (blocks and
+        // caret) and the diary stays one navigation destination.
+        if (onImportMedia != null) {
+            DiaryMediaPicker(state = mediaPicker, onPicked = onImportMedia)
         }
     }
+}
+
+/**
+ * 插入进行中的文案（ADR-052 §5 D）。
+ *
+ * 沿用 `diary_adding_image` 的模式：说清「在做什么」而不是笼统的「请稍候」，
+ * 并且按 kind 分开，让用户知道导入的是视频还是音频（大文件耗时明显更长）。
+ */
+@Composable
+private fun insertingLabel(state: DiaryEditorState): String = when {
+    state.isSaving -> stringResource(R.string.diary_saving)
+    state.insertingMedia == MediaKind.VIDEO -> stringResource(R.string.diary_adding_video)
+    state.insertingMedia == MediaKind.AUDIO -> stringResource(R.string.diary_adding_audio)
+    state.insertingMedia == MediaKind.IMAGE -> stringResource(R.string.diary_adding_media_image)
+    else -> stringResource(R.string.diary_adding_image)
 }
 
 @Composable

@@ -27,6 +27,10 @@ android {
 
 dependencies {
     api(project(":core-storage"))
+    // Inline video/audio playback for `meteor://media/` blocks (ADR-052 §5 D,
+    // ADR-055). The contract types (VideoPlayerCard, AudioPlayerCard) are used in
+    // this module's composables, so the edge is a plain implementation one.
+    implementation(project(":feature-media"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

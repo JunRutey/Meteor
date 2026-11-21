@@ -18,10 +18,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meteor.memory.R
 import com.meteor.memory.feature.editor.MarkdownPreview
+import com.meteor.memory.feature.editor.MediaBlockState
 
 /**
  * 只读预览：正文用与编辑器同一套 Markdown 渲染，右上角「修改日记」跳编辑。
  * 记录不存在时不显示修改入口。
+ *
+ * ADR-055：`meteor://media/` 引用在这里和编辑模式画的是同一张卡（图片 / 视频
+ * 播放器 / 音频播放器），所以「编辑」与「预览」不会对同一份正文给出两种样子。
  */
 @Composable
 fun DiaryPreviewScreen(
@@ -30,6 +34,7 @@ fun DiaryPreviewScreen(
     onBack: () -> Unit,
     onActivate: (String) -> Unit = {},
     modifier: Modifier = Modifier,
+    resolveMedia: (String) -> MediaBlockState = { MediaBlockState.Pending },
 ) {
     Column(
         modifier = modifier.fillMaxSize(),
@@ -82,6 +87,7 @@ fun DiaryPreviewScreen(
                     ),
                 resolveImage = { token -> state.images[token] },
                 onActivate = onActivate,
+                resolveMedia = resolveMedia,
             )
         } else {
             Text(

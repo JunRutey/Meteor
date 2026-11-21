@@ -28,4 +28,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
 
     testImplementation(libs.junit)
+    // JVM-only JSON for unit tests: Android's org.json is a stub on the test
+    // classpath, so the media manifest codec needs the real implementation.
+    testImplementation(libs.org.json)
 }

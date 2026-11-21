@@ -2,6 +2,7 @@ package com.meteor.memory.core.backup
 
 import android.content.Context
 import android.net.Uri
+import com.meteor.memory.core.storage.MediaStore
 import com.meteor.memory.core.storage.StorageLayout
 import com.meteor.memory.core.storage.StorageRouter
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +28,13 @@ fun interface BackupRetentionProvider {
  *
  * Rolling snapshots live in `filesDir/bak/` and only protect against in-app
  * deletion — they do not survive an uninstall (archive §7).
+ *
+ * [mediaStore] is optional and purely additive (ADR-057). While it is null, or
+ * holds no media, every path below behaves exactly as it did before media
+ * existed — same zip structure, same entry count, same import semantics. Once it
+ * holds media, `数字遗产/媒体/` is decrypted into the archive and described by
+ * `设置/media-manifest.json`, because the encrypted sidecars cannot survive a
+ * device change and their ciphertext would be worthless on the new one.
  */
 class PlaintextBackupModule(
     private val context: Context,
@@ -34,15 +42,15 @@ class PlaintextBackupModule(
     private val retentionProvider: BackupRetentionProvider,
     private val clock: () -> Instant = Instant::now,
     private val mirror: ExternalBackupMirror = NoExternalBackupMirror,
+    private val mediaStore: MediaStore? = null,
 ) : BackupModule {
 
     private val backupDir = File(context.filesDir, BACKUP_DIR_NAME)
 
     override suspend fun exportPlaintext(dest: Uri): BackupResult = withContext(Dispatchers.IO) {
         runCatching {
-            val (files, bytes) = countStoredFiles()
-            router.exportTo(dest)
-            BackupResult.Success(fileCount = files, bytes = bytes, at = clock()) as BackupResult
+            val stats = writeArchive(dest)
+            BackupResult.Success(fileCount = stats.fileCount, bytes = stats.bytes, at = clock()) as BackupResult
         }.getOrElse { failure ->
             // The router aborts on the first bad file; the entry it had already
             // written is not rolled back by the zip stream, so drop the file.
@@ -52,11 +60,8 @@ class PlaintextBackupModule(
     }
 
     override suspend fun importFrom(src: Uri): ImportResult = withContext(Dispatchers.IO) {
-        runCatching {
-            val entries = countArchiveEntries(src)
-            router.importFrom(src)
-            ImportResult.Success(fileCount = entries, skipped = 0) as ImportResult
-        }.getOrElse { ImportResult.Failure("导入失败：${it.message}", it) }
+        runCatching { readArchive(src) }
+            .getOrElse { ImportResult.Failure("导入失败：${it.message}", it) }
     }
 
     override suspend fun autoBackup(): BackupResult = withContext(Dispatchers.IO) {
@@ -66,19 +71,20 @@ class PlaintextBackupModule(
                 return@runCatching BackupResult.Failure("无法创建备份目录") as BackupResult
             }
 
-            val (files, bytes) = countStoredFiles()
+            val (files, _) = countStoredFiles()
             if (files == 0) {
                 return@runCatching BackupResult.Failure("还没有可备份的内容") as BackupResult
             }
 
-            router.exportTo(Uri.fromFile(target))
+            // Same path as a manual export, so a rolling snapshot carries media too.
+            val stats = writeArchive(Uri.fromFile(target))
             prune()
 
             // Second destination is a reserved extension point; today the
             // no-op reports "not configured" and nothing else happens.
             runCatching { mirror.mirror(target) }
 
-            BackupResult.Success(fileCount = files, bytes = bytes, at = clock()) as BackupResult
+            BackupResult.Success(fileCount = stats.fileCount, bytes = stats.bytes, at = clock()) as BackupResult
         }.getOrElse { failure ->
             // A truncated zip must not stay in `bak/` where listBackups() would
             // offer it as a restorable snapshot.
@@ -100,6 +106,120 @@ class PlaintextBackupModule(
                 )
             }
     }
+
+    // --- media-aware paths (ADR-057) -----------------------------------------
+
+    /**
+     * True only when media support is wired **and** something is stored.
+     *
+     * Both halves matter for backward compatibility: an archive exported from a
+     * device with no media must not gain an empty manifest, or its structure would
+     * silently differ from every pre-ADR-052 backup.
+     */
+    private fun hasMedia(): Boolean {
+        val store = mediaStore ?: return false
+        return runCatching { store.list().isNotEmpty() }.getOrDefault(false)
+    }
+
+    /**
+     * Writes the archive, going through the media rewriter only when needed.
+     *
+     * The router has no notion of media and keeps its frozen behaviour, so the
+     * media path first produces a complete, correct archive in the cache and then
+     * replaces just the `数字遗产/媒体/` part of it.
+     */
+    private fun writeArchive(dest: Uri): ArchiveStats {
+        val store = mediaStore
+        if (store == null || !hasMedia()) {
+            val (files, bytes) = countStoredFiles()
+            router.exportTo(dest)
+            return ArchiveStats(files, bytes)
+        }
+
+        val staging = scratchFile(STAGING_ARCHIVE)
+        try {
+            router.exportTo(Uri.fromFile(staging))
+            val output = context.contentResolver.openOutputStream(dest)
+                ?: throw IllegalStateException("cannot open export destination")
+            val stats = output.use { target -> MediaArchiveExporter(store).export(staging, target) }
+            return ArchiveStats(stats.fileCount, stats.bytes)
+        } finally {
+            staging.delete()
+        }
+    }
+
+    /**
+     * Imports an archive, restoring media when — and only when — it carries a
+     * manifest. Archives without one take the original code path byte for byte.
+     */
+    private fun readArchive(src: Uri): ImportResult {
+        val store = mediaStore ?: return legacyImport(src)
+
+        // ZipFile needs random access, but a picked archive arrives as a stream.
+        val archive = copyToScratch(src) ?: return legacyImport(src)
+        try {
+            val importer = MediaArchiveImporter(store)
+            val manifest = importer.readManifest(archive)
+            return if (manifest == null) {
+                // Old backup: untouched behaviour, no media path at all. The scratch
+                // copy is a faithful byte copy, so importing from it is equivalent
+                // to importing from the picked Uri (and avoids re-opening a
+                // one-shot provider stream).
+                legacyImport(Uri.fromFile(archive))
+            } else {
+                restoreWithMedia(archive, importer, manifest)
+            }
+        } finally {
+            archive.delete()
+        }
+    }
+
+    /** Records first, then media — both from the same verified archive file. */
+    private fun restoreWithMedia(
+        source: File,
+        importer: MediaArchiveImporter,
+        manifest: String,
+    ): ImportResult {
+        val stripped = scratchFile(STRIPPED_ARCHIVE)
+        try {
+            val strip = importer.stripMedia(source, stripped, manifest)
+            // The router sees a copy that contains no media entry, so it can never
+            // mistake a decrypted payload for ciphertext and encrypt it again.
+            router.importFrom(Uri.fromFile(stripped))
+            val restored = importer.restore(source, strip.entries)
+            return ImportResult.Success(
+                fileCount = strip.fileCount + restored.restored,
+                skipped = restored.skipped,
+            )
+        } finally {
+            stripped.delete()
+        }
+    }
+
+    /** The pre-ADR-057 import path, untouched. */
+    private fun legacyImport(src: Uri): ImportResult {
+        val entries = countArchiveEntries(src)
+        router.importFrom(src)
+        return ImportResult.Success(fileCount = entries, skipped = 0)
+    }
+
+    /** Copies a content Uri into cache so its entries can be looked up by name. */
+    private fun copyToScratch(uri: Uri): File? {
+        val stream = runCatching { context.contentResolver.openInputStream(uri) }.getOrNull() ?: return null
+        val target = scratchFile(SOURCE_ARCHIVE)
+        return runCatching {
+            stream.use { input -> target.outputStream().use { output -> input.copyTo(output) } }
+            target
+        }.getOrNull()
+    }
+
+    private fun scratchFile(name: String): File {
+        val dir = File(context.cacheDir, SCRATCH_DIR_NAME)
+        if (!dir.isDirectory) dir.mkdirs()
+        return File(dir, name)
+    }
+
+    // --- unchanged legacy helpers --------------------------------------------
 
     private fun prune() {
         val backups = (backupDir.listFiles() ?: emptyArray())
@@ -147,8 +267,15 @@ class PlaintextBackupModule(
         return "meteor-$stamp.zip"
     }
 
+    /** File/byte totals reported to the UI. */
+    private data class ArchiveStats(val fileCount: Int, val bytes: Long)
+
     private companion object {
         const val BACKUP_DIR_NAME = "bak"
+        const val SCRATCH_DIR_NAME = "backup-scratch"
+        const val STAGING_ARCHIVE = "export-staging.zip"
+        const val SOURCE_ARCHIVE = "import-source.zip"
+        const val STRIPPED_ARCHIVE = "import-stripped.zip"
 
         val FILE_STAMP: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")
     }

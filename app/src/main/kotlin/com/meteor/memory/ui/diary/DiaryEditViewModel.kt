@@ -1,5 +1,7 @@
 package com.meteor.memory.ui.diary
 
+import android.content.Context
+import android.net.Uri
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -8,15 +10,21 @@ import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.storage.Document
 import com.meteor.memory.core.storage.ImageStore
+import com.meteor.memory.core.storage.MediaKind
+import com.meteor.memory.core.storage.MediaStore
 import com.meteor.memory.core.storage.RecordSource
 import com.meteor.memory.core.storage.RecordType
 import com.meteor.memory.core.storage.StorageRouter
 import com.meteor.memory.core.time.TimeModule
 import com.meteor.memory.feature.editor.EditorModule
 import com.meteor.memory.feature.editor.MarkdownEditing
+import com.meteor.memory.feature.editor.MediaBlockState
+import com.meteor.memory.feature.media.MediaImporter
+import com.meteor.memory.feature.media.PickedMedia
 import com.meteor.memory.ui.common.decodeImages
 import com.meteor.memory.ui.search.SearchService
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,13 +53,32 @@ data class DiaryEditorState(
     val images: Map<String, ImageBitmap> = emptyMap(),
     /** Referenced images whose bytes exist but produced no bitmap. */
     val missingImages: Set<String> = emptySet(),
+    /**
+     * How each `meteor://media/<id>` reference in [text] must be drawn (ADR-055).
+     *
+     * The kind lives in the encrypted sidecar, so it is resolved here, once, and
+     * handed to the editor as a plain map. An id missing from this map is still
+     * being resolved and renders as the neutral pending frame.
+     */
+    val mediaBlocks: Map<String, MediaBlockState> = emptyMap(),
     val isSaving: Boolean = false,
     val isInsertingImage: Boolean = false,
+    /**
+     * The ADR-052 import currently running, if any (ADR-055).
+     *
+     * Holds the kind being imported so the header can name it (图片 / 视频 / 音频)
+     * instead of showing a generic line; null means nothing is running. While it is
+     * non-null, repeated insert taps and saving are both disabled.
+     */
+    val insertingMedia: MediaKind? = null,
     val saved: Boolean = false,
     val error: String? = null,
     /** 记录所属日期，用于页头「11 月 7 日 · 周六」标题。 */
     val date: LocalDate = LocalDate.now(),
-)
+) {
+    /** True while any insert — the legacy image path or an ADR-052 media import — is running. */
+    val isInserting: Boolean get() = isInsertingImage || insertingMedia != null
+}
 
 @HiltViewModel
 class DiaryEditViewModel @Inject constructor(
@@ -63,6 +90,8 @@ class DiaryEditViewModel @Inject constructor(
     private val editorModule: EditorModule,
     private val imageStore: ImageStore,
     private val storageRouter: StorageRouter,
+    private val mediaStore: MediaStore,
+    @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
     private val date: LocalDate = LocalDate.parse(checkNotNull(savedStateHandle.get<String>(ARG_DATE)))
@@ -94,15 +123,111 @@ class DiaryEditViewModel @Inject constructor(
                 )
             }
             refreshImages(document.body)
+            refreshMedia(document.body)
         }
     }
 
     fun onTextChanged(text: String) {
         _state.update { it.copy(text = text, saved = false, error = null) }
+        // Pasting a media reference (or undoing a removal) must produce a card, not
+        // a pending frame that never resolves.
+        refreshMedia(text)
     }
 
     /** Bitmap for a `meteor://image/<token>` reference, or null when unknown. */
     fun imageFor(token: String): ImageBitmap? = _state.value.images[token]
+
+    /**
+     * How to draw one `meteor://media/<id>` reference (ADR-055).
+     *
+     * Unresolved ids answer [MediaBlockState.Pending], which is exactly what the
+     * editor shows while the metadata is still being read — the same frame it uses
+     * when no resolver is installed at all.
+     */
+    fun mediaState(id: String): MediaBlockState =
+        _state.value.mediaBlocks[id] ?: MediaBlockState.Pending
+
+    /** Writes the description (alt text / title) of one media reference. */
+    fun setMediaCaption(id: String, caption: String) {
+        val current = _state.value
+        val body = MarkdownEditing.setMediaCaption(current.text, id, caption)
+        if (body == current.text) return
+        _state.update { it.copy(text = body, saved = false) }
+    }
+
+    /**
+     * Drops one media reference from the body (ADR-055).
+     *
+     * Only the Markdown goes: the encrypted file stays in the archive and remains
+     * reachable from the album, so removing a card is not the same destructive act
+     * as deleting the picture. That mirrors ADR-052's deletion rule (referencing
+     * places never rewrite each other) and keeps this editor from deleting a file
+     * the album or another record may still show.
+     */
+    fun removeMedia(id: String) {
+        val current = _state.value
+        val body = MarkdownEditing.removeMedia(current.text, id)
+        if (body == current.text) return
+        _state.update {
+            it.copy(text = body, mediaBlocks = it.mediaBlocks - id, saved = false)
+        }
+        appLog.debug(TAG, "media detached from body: $id")
+    }
+
+    /**
+     * Imports the user's picker selection and appends the references (ADR-052 §5 D).
+     *
+     * Runs on `Dispatchers.IO` because [MediaImporter] streams the whole file
+     * through decryption; a video import can take a while, which is exactly why
+     * [DiaryEditorState.insertingMedia] exists — the editor disables repeat taps and
+     * shows a progress line meanwhile.
+     *
+     * A diary belongs to nobody, so every file is stored under `_self`
+     * (`personId = null`). The person editor passes the person id through the same
+     * importer.
+     */
+    fun importMedia(picked: List<PickedMedia>) {
+        if (picked.isEmpty()) return
+        // One import at a time: two concurrent streams would interleave their
+        // progress states and both append into a body that keeps changing.
+        if (_state.value.insertingMedia != null) return
+
+        _state.update { it.copy(insertingMedia = picked.first().kind, saved = false, error = null) }
+
+        viewModelScope.launch {
+            try {
+                val stored = withContext(Dispatchers.IO) {
+                    val importer = MediaImporter(context.contentResolver, mediaStore)
+                    picked.mapNotNull { media ->
+                        runCatching { importer.import(media.uri, personId = null) }
+                            .onFailure { appLog.warn(TAG, "media import failed: ${media.mimeType}", it) }
+                            .getOrNull()
+                    }
+                }
+                if (stored.isEmpty()) {
+                    appLog.warn(TAG, "media import produced no stored entries")
+                    return@launch
+                }
+
+                // Append onto the *live* text: typing while the import runs must not
+                // be overwritten (the same trap the legacy image path documents).
+                var body = _state.value.text
+                stored.forEach { media ->
+                    body = MarkdownEditing.appendMedia(body, media.id)
+                }
+                document = document.copy(body = body)
+                _state.update { it.copy(text = body, saved = false) }
+                refreshMedia(body)
+                appLog.info(TAG, "media inserted: ${stored.size} entries")
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                appLog.warn(TAG, "media insert failed", error)
+            } finally {
+                _state.update { it.copy(insertingMedia = null) }
+            }
+        }
+    }
 
     fun insertImage(bytes: ByteArray) {
         val base = document.copy(body = _state.value.text)
@@ -172,7 +297,7 @@ class DiaryEditViewModel @Inject constructor(
 
     fun save() {
         val snapshot = _state.value
-        if (snapshot.isSaving || snapshot.isInsertingImage) return
+        if (snapshot.isSaving || snapshot.isInserting) return
         _state.update { it.copy(isSaving = true, error = null) }
 
         viewModelScope.launch {
@@ -242,6 +367,28 @@ class DiaryEditViewModel @Inject constructor(
                     missingImages = it.missingImages + decoded.missing,
                 )
             }
+        }
+    }
+
+    /**
+     * Resolves the kind — and, for pictures, the bitmap — of every
+     * `meteor://media/<id>` reference that is not known yet (ADR-055).
+     *
+     * Cheap on the common path: a body without the media scheme returns before any
+     * regex runs, so typing in a text-only record costs nothing, and an already
+     * resolved id is never read twice.
+     */
+    private fun refreshMedia(body: String) {
+        if (!body.contains(MediaStore.MEDIA_SCHEME)) return
+        val known = _state.value.mediaBlocks.keys
+        val ids = MarkdownEditing.mediaOf(body)
+            .map { it.id }
+            .filter { it !in known }
+        if (ids.isEmpty()) return
+
+        viewModelScope.launch {
+            val states = decodeMediaStates(mediaStore, ids)
+            _state.update { it.copy(mediaBlocks = it.mediaBlocks + states) }
         }
     }
 

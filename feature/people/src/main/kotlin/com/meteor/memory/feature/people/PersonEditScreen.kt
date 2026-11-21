@@ -43,8 +43,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.meteor.memory.core.storage.MediaKind
 import com.meteor.memory.core.storage.Relation
 import com.meteor.memory.feature.editor.MarkdownField
+import com.meteor.memory.feature.editor.MediaBlockState
 
 /**
  * Editing an existing person (ADR-020, ADR-023, ADR-024, ADR-046).
@@ -96,6 +98,27 @@ fun PersonEditScreen(
     missingImages: Set<String> = emptySet(),
     resolveImage: (String) -> ImageBitmap? = { null },
     onImageCaptionChanged: (String, String) -> Unit = { _, _ -> },
+    /**
+     * Hands the kinds of media the user wants to insert to the host, which
+     * opens the in-app picker and imports into **this person** (ADR-052 §5 D/E).
+     *
+     * `:feature-editor` keeps ownership out of the editor: the toolbar only
+     * names the kinds, and the host decides the owner. Passing a non-null
+     * callback also turns on the video/audio entries; the default keeps the old
+     * single-picture toolbar for every other caller.
+     */
+    onPickMedia: ((Set<MediaKind>) -> Unit)? = null,
+    insertingMedia: Boolean = false,
+    /**
+     * Tells the editor how to draw one `meteor://media/<id>` reference.
+     *
+     * The kind lives in an encrypted metadata sidecar the editor cannot read
+     * (ADR-052 §3), so the host answers. Default is "still decrypting", which
+     * draws the neutral frame instead of accusing the archive of losing a file.
+     */
+    resolveMedia: (String) -> MediaBlockState = { MediaBlockState.Pending },
+    onRemoveMedia: (String) -> Unit = {},
+    onMediaCaptionChanged: (String, String) -> Unit = { _, _ -> },
 ) {
     var previewing by rememberSaveable { mutableStateOf(false) }
     // Only body focus collapses the identity card: opening the keyboard for the
@@ -125,6 +148,7 @@ fun PersonEditScreen(
                 saved = saved,
                 saving = saving,
                 insertingImage = insertingImage,
+                insertingMedia = insertingMedia,
                 canSave = displayName.isNotBlank(),
                 onSave = onSave,
                 onBack = onBack,
@@ -220,6 +244,13 @@ fun PersonEditScreen(
                         resolveImage = resolveImage,
                         onFocusChanged = { bodyFocused = it },
                         onImageCaptionChanged = onImageCaptionChanged,
+                        // Person bodies file new media under this person
+                        // (ADR-052 §5 D); the editor itself stays owner-agnostic.
+                        onPickMedia = onPickMedia,
+                        mediaInserting = insertingMedia,
+                        resolveMedia = resolveMedia,
+                        onRemoveMedia = onRemoveMedia,
+                        onMediaCaptionChanged = onMediaCaptionChanged,
                     )
                 }
             }
@@ -232,6 +263,7 @@ private fun Header(
     saved: Boolean,
     saving: Boolean,
     insertingImage: Boolean,
+    insertingMedia: Boolean,
     canSave: Boolean,
     onSave: () -> Unit,
     onBack: () -> Unit,
@@ -266,6 +298,7 @@ private fun Header(
                 text = when {
                     saving -> stringResource(R.string.people_saving)
                     insertingImage -> stringResource(R.string.people_adding_image)
+                    insertingMedia -> stringResource(R.string.people_adding_media)
                     saved -> stringResource(R.string.people_saved)
                     else -> stringResource(R.string.people_edit_subtitle)
                 },
@@ -281,7 +314,7 @@ private fun Header(
         }
         Button(
             onClick = onSave,
-            enabled = !saving && !insertingImage && canSave,
+            enabled = !saving && !insertingImage && !insertingMedia && canSave,
             shape = RoundedCornerShape(20.dp),
             contentPadding = PaddingValues(horizontal = 18.dp, vertical = 6.dp),
         ) {

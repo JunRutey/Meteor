@@ -11,7 +11,6 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -34,6 +33,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -47,40 +48,56 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.meteor.memory.feature.media.MediaThumb
 
-/** One decrypted thumbnail. Decoding happens outside this module. */
+/** UI-side media kind; `:app` maps `core-storage.MediaKind` onto this. */
+enum class GalleryKind { IMAGE, VIDEO, AUDIO }
+
+/** UI-side sort switch; `:app` maps `core-storage.AlbumSortMode` onto this. */
+enum class GallerySortMode { SOURCE_DATE, IMPORT_DATE }
+
+/** Filter chips shown above the grid. */
+enum class GalleryFilter { ALL, IMAGES, VIDEOS, AUDIO }
+
+/** One album entry: enough to render the grid and open the viewer. */
 data class GalleryItem(
-    val token: String,
-    val bitmap: ImageBitmap,
+    val ref: String,
+    val kind: GalleryKind,
+    val durationMs: Long? = null,
+    val fileName: String? = null,
+    val hasThumbnail: Boolean = false,
 )
 
-/** One album page: a localized date and every picture stored that day. */
+/** One album page: a localized date and every item stored that day. */
 data class GalleryDay(
     val label: String,
     val items: List<GalleryItem>,
 )
 
 /**
- * Standalone gallery laid out like the system album: pictures grouped by day,
- * the date printed once per group, three per row.
+ * Standalone album laid out like the system album: pictures, videos and audio
+ * grouped by day, the date printed once per group, three per row.
  *
  * Long-press starts a selection; while anything is selected a bar at the bottom
  * offers 删除. Deleting removes the encrypted file, so a diary that referenced it
- * will show a missing image — the confirm dialog says so.
+ * will show a missing media — the confirm dialog says so.
  */
 @Composable
 fun GalleryScreen(
     days: List<GalleryDay>,
     loading: Boolean,
+    sortMode: GallerySortMode,
+    onSortModeChange: (GallerySortMode) -> Unit,
+    filter: GalleryFilter,
+    onFilterChange: (GalleryFilter) -> Unit,
     onOpen: (String) -> Unit,
     onDelete: (List<String>) -> Unit,
     onBack: () -> Unit,
@@ -98,8 +115,12 @@ fun GalleryScreen(
         GalleryHeader(
             title = title ?: stringResource(R.string.gallery_title),
             showHint = selection.isEmpty() && days.isNotEmpty(),
+            sortMode = sortMode,
+            onSortModeChange = onSortModeChange,
             onBack = onBack,
         )
+
+        FilterChips(filter = filter, onFilterChange = onFilterChange)
 
         when {
             loading -> PlaceholderCard(text = stringResource(R.string.gallery_loading))
@@ -119,19 +140,19 @@ fun GalleryScreen(
                     ) {
                         DayHeader(day.label)
                     }
-                    items(day.items, key = { it.token }) { item ->
+                    items(day.items, key = { it.ref }) { item ->
                         GalleryTile(
                             item = item,
-                            selected = item.token in selection,
+                            selected = item.ref in selection,
                             selecting = selection.isNotEmpty(),
                             onTap = {
                                 if (selection.isNotEmpty()) {
-                                    selection = selection.toggle(item.token)
+                                    selection = selection.toggle(item.ref)
                                 } else {
-                                    onOpen(item.token)
+                                    onOpen(item.ref)
                                 }
                             },
-                            onLongPress = { selection = selection.toggle(item.token) },
+                            onLongPress = { selection = selection.toggle(item.ref) },
                             animationsEnabled = animationsEnabled,
                         )
                     }
@@ -177,9 +198,9 @@ fun GalleryScreen(
                 TextButton(
                     onClick = {
                         confirming = false
-                        val tokens = selection.toList()
+                        val refs = selection.toList()
                         selection = emptySet()
-                        onDelete(tokens)
+                        onDelete(refs)
                     },
                 ) {
                     Text(text = stringResource(R.string.gallery_delete))
@@ -195,13 +216,20 @@ fun GalleryScreen(
 }
 
 @Composable
-private fun GalleryHeader(title: String, showHint: Boolean, onBack: () -> Unit) {
+private fun GalleryHeader(
+    title: String,
+    showHint: Boolean,
+    sortMode: GallerySortMode,
+    onSortModeChange: (GallerySortMode) -> Unit,
+    onBack: () -> Unit,
+) {
     val backLabel = stringResource(R.string.gallery_back)
+    var sortMenuExpanded by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 56.dp)
-            .padding(start = 4.dp, end = 16.dp, top = 4.dp, bottom = 4.dp),
+            .padding(start = 4.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -231,6 +259,103 @@ private fun GalleryHeader(title: String, showHint: Boolean, onBack: () -> Unit) 
                 )
             }
         }
+        Box {
+            val sortLabel = stringResource(R.string.gallery_sort_title)
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clickable { sortMenuExpanded = true }
+                    .semantics { contentDescription = sortLabel },
+                contentAlignment = Alignment.Center,
+            ) {
+                GalleryIcon(GalleryIconKind.Sort, iconSize = 22.dp)
+            }
+            DropdownMenu(
+                expanded = sortMenuExpanded,
+                onDismissRequest = { sortMenuExpanded = false },
+            ) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.gallery_sort_source)) },
+                    onClick = {
+                        sortMenuExpanded = false
+                        onSortModeChange(GallerySortMode.SOURCE_DATE)
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.gallery_sort_import)) },
+                    onClick = {
+                        sortMenuExpanded = false
+                        onSortModeChange(GallerySortMode.IMPORT_DATE)
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilterChips(filter: GalleryFilter, onFilterChange: (GalleryFilter) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        FilterChip(
+            label = stringResource(R.string.gallery_filter_all),
+            selected = filter == GalleryFilter.ALL,
+            onClick = { onFilterChange(GalleryFilter.ALL) },
+        )
+        FilterChip(
+            label = stringResource(R.string.gallery_filter_images),
+            selected = filter == GalleryFilter.IMAGES,
+            onClick = { onFilterChange(GalleryFilter.IMAGES) },
+        )
+        FilterChip(
+            label = stringResource(R.string.gallery_filter_videos),
+            selected = filter == GalleryFilter.VIDEOS,
+            onClick = { onFilterChange(GalleryFilter.VIDEOS) },
+        )
+        FilterChip(
+            label = stringResource(R.string.gallery_filter_audio),
+            selected = filter == GalleryFilter.AUDIO,
+            onClick = { onFilterChange(GalleryFilter.AUDIO) },
+        )
+    }
+}
+
+/** Local chip, mirroring SearchScreen: no Material experimental icon dependency. */
+@Composable
+private fun FilterChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .heightIn(min = 36.dp)
+            .background(
+                color = if (selected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.primaryContainer
+                },
+                shape = RoundedCornerShape(18.dp),
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = label,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (selected) {
+                MaterialTheme.colorScheme.onPrimary
+            } else {
+                MaterialTheme.colorScheme.secondary
+            },
+        )
     }
 }
 
@@ -279,20 +404,43 @@ private fun GalleryTile(
         modifier = Modifier
             .aspectRatio(1f)
             .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
             // pointerInput instead of combinedClickable: no experimental opt-in.
-            .pointerInput(item.token, selecting) {
+            .pointerInput(item.ref, selecting) {
                 detectTapGestures(
                     onTap = { onTap() },
                     onLongPress = { onLongPress() },
                 )
             },
     ) {
-        Image(
-            bitmap = item.bitmap,
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
-        )
+        when (item.kind) {
+            GalleryKind.IMAGE -> MediaThumb(
+                ref = item.ref,
+                modifier = Modifier.fillMaxSize(),
+                contentDescription = null,
+            )
+
+            GalleryKind.VIDEO -> {
+                MediaThumb(
+                    ref = item.ref,
+                    modifier = Modifier.fillMaxSize(),
+                    contentDescription = null,
+                )
+                KindBadge(
+                    kind = GalleryIconKind.Video,
+                    modifier = Modifier.align(Alignment.TopStart),
+                )
+                item.durationMs?.let { duration ->
+                    DurationBadge(
+                        durationMs = duration,
+                        modifier = Modifier.align(Alignment.BottomEnd),
+                    )
+                }
+            }
+
+            GalleryKind.AUDIO -> AudioCard(item)
+        }
+
         AnimatedVisibility(
             visible = selected,
             enter = if (animationsEnabled) {
@@ -329,6 +477,57 @@ private fun GalleryTile(
 }
 
 @Composable
+private fun KindBadge(kind: GalleryIconKind, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .padding(6.dp)
+            .size(24.dp)
+            .clip(CircleShape)
+            .background(Color(0x88000000)),
+        contentAlignment = Alignment.Center,
+    ) {
+        GalleryIcon(kind = kind, iconSize = 14.dp, tint = Color.White)
+    }
+}
+
+@Composable
+private fun DurationBadge(durationMs: Long, modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier.padding(6.dp),
+        shape = RoundedCornerShape(8.dp),
+        color = Color(0x88000000),
+    ) {
+        Text(
+            text = formatDuration(durationMs),
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+        )
+    }
+}
+
+@Composable
+private fun AudioCard(item: GalleryItem) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        GalleryIcon(GalleryIconKind.Audio, iconSize = 28.dp)
+        Text(
+            text = item.fileName ?: stringResource(R.string.gallery_kind_audio),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+    }
+}
+
+@Composable
 private fun SelectionBar(count: Int, onCancel: () -> Unit, onDelete: () -> Unit) {
     Surface(
         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
@@ -358,8 +557,21 @@ private fun SelectionBar(count: Int, onCancel: () -> Unit, onDelete: () -> Unit)
     }
 }
 
-private fun Set<String>.toggle(token: String): Set<String> =
-    if (token in this) this - token else this + token
+private fun Set<String>.toggle(ref: String): Set<String> =
+    if (ref in this) this - ref else this + ref
+
+/** `m:ss`, or `h:mm:ss` for anything an hour or longer. */
+private fun formatDuration(durationMs: Long): String {
+    val totalSeconds = durationMs / 1000
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return if (hours > 0) {
+        "%d:%02d:%02d".format(hours, minutes, seconds)
+    } else {
+        "%d:%02d".format(minutes, seconds)
+    }
+}
 
 private const val COLUMNS = 3
 private val TILE_GAP = 8.dp

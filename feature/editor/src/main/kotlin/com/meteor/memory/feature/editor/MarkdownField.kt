@@ -53,20 +53,31 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meteor.memory.core.storage.ImageStore
+import com.meteor.memory.core.storage.MediaKind
 
 /**
  * The whole Markdown editing surface: toolbar, the body, and the preview.
  *
- * **An image reference is shown as the picture, not as its Markdown** (ADR-049).
- * The body is split into blocks by [MarkdownBlocks]: text runs become text
- * fields, and a line that held only `![描述](meteor://image/<token>)` becomes an
- * image card with an editable description. The file on disk still holds the
- * plain reference, so exports, the search index and the AI tools are unchanged.
+ * **A media reference is shown as the media itself, not as its Markdown**
+ * (ADR-049 for pictures, ADR-055 for new video/audio). The body is split into
+ * blocks by [MarkdownBlocks]: text runs become text fields, a line that held only
+ * `![描述](meteor://image/<token>)` becomes an image card, and
+ * `![描述](meteor://media/<id>)` becomes whatever [resolveMedia] says it is — an
+ * inline picture, a playable video card, or an audio card. The file on disk still
+ * holds the plain reference, so exports, the search index and the AI tools are
+ * unchanged.
  *
  * Nothing is hidden inside a text field. That was the ADR-021 rule and it still
  * holds: hiding characters needs an offset mapping, and the offset mapping was
- * exactly what used to crash and jump the caret. Images escape it because a
+ * exactly what used to crash and jump the caret. References escape it because a
  * whole line is lifted out of the text field, not a span of characters.
+ *
+ * **Insertion belongs to the host.** Passing [onPickMedia] switches the toolbar
+ * from the single legacy image button to the three ADR-052 insert actions; each
+ * reports the [MediaKind]s to offer and the host runs the picker, the import and
+ * the Markdown append. That keeps ownership (`_self` for a diary, the person id
+ * for a person body) and the encrypted store in `:app`, and keeps
+ * `:feature-editor` free of `MediaStore` / `MediaImporter`.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -97,10 +108,36 @@ fun MarkdownField(
     showPreviewAction: Boolean = true,
     /** Writes the description (alt text) of one image reference. */
     onImageCaptionChanged: (String, String) -> Unit = { _, _ -> },
+    /**
+     * Asks the host to let the user insert media (ADR-052 §5 D).
+     *
+     * The argument is the set of kinds the tapped button wants — `{IMAGE}`,
+     * `{VIDEO}` or `{AUDIO}`. **Null (the default) means "not adopted yet"**: the
+     * toolbar then keeps the legacy single image button wired to [onPickImage], so
+     * a host that has not migrated compiles and behaves exactly as before (R2:
+     * an additive parameter with a default).
+     */
+    onPickMedia: ((Set<MediaKind>) -> Unit)? = null,
+    /** True while the host is importing: media buttons are disabled and a hint shows. */
+    mediaInserting: Boolean = false,
+    /**
+     * How to draw one `meteor://media/<id>` block (ADR-055).
+     *
+     * The kind is not in the body, so the host owns this answer. The default
+     * renders the neutral [MediaBlockState.Pending] frame: a host that installs no
+     * resolver gets a calm placeholder rather than a crash or a false "missing".
+     */
+    resolveMedia: (String) -> MediaBlockState = { MediaBlockState.Pending },
+    /** Drops one `meteor://media/<id>` reference from the body. */
+    onRemoveMedia: (String) -> Unit = {},
+    /** Writes the description (alt text / title) of one media reference. */
+    onMediaCaptionChanged: (String, String) -> Unit = { _, _ -> },
 ) {
     var showLinkDialog by remember { mutableStateOf(false) }
     var pendingRemoval by remember { mutableStateOf<String?>(null) }
     var describing by remember { mutableStateOf<BodyBlock.Image?>(null) }
+    var pendingMediaRemoval by remember { mutableStateOf<String?>(null) }
+    var describingMedia by remember { mutableStateOf<BodyBlock.Media?>(null) }
 
     // The blocks are the editing state. They are only re-parsed when the body
     // changed from *outside* (an inserted image or link, or a freshly loaded
@@ -236,6 +273,8 @@ fun MarkdownField(
             onBold = { toggleFormat(InlineFormat.Bold) },
             onColor = { hex -> toggleFormat(InlineFormat.Color(hex)) },
             activeFormat = activeFormat,
+            onPickMedia = onPickMedia,
+            mediaInserting = mediaInserting,
         )
 
         if (previewing) {
@@ -244,6 +283,7 @@ fun MarkdownField(
                     body = text,
                     resolveImage = resolveImage,
                     onActivate = onActivate,
+                    resolveMedia = resolveMedia,
                 )
             }
         } else {
@@ -310,6 +350,15 @@ fun MarkdownField(
                                     onDescribe = { describing = block },
                                     onRemove = { pendingRemoval = block.token },
                                 )
+
+                                is BodyBlock.Media -> MediaBlock(
+                                    block = block,
+                                    state = resolveMedia(block.id),
+                                    enabled = enabled,
+                                    onActivate = onActivate,
+                                    onDescribe = { describingMedia = block },
+                                    onRemove = { pendingMediaRemoval = block.id },
+                                )
                             }
                         }
                     }
@@ -345,6 +394,27 @@ fun MarkdownField(
             onConfirm = { caption ->
                 describing = null
                 onImageCaptionChanged(image.token, caption)
+            },
+        )
+    }
+
+    pendingMediaRemoval?.let { id ->
+        RemoveMediaDialog(
+            onDismiss = { pendingMediaRemoval = null },
+            onConfirm = {
+                pendingMediaRemoval = null
+                onRemoveMedia(id)
+            },
+        )
+    }
+
+    describingMedia?.let { media ->
+        MediaCaptionDialog(
+            initial = media.caption,
+            onDismiss = { describingMedia = null },
+            onConfirm = { caption ->
+                describingMedia = null
+                onMediaCaptionChanged(media.id, caption)
             },
         )
     }

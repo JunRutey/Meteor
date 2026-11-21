@@ -1,21 +1,19 @@
 package com.meteor.memory.feature.editor
 
-import com.meteor.memory.core.storage.ImageStore
-
 /**
  * One block of a stored body, as the editor sees it.
  *
- * Splitting the body into blocks is what lets an image reference be **shown as
- * the picture itself** while the file keeps the plain Markdown reference
- * (ADR-049). The split is line-exact and [MarkdownBlocks.serialize] rebuilds the
- * body byte for byte, so simply opening a record never rewrites it.
+ * Splitting the body into blocks is what lets a media reference be **shown as
+ * the picture/player itself** while the file keeps the plain Markdown reference
+ * (ADR-049, ADR-055). The split is line-exact and [MarkdownBlocks.serialize]
+ * rebuilds the body byte for byte, so simply opening a record never rewrites it.
  */
 internal sealed interface BodyBlock {
 
     /** The exact text this block contributes to the body. */
     val raw: String
 
-    /** Consecutive non-image lines, joined by `\n` (one text field's content). */
+    /** Consecutive non-reference lines, joined by `\n` (one text field's content). */
     data class Text(override val raw: String) : BodyBlock
 
     /**
@@ -29,21 +27,29 @@ internal sealed interface BodyBlock {
         val token: String,
         val caption: String,
     ) : BodyBlock
+
+    /**
+     * A line that held nothing but `![caption](meteor://media/<id>)` (ADR-052).
+     *
+     * The kind (image / video / audio) is **not** in the body: it lives in the
+     * encrypted metadata sidecar, so the editor cannot know how to draw this
+     * block on its own. The host answers that question through [MediaBlockState]
+     * and `MarkdownField(resolveMedia = …)`.
+     */
+    data class Media(
+        override val raw: String,
+        val id: String,
+        val caption: String,
+    ) : BodyBlock
 }
 
 /**
  * Lossless body ⇄ block conversion for the editing surface.
  *
- * Pure on purpose: the interesting rules (which lines count as an image, how
+ * Pure on purpose: the interesting rules (which lines count as a reference, how
  * blank lines survive) are unit-tested without Compose or Android.
  */
 internal object MarkdownBlocks {
-
-    /**
-     * Anchored on the whole line, so an image *inside* a sentence
-     * (`看图 ![](...)`) stays ordinary text the author can still edit.
-     */
-    private val IMAGE_LINE = Regex("""^!\[([^\]]*)]\(([^)]+)\)$""")
 
     /** Splits [body] into blocks; `serialize(parse(body)) == body` always holds. */
     fun parse(body: String): List<BodyBlock> {
@@ -61,14 +67,14 @@ internal object MarkdownBlocks {
         // split('\n') on an empty body yields one empty line, which is exactly
         // the single empty text block a blank editor needs.
         for (line in body.split('\n')) {
-            val image = imageBlockOf(line)
-            if (image == null) {
+            val reference = referenceBlockOf(line)
+            if (reference == null) {
                 if (textLines > 0) text.append('\n')
                 text.append(line)
                 textLines++
             } else {
                 flushText()
-                blocks += image
+                blocks += reference
             }
         }
         flushText()
@@ -80,25 +86,27 @@ internal object MarkdownBlocks {
     fun serialize(blocks: List<BodyBlock>): String = blocks.joinToString("\n") { it.raw }
 
     /**
-     * The image a line stands for, or null when the line is text.
+     * The reference a line stands for, or null when the line is text.
      *
-     * Only `meteor://image/` targets qualify: an external `https://` picture
-     * cannot be decrypted here, so it must stay visible as text.
+     * The rules live in [MarkdownReferences] so the editing surface, the preview
+     * and the pure body manipulation share exactly one definition of "a reference
+     * line". `raw` keeps the untouched line so indentation and trailing spaces
+     * survive a round trip.
      */
-    private fun imageBlockOf(line: String): BodyBlock.Image? {
-        val match = IMAGE_LINE.matchEntire(line.trim()) ?: return null
-        val target = match.groupValues[2]
-        if (!target.startsWith(ImageStore.IMAGE_SCHEME)) return null
+    private fun referenceBlockOf(line: String): BodyBlock? =
+        when (val reference = MarkdownReferences.of(line)) {
+            null -> null
 
-        val token = target.removePrefix(ImageStore.IMAGE_SCHEME)
-        if (token.isBlank()) return null
+            is LineReference.Image -> BodyBlock.Image(
+                raw = line,
+                token = reference.token,
+                caption = reference.caption,
+            )
 
-        // `raw` keeps the untouched line so indentation and trailing spaces
-        // survive a round trip.
-        return BodyBlock.Image(
-            raw = line,
-            token = token,
-            caption = match.groupValues[1],
-        )
-    }
+            is LineReference.Media -> BodyBlock.Media(
+                raw = line,
+                id = reference.id,
+                caption = reference.caption,
+            )
+        }
 }

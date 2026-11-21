@@ -8,7 +8,6 @@ import java.io.DataOutputStream
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
-import java.nio.ByteBuffer
 import java.time.Instant
 import java.util.UUID
 
@@ -165,37 +164,11 @@ class EncryptedAttachmentStore(
         val dataFile = File(metadataFile.parentFile, "$id$ATTACHMENT_DATA_SUFFIX")
         check(dataFile.isFile) { "encrypted attachment is missing" }
 
-        DataInputStream(dataFile.inputStream().buffered()).use { input ->
-            check(input.readInt() == DATA_MAGIC) { "invalid attachment header" }
-            check(input.readInt() == FORMAT_VERSION) { "unsupported attachment format" }
-
-            var chunkIndex = 0
-            var bytesCopied = 0L
-            while (true) {
-                val encryptedSize = input.readInt()
-                if (encryptedSize == END_OF_DATA) break
-                check(encryptedSize in MIN_ENCRYPTED_CHUNK_SIZE..MAX_ENCRYPTED_CHUNK_SIZE) {
-                    "invalid encrypted chunk size"
-                }
-
-                val encrypted = ByteArray(encryptedSize)
-                input.readFully(encrypted)
-                val chunk = crypto.decrypt(encrypted)
-                val chunkInput = DataInputStream(ByteArrayInputStream(chunk))
-                check(chunkInput.readInt() == chunkIndex) { "attachment chunk order is invalid" }
-                val content = chunk.copyOfRange(Int.SIZE_BYTES, chunk.size)
-                check(content.isNotEmpty() && content.size <= CHUNK_SIZE) { "invalid attachment chunk" }
-                output.write(content)
-                bytesCopied += content.size
-                chunkIndex++
-            }
-
-            check(input.read() == -1) { "unexpected bytes after attachment end" }
-            check(chunkIndex == metadata.chunkCount && bytesCopied == metadata.attachment.sizeBytes) {
-                "attachment size does not match metadata"
-            }
-            return bytesCopied
+        val stats = ChunkedEncryptedFile.copyDecrypted(dataFile, DATA_MAGIC, crypto, output)
+        check(stats.chunkCount == metadata.chunkCount && stats.sizeBytes == metadata.attachment.sizeBytes) {
+            "attachment size does not match metadata"
         }
+        return stats.sizeBytes
     }
 
     override fun delete(id: String): Boolean {
@@ -239,45 +212,8 @@ class EncryptedAttachmentStore(
     }
 
     private fun writeEncryptedChunks(input: InputStream, target: File): PayloadStats {
-        var index = 0
-        var totalBytes = 0L
-        DataOutputStream(target.outputStream().buffered()).use { output ->
-            output.writeInt(DATA_MAGIC)
-            output.writeInt(FORMAT_VERSION)
-            val buffer = ByteArray(CHUNK_SIZE)
-            while (true) {
-                val count = readChunk(input, buffer)
-                if (count == 0) break
-
-                val frame = ByteBuffer.allocate(Int.SIZE_BYTES + count)
-                    .putInt(index)
-                    .put(buffer, 0, count)
-                    .array()
-                val encrypted = crypto.encrypt(frame)
-                output.writeInt(encrypted.size)
-                output.write(encrypted)
-                totalBytes += count
-                index++
-            }
-            output.writeInt(END_OF_DATA)
-        }
-        return PayloadStats(sizeBytes = totalBytes, chunkCount = index)
-    }
-
-    private fun readChunk(input: InputStream, buffer: ByteArray): Int {
-        var count = 0
-        while (count < buffer.size) {
-            val read = input.read(buffer, count, buffer.size - count)
-            if (read < 0) break
-            if (read == 0) {
-                val single = input.read()
-                if (single < 0) break
-                buffer[count++] = single.toByte()
-            } else {
-                count += read
-            }
-        }
-        return count
+        val stats = ChunkedEncryptedFile.write(input, target, DATA_MAGIC, crypto)
+        return PayloadStats(sizeBytes = stats.sizeBytes, chunkCount = stats.chunkCount)
     }
 
     private fun encodeMetadata(
@@ -286,8 +222,7 @@ class EncryptedAttachmentStore(
         hasIndexedText: Boolean,
     ): ByteArray = ByteArrayOutputStream().use { bytes ->
         DataOutputStream(bytes).use { output ->
-            output.writeInt(METADATA_MAGIC)
-            output.writeInt(FORMAT_VERSION)
+            output.writeMetadataHeader(METADATA_MAGIC, FORMAT_VERSION)
             output.writeString(attachment.id)
             output.writeString(attachment.fileName)
             output.writeString(attachment.mimeType)
@@ -306,8 +241,7 @@ class EncryptedAttachmentStore(
         try {
             val id = file.name.removeSuffix(METADATA_SUFFIX)
             val decoded = DataInputStream(ByteArrayInputStream(crypto.decrypt(file.readBytes()))).use { input ->
-                check(input.readInt() == METADATA_MAGIC) { "invalid attachment metadata" }
-                check(input.readInt() == FORMAT_VERSION) { "unsupported attachment metadata" }
+                input.readMetadataHeader(METADATA_MAGIC, FORMAT_VERSION)
                 val attachmentId = input.readString()
                 check(attachmentId == id && ATTACHMENT_ID_PATTERN.matches(id)) { "invalid attachment id" }
                 val name = input.readString()
@@ -397,12 +331,8 @@ class EncryptedAttachmentStore(
         private const val MAX_ID_ATTEMPTS = 3
         private const val DATA_MAGIC = 0x4D415454
         private const val METADATA_MAGIC = 0x4D414D44
-        private const val FORMAT_VERSION = 1
-        private const val CHUNK_SIZE = 1024 * 1024
+        private const val FORMAT_VERSION = ChunkedEncryptedFile.FORMAT_VERSION
         private const val MAX_INDEXED_TEXT_BYTES = 2 * 1024 * 1024
-        private const val MIN_ENCRYPTED_CHUNK_SIZE = 29
-        private const val MAX_ENCRYPTED_CHUNK_SIZE = CHUNK_SIZE + Int.SIZE_BYTES + 29
-        private const val END_OF_DATA = 0
         private const val METADATA_SUFFIX = ".meta.enc"
         private const val TEXT_SUFFIX = ".text.enc"
         private const val DATA_TEMP_SUFFIX = ".data.part"
@@ -413,27 +343,3 @@ class EncryptedAttachmentStore(
         private val METADATA_FILE_PATTERN = Regex("^[a-f0-9]{32}\\.meta\\.enc$")
     }
 }
-
-private fun DataOutputStream.writeString(value: String) {
-    val bytes = value.toByteArray(Charsets.UTF_8)
-    writeInt(bytes.size)
-    write(bytes)
-}
-
-private fun DataOutputStream.writeNullableString(value: String?) {
-    writeBoolean(value != null)
-    if (value != null) writeString(value)
-}
-
-private fun DataInputStream.readString(): String {
-    val size = readInt()
-    check(size in 0..MAX_METADATA_STRING_BYTES) { "invalid metadata string size" }
-    val bytes = ByteArray(size)
-    readFully(bytes)
-    return bytes.toString(Charsets.UTF_8)
-}
-
-private fun DataInputStream.readNullableString(): String? =
-    if (readBoolean()) readString() else null
-
-private const val MAX_METADATA_STRING_BYTES = 1024 * 1024

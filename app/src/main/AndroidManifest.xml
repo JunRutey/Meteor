@@ -14,6 +14,20 @@
         the app's only sensitive capability visible during review.
     -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
+    <!--
+        In-app media picker (ADR-052 §4): the user picks photos/videos/audio from
+        the device and Meteor re-encrypts them into its own archive. Android 13+
+        splits the old storage permission into per-type reads; API 32 and below
+        still use READ_EXTERNAL_STORAGE. Media is only read when the user opens
+        the picker and grants the permission.
+    -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
     <application
         android:name=".MeteorApp"
         android:allowBackup="false"
