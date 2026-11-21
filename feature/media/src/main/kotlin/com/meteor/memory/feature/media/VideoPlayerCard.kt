@@ -11,10 +11,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
@@ -32,6 +35,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -39,10 +43,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
@@ -97,7 +107,21 @@ fun VideoPlayerCard(
     // The encrypted payload is streamed, not materialised: the first frame needs
     // only the opening chunks, and seeking reopens at the requested offset.
     LaunchedEffect(ref, playing, host) {
-        if (!playing || host == null || player != null) return@LaunchedEffect
+        if (!playing) return@LaunchedEffect
+        if (host == null) {
+            // Nothing can decrypt without the archive handles; say so instead of
+            // spinning forever.
+            preparing = false
+            playing = false
+            failed = true
+            return@LaunchedEffect
+        }
+        if (player != null) {
+            // A key change can restart this effect after the player was built;
+            // there is nothing left to prepare, but the spinner must still go.
+            preparing = false
+            return@LaunchedEffect
+        }
         preparing = true
         failed = false
         val parsed = MediaRef.parse(ref) as? MediaRef.Media
@@ -119,12 +143,43 @@ fun VideoPlayerCard(
                     .setMimeType(media.mimeType)
                     .build(),
             )
-        player = ExoPlayer.Builder(context).build().apply {
-            setMediaSource(source)
-            prepare()
-            playWhenReady = true
-        }
-        preparing = false
+        val built = ExoPlayer.Builder(context)
+            // A call or another app taking audio focus must pause the video
+            // instead of talking over it; unplugging headphones must not move a
+            // private recording to the speaker.
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(C.USAGE_MEDIA)
+                    .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+                    .build(),
+                /* handleAudioFocus = */ true,
+            )
+            .setHandleAudioBecomingNoisy(true)
+            .build()
+        built.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                // `prepare()` is asynchronous: the spinner has to stay up until
+                // the first frame is decodable, not until the call returns.
+                if (playbackState == Player.STATE_READY) preparing = false
+                // Rewind so the next tap starts from the top instead of sitting
+                // at the end doing nothing.
+                if (playbackState == Player.STATE_ENDED) {
+                    built.seekTo(0L)
+                    playing = false
+                }
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                // Without this a corrupt file or an unsupported codec left a
+                // silent black rectangle: the failure text was unreachable.
+                failed = true
+                playing = false
+            }
+        })
+        built.setMediaSource(source)
+        built.prepare()
+        built.playWhenReady = true
+        player = built
     }
 
     // Stopping playback tears the decoder down immediately instead of waiting
@@ -143,18 +198,26 @@ fun VideoPlayerCard(
     }
 
     // The dialog is a second window, but the activity itself is what has to
-    // rotate. onDispose covers every way out — the exit button, the system back
-    // gesture, a released player, and leaving the page while fullscreen — so a
-    // video can never strand another screen in landscape.
+    // rotate. Every way out — the exit button, the system back gesture, a
+    // released player, leaving the page while fullscreen — disposes this effect,
+    // so a video can never strand another screen in landscape.
+    //
+    // The restore must NOT read `fullscreen` inside `onDispose`: that lambda
+    // captures the MutableState, and by the time it runs the value has already
+    // been flipped to false, so a guard on it is never true and the orientation
+    // was never restored (the whole app stayed landscape). The direction to
+    // return to is captured here, when the effect is created.
     DisposableEffect(fullscreen) {
+        if (!fullscreen) return@DisposableEffect onDispose { }
         val activity = context.findActivity()
-        if (fullscreen) {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-        }
+        val previous = activity?.requestedOrientation
+            ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        // SENSOR_LANDSCAPE, not LANDSCAPE: the fixed value pins one of the two
+        // landscape rotations, so a user who turned the phone the other way saw
+        // an upside-down picture they could not correct.
+        activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         onDispose {
-            if (fullscreen) {
-                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-            }
+            activity?.requestedOrientation = previous
         }
     }
 
@@ -178,6 +241,7 @@ fun VideoPlayerCard(
     val stopLabel = stringResource(R.string.media_video_stop)
     val fullscreenLabel = stringResource(R.string.media_video_fullscreen)
     val exitFullscreenLabel = stringResource(R.string.media_video_exit_fullscreen)
+    val retryLabel = stringResource(R.string.media_video_retry)
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
@@ -187,12 +251,25 @@ fun VideoPlayerCard(
         contentAlignment = Alignment.Center,
     ) {
         when {
-            failed -> Text(
-                text = failedLabel,
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White,
-                modifier = Modifier.padding(16.dp),
-            )
+            failed -> Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable {
+                        // A decode error is often transient (the file was being
+                        // rewritten, the decoder was reclaimed); let the card go
+                        // back to its cover instead of dead-ending on the message.
+                        failed = false
+                    }
+                    .semantics { contentDescription = retryLabel },
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = failedLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White,
+                    modifier = Modifier.padding(16.dp),
+                )
+            }
 
             preparing -> Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -274,8 +351,19 @@ fun VideoPlayerCard(
                 // The dialog has to fill the landscape window, not be a card.
                 usePlatformDefaultWidth = false,
                 dismissOnClickOutside = false,
+                // The activity is edge-to-edge (ADR-024), but a Dialog is its own
+                // window and defaults to fitting the system windows: without this
+                // the black player only covered the safe area and left bright
+                // paper strips along the status bar and the landscape nav bar.
+                decorFitsSystemWindows = false,
             ),
         ) {
+            // A Dialog owns its own window, and that window seeds its bar-icon
+            // appearance from the XML theme rather than from the activity's
+            // runtime edge-to-edge state. With the player painting under the bars
+            // the light theme therefore drew dark icons on top of black video,
+            // where they were invisible.
+            DialogDarkSystemBars()
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -300,16 +388,45 @@ fun VideoPlayerCard(
                 )
 
                 // Top-start, away from the Media3 controller bar at the bottom.
+                // The dialog paints edge-to-edge now, so the button carries the
+                // insets itself: in landscape the cutout and the gesture bar sit
+                // on the sides and would otherwise swallow the tap.
                 CornerButton(
                     label = exitFullscreenLabel,
                     modifier = Modifier
                         .align(Alignment.TopStart)
+                        .windowInsetsPadding(WindowInsets.safeDrawing)
                         .padding(16.dp),
                     onClick = { leaveFullscreen() },
                 ) {
                     MediaGlyph(MediaGlyphKind.FullscreenExit, tint = Color.White, iconSize = 18.dp)
                 }
             }
+        }
+    }
+}
+
+/**
+ * Forces light system-bar icons for as long as the fullscreen player is composed.
+ *
+ * The dialog's window is created by the platform, so it does not inherit the
+ * activity's runtime bar-icon appearance; without this a light-theme session
+ * drew dark icons onto the black player.
+ */
+@Composable
+private fun DialogDarkSystemBars() {
+    val view = LocalView.current
+    val window = (view.parent as? DialogWindowProvider)?.window
+    DisposableEffect(window) {
+        if (window == null) return@DisposableEffect onDispose { }
+        val controller = WindowInsetsControllerCompat(window, view)
+        val lightStatus = controller.isAppearanceLightStatusBars
+        val lightNavigation = controller.isAppearanceLightNavigationBars
+        controller.isAppearanceLightStatusBars = false
+        controller.isAppearanceLightNavigationBars = false
+        onDispose {
+            controller.isAppearanceLightStatusBars = lightStatus
+            controller.isAppearanceLightNavigationBars = lightNavigation
         }
     }
 }
@@ -362,4 +479,6 @@ private fun Context.findActivity(): Activity? = when (this) {
 
 private val VIDEO_ASPECT = 16f / 9f
 private val SCRIM = Color(0x80000000)
-private val CORNER_BUTTON_SIZE = 36.dp
+
+/** 48dp: the accessibility minimum. At 36dp the exit button was easy to miss. */
+private val CORNER_BUTTON_SIZE = 48.dp

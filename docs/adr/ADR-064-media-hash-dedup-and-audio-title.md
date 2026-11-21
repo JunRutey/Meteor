@@ -133,6 +133,34 @@ Media3 不允许一个 `ExoPlayer` 同时绑定两个 `PlayerView` 的视频 sur
 只有 `fullscreen == true` 的 effect 才会把方向复位，正常页面不会无谓地改写
 `requestedOrientation`。
 
+> **勘误（v1.5.1）**：上面这条实现有致命缺陷，已修复。`onDispose` 里写的是
+> `if (fullscreen) { …复位… }`，但那个 lambda 捕获的是 `MutableState` 本身，`onDispose`
+> 执行时 `fullscreen` 早已被写成 `false`，守卫恒假 —— **方向从来没有被复位过**，退出全屏后
+> 整个 Activity 被永久锁在横屏。除「直接离开页面」外，ADR 声称覆盖的每条路径实际都失效。
+> 修法：在 effect **创建时**把进入前的方向存成普通局部值，`onDispose` 里无条件写回，
+> 不再读 `fullscreen`。
+>
+> 同批修正：
+> - `SCREEN_ORIENTATION_LANDSCAPE` → `SCREEN_ORIENTATION_SENSOR_LANDSCAPE`。前者把方向钉死
+>   在其中一个横向档位，用户反向握持时画面倒置且无法纠正；
+> - 复位值改为「进入前的 `requestedOrientation`」而非硬写 `UNSPECIFIED`，避免踩掉调用方
+>   本来就锁定的方向；
+> - `DialogProperties` 补 `decorFitsSystemWindows = false`。Activity 是 edge-to-edge
+>   （ADR-024），但 Dialog 是独立窗口，默认 fit system windows，黑色播放器只铺满安全区，
+>   状态栏与横屏侧边导航栏位置露出浅色纸面 —— 这是「横屏后页面显示有问题」的直接来源；
+> - 退出全屏按钮补 `WindowInsets.safeDrawing`，尺寸 36dp → 48dp（无障碍最小触控目标）。
+>   横屏时挖孔与手势条在侧边，原来的 36dp 按钮常落在系统手势热区里，用户表现为「点不动」；
+> - `MediaViewerScreen` 里 `VideoPlayerCard` 的修饰符由 `fillMaxSize()` 改为
+>   `fillMaxWidth()`。卡片自带 16:9 `aspectRatio`，调用方同时钉死宽高时 `aspectRatio`
+>   解析不出目标尺寸，卡片被拉成查看器区域的形状、视频在里面加黑边 —— 同一张卡在编辑器里
+>   （`fillMaxWidth`）显示正常，正是这条差异的证据；
+> - 补 `Player.Listener`：`STATE_READY` 才收起「正在准备」、`STATE_ENDED` 回卷并复位、
+>   `onPlayerError` 置失败态。此前 `prepare()` 之后立即清 `preparing`，大文件会有黑屏空窗；
+>   而解码失败时卡片只是一块没有文案的黑框，`media_video_failed` 永远不可达；
+> - 补音频焦点与 `setHandleAudioBecomingNoisy(true)`：来电/其它 App 抢占音频时暂停，
+>   拔耳机不再把私密录音切到外放。
+
+
 ### 为什么必须改 `MainActivity` 的 `configChanges`
 
 `AndroidManifest.xml` 原来没有声明 `configChanges`。`requestedOrientation` 改成横屏会让系统
@@ -221,16 +249,25 @@ android:configChanges="orientation|screenSize|keyboardHidden"
   1. 日记录入图片/视频/音频各一条 → 预览页三张卡正常显示（不再是「正在载入」）；
   2. 音频卡显示原始文件名；描述为空时也是文件名；
   3. 视频右上角全屏 → 横屏播放；退出、返回键、离开页面后方向均恢复，不把别的页面锁在横屏；
-  4. 同一文件先插入日记、再插入人物正文：存储目录只有一条媒体；人物「媒体」区可能不显示
+     **反向握持**时画面不倒置（`SENSOR_LANDSCAPE`）；
+  4. 全屏黑色铺满整屏（状态栏与横屏侧边导航栏位置也是黑的），左上角退出按钮可点中；
+  5. 同一文件先插入日记、再插入人物正文：存储目录只有一条媒体；人物「媒体」区可能不显示
      （首次归属 `_self`），但人物正文里正常播放；
-  5. 重复导入同一文件（同一来源）不再产生第二份密文。
+  6. 重复导入同一文件（同一来源）不再产生第二份密文；
+  7. 播放到结尾后卡片回到封面（可再点播放）；把文件改坏后播放显示「视频无法播放」而不是黑框；
+     播放中来电或拔耳机时暂停。
 
 ## 七、后果与风险
 
 - 修复了预览页（以及人物详情正文）媒体卡永久 Pending 的 bug；音频卡有了可辨识的名称。
-- 视频获得横屏全屏，且任何退出路径都不会把 Activity 留在横屏。
+- 视频获得横屏全屏；v1.5.1 修正了方向永不复位的问题（见 §四 勘误），现在任何退出路径都会
+  把方向还给进入前的值。
 - 去重让「同一文件多板块引用」不再复制密文，代价是导入时多一次流式读取；旧媒体零迁移。
 - `configChanges` 是对全 App 生效的生命周期行为变更，需人工回归旋转场景；这是为了让全屏播放
   在方向切换时不销毁 ExoPlayer 的必要条件，已在 ADR 与任务报告中显式标注。
 - 备份恢复后的媒体不带 hash（manifest 未扩展），换机后会重新去重失败、多存一份——已知限制，
   留待备份格式下一次版本升级。
+- **仍存在的限制**：`configChanges` 只声明了 `orientation|screenSize|keyboardHidden`。深色模式
+  切换、字体大小、语言、折叠屏姿态等未声明的配置变化仍会重建 Activity，此时全屏播放器会被
+  中断回内联封面（状态全是 `remember`，没有 `rememberSaveable`）。全屏播放器本身仍是 Dialog
+  这一独立窗口，`FLAG_SECURE` 依赖 `SecureFlagPolicy.Inherit` 继承，不要改成 `Exclude`。
