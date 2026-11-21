@@ -90,8 +90,8 @@ class ImageShareFileTest {
 
     /**
      * A signature is only useful when it is complete. Short or look-alike
-     * headers must stay on the `image/*` fallback instead of claiming a format
-     * the receiver would then fail to decode.
+     * headers must stay on the generic image MIME type instead of claiming a
+     * format the receiver would then fail to decode.
      */
     @Test
     fun `truncated or look-alike signatures stay on the generic mime type`() {
