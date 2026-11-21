@@ -12,6 +12,8 @@ Meteor 的实现和发布流程依赖以下开源项目。这里列出直接依�
 | [Kotlin](https://github.com/JetBrains/kotlin) | 应用与测试代码语言 | Apache-2.0 |
 | [kotlinx.coroutines](https://github.com/Kotlin/kotlinx.coroutines) | 异步任务、流式读取与 IO 调度 | Apache-2.0 |
 | [Hilt / Dagger](https://github.com/google/dagger) | 依赖注入，仅限 `:app` 组装边界 | Apache-2.0 |
+| [AndroidX Media3 / ExoPlayer](https://github.com/androidx/media)（media3-exoplayer、media3-ui） | 相册、编辑器与人物档案里的视频 / 音频播放（ADR-053） | Apache-2.0 |
+| [AndroidX ExifInterface](https://github.com/androidx/androidx) | 读取图片 EXIF 拍摄时间与方向，供相册按源数据排序（ADR-052） | Apache-2.0 |
 
 ## 测试依赖
 
