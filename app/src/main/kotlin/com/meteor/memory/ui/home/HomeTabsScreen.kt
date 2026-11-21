@@ -1,5 +1,7 @@
 package com.meteor.memory.ui.home
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +20,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meteor.memory.R
 import com.meteor.memory.feature.calendar.CalendarHeader
+import com.meteor.memory.ui.theme.MotionTokens
 
 @Composable
 fun HomeTabsScreen(
@@ -54,8 +58,17 @@ fun HomeTabsScreen(
             onOpenSettings = onOpenSettings,
         )
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            tabStateHolder.SaveableStateProvider(selectedTab) {
-                if (selectedTab == 0) lifeContent() else diaryContent()
+            // Crossfade instead of a hard swap: the two tabs are the app's main
+            // navigation and used to cut instantly. The state holder stays keyed
+            // per tab so each side keeps its scroll position.
+            Crossfade(
+                targetState = selectedTab,
+                animationSpec = MotionTokens.enter(),
+                label = "home-tab",
+            ) { tab ->
+                tabStateHolder.SaveableStateProvider(tab) {
+                    if (tab == 0) lifeContent() else diaryContent()
+                }
             }
         }
         HomeTabBar(
@@ -127,11 +140,26 @@ private fun HomeTabItem(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val tint = if (selected) {
-        MaterialTheme.colorScheme.secondary
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
+    // Animated so the pill and the icon tint glide between tabs instead of
+    // snapping; both read the same spec, so they stay in step.
+    val tint by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.secondary
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        animationSpec = MotionTokens.state(),
+        label = "tab-tint",
+    )
+    val pillColor by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        animationSpec = MotionTokens.state(),
+        label = "tab-pill",
+    )
     Column(
         modifier = modifier
             .selectable(
@@ -148,11 +176,7 @@ private fun HomeTabItem(
                 .padding(bottom = 4.dp)
                 .size(width = 56.dp, height = 28.dp)
                 .background(
-                    color = if (selected) {
-                        MaterialTheme.colorScheme.primaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.surface
-                    },
+                    color = pillColor,
                     shape = RoundedCornerShape(14.dp),
                 ),
             contentAlignment = Alignment.Center,
