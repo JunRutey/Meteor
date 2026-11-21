@@ -39,7 +39,7 @@
 -keepnames class com.meteor.memory.feature.settings.DarkMode
 -keepnames class com.meteor.memory.feature.settings.FontScale
 -keepnames class com.meteor.memory.feature.settings.MediaPickerMode
--keepnames class com.meteor.memory.feature.settings.AlbumSortMode
+-keepnames class com.meteor.memory.core.storage.AlbumSortMode
 -keepnames class com.meteor.memory.core.storage.Mood
 -keepnames class com.meteor.memory.core.storage.Relation
 -keepnames class com.meteor.memory.core.storage.RecordType
