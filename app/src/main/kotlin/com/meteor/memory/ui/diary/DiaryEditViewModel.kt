@@ -34,11 +34,13 @@ import java.util.Locale
 import javax.inject.Inject
 
 data class DiaryEditorState(
-    /** Localized `yyyy/MM/dd HH:mm` — the moment this record was last written. */
-    val dateLabel: String,
     val text: String,
-    /** Localized `meteor-sig` watermark, shown as metadata — never in the body. */
-    val signedAtLabel: String? = null,
+    /**
+     * 「记录于」的内容：这份记录写下的时刻（本地化）。记录保存前为空——
+     * 还没有「记录于」可言。主日期一直由页头的 [date] 承担，不再在小字里
+     * 重复一遍日期（v1.4 反馈：保存后小字日期重复）。
+     */
+    val recordedAtLabel: String? = null,
     /** Decrypted bitmaps for the images referenced by [text]. */
     val images: Map<String, ImageBitmap> = emptyMap(),
     /** Referenced images whose bytes exist but produced no bitmap. */
@@ -65,9 +67,7 @@ class DiaryEditViewModel @Inject constructor(
 
     private val date: LocalDate = LocalDate.parse(checkNotNull(savedStateHandle.get<String>(ARG_DATE)))
 
-    private val _state = MutableStateFlow(
-        DiaryEditorState(dateLabel = formatSavedAt(Instant.now()), text = "", date = date),
-    )
+    private val _state = MutableStateFlow(DiaryEditorState(text = "", date = date))
     val state: StateFlow<DiaryEditorState> = _state.asStateFlow()
 
     /** The record being edited; created lazily for a brand-new day. */
@@ -89,9 +89,8 @@ class DiaryEditViewModel @Inject constructor(
 
             _state.update {
                 it.copy(
-                    dateLabel = formatSavedAt(document.timestamp),
                     text = document.body,
-                    signedAtLabel = document.signedAt?.let(::formatSavedAt),
+                    recordedAtLabel = loaded?.let { doc -> formatSavedAt(DiaryDates.writtenAt(doc)) },
                 )
             }
             refreshImages(document.body)
@@ -203,8 +202,8 @@ class DiaryEditViewModel @Inject constructor(
                     isSaving = false,
                     saved = result.isSuccess,
                     error = result.exceptionOrNull()?.message,
-                    dateLabel = stored?.let { doc -> formatSavedAt(doc.timestamp) } ?: it.dateLabel,
-                    signedAtLabel = stored?.signedAt?.let(::formatSavedAt) ?: it.signedAtLabel,
+                    recordedAtLabel = stored?.let { doc -> formatSavedAt(DiaryDates.writtenAt(doc)) }
+                        ?: it.recordedAtLabel,
                 )
             }
         }

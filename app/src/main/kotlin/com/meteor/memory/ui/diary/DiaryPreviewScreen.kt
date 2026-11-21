@@ -36,15 +36,25 @@ fun DiaryPreviewScreen(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         DiaryScreenHeader(
-            dateLabel = state.dateLabel,
+            // 主日期是日记所属那天。当天写的带写入时刻（15:16），补写的只剩
+            // 那天本身，写入时刻挪到下面的「记录于」。
+            dateLabel = if (state.backfilled) {
+                diaryDayLabel(state.date)
+            } else {
+                state.writtenAtLabel ?: diaryDayLabel(state.date)
+            },
             onBack = onBack,
             supportingContent = {
-                state.signedAtLabel?.let { stamped ->
-                    Text(
-                        text = stringResource(R.string.diary_signed_at, stamped),
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                // 「记录于」只在补写时出现：当天写的写入时刻已经在主日期里，
+                // 再来一行就是把同一个时刻显示两遍。
+                if (state.backfilled) {
+                    state.writtenAtLabel?.let { stamped ->
+                        Text(
+                            text = stringResource(R.string.diary_signed_at, stamped),
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             },
             actions = {

@@ -37,8 +37,6 @@ import androidx.compose.ui.unit.sp
 import com.meteor.memory.R
 import com.meteor.memory.feature.editor.MarkdownField
 import com.meteor.memory.feature.editor.R as EditorR
-import java.time.format.TextStyle
-import java.util.Locale
 
 /**
  * 日记编辑页：页头（返回 / 日期 / 预览胶囊）+ 格式栏 + 正文 + 本地提示 + 保存。
@@ -65,26 +63,17 @@ fun DiaryEditScreen(
     var previewing by rememberSaveable { mutableStateOf(false) }
 
     Column(modifier = modifier.fillMaxSize()) {
-        val locale = Locale.getDefault()
         DiaryScreenHeader(
-            dateLabel = stringResource(
-                R.string.diary_day_label,
-                state.date.monthValue,
-                state.date.dayOfMonth,
-                state.date.dayOfWeek.getDisplayName(TextStyle.SHORT, locale),
-            ),
+            dateLabel = diaryDayLabel(state.date),
             onBack = onBack,
             supportingContent = {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Text(
-                        text = state.dateLabel,
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    state.signedAtLabel?.let { stamped ->
+                    // 只有「记录于」一行：日期本身已经在标题里，再放一行裸的
+                    // 时间戳就是同一个时刻显示两遍（保存后尤其明显）。
+                    state.recordedAtLabel?.let { stamped ->
                         Text(
                             text = stringResource(R.string.diary_signed_at, stamped),
                             fontSize = 13.sp,
