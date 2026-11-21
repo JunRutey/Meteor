@@ -762,7 +762,7 @@ fun MeteorNavHost(
                     defaultValue = null
                 },
             ),
-        ) {
+        ) { entry ->
             val requestedKinds = entry.arguments
                 ?.getString(ARG_MEDIA_PICKER_KINDS)
                 .orEmpty()
