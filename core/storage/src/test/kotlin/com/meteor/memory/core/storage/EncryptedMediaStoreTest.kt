@@ -198,7 +198,8 @@ class EncryptedMediaStoreTest {
     @Test
     fun `large payload round trips across chunks`() {
         val store = store()
-        val payload = ByteArray(ChunkedEncryptedFile.CHUNK_SIZE + 37) { (it % 251).toByte() }
+        // One byte past a full chunk forces the two-chunk path (ADR-062 format).
+        val payload = ByteArray(ChunkedEncryptedFile.LARGE_CHUNK_SIZE + 37) { (it % 251).toByte() }
         val saved = store.save(
             ByteArrayInputStream(payload),
             meta(kind = MediaKind.VIDEO, fileName = "clip.mp4", mimeType = "video/mp4"),
@@ -269,7 +270,7 @@ class EncryptedMediaStoreTest {
     fun `restore keeps the caller supplied id and source date`() {
         val store = store()
         val id = "0123456789abcdef0123456789abcdef"
-        val payload = ByteArray(ChunkedEncryptedFile.CHUNK_SIZE + 5) { it.toByte() }
+        val payload = ByteArray(ChunkedEncryptedFile.LARGE_CHUNK_SIZE + 5) { it.toByte() }
 
         val restored = requireNotNull(
             store.restore(id, meta(personId = "person_123"), ByteArrayInputStream(payload), byteArrayOf(4)),
@@ -320,9 +321,10 @@ class EncryptedMediaStoreTest {
     @Test
     fun `openDecrypted streams from an offset across chunk boundaries`() {
         val store = store()
-        // 2.5 MiB spans three chunks, so offsets inside a chunk and across a
-        // chunk boundary are both covered.
-        val payload = ByteArray(2 * 1024 * 1024 + 512 * 1024) { (it % 251).toByte() }
+        // 2.5 chunks, so offsets inside a chunk and across a chunk boundary are
+        // both covered for the large-chunk media format (ADR-062).
+        val chunk = ChunkedEncryptedFile.LARGE_CHUNK_SIZE
+        val payload = ByteArray(2 * chunk + 512 * 1024) { (it % 251).toByte() }
         val saved = store.save(ByteArrayInputStream(payload), meta())
 
         assertArrayEquals(payload, store.openDecrypted(saved.id).use { it.readBytes() })
@@ -331,12 +333,12 @@ class EncryptedMediaStoreTest {
             store.openDecrypted(saved.id, 100L).use { it.readBytes() },
         )
         assertArrayEquals(
-            payload.copyOfRange(1024 * 1024 - 10, payload.size),
-            store.openDecrypted(saved.id, (1024 * 1024 - 10).toLong()).use { it.readBytes() },
+            payload.copyOfRange(chunk - 10, payload.size),
+            store.openDecrypted(saved.id, (chunk - 10).toLong()).use { it.readBytes() },
         )
         assertArrayEquals(
-            payload.copyOfRange(2 * 1024 * 1024 + 7, payload.size),
-            store.openDecrypted(saved.id, (2 * 1024 * 1024 + 7).toLong()).use { it.readBytes() },
+            payload.copyOfRange(2 * chunk + 7, payload.size),
+            store.openDecrypted(saved.id, (2 * chunk + 7).toLong()).use { it.readBytes() },
         )
     }
 

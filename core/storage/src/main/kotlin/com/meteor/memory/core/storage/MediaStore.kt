@@ -174,7 +174,15 @@ class EncryptedMediaStore(
             check(!dataFile.exists() && !metadataFile.exists() && !thumbnailFile.exists()) {
                 "media id collision"
             }
-            val payload = ChunkedEncryptedFile.write(input, dataTemp, DATA_MAGIC, crypto)
+            val payload = ChunkedEncryptedFile.write(
+                input = input,
+                target = dataTemp,
+                magic = DATA_MAGIC,
+                crypto = crypto,
+                // Media uses the large-chunk format (ADR-062): fewer Keystore
+                // round-trips for a big video. Attachments keep the 1 MiB format.
+                version = ChunkedEncryptedFile.FORMAT_VERSION_LARGE_CHUNKS,
+            )
             if (thumbnailPng != null) thumbnailTemp.writeBytes(crypto.encrypt(thumbnailPng))
 
             val media = StoredMedia(

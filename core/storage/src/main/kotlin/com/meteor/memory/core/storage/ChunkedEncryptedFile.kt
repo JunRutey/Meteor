@@ -25,8 +25,27 @@ import java.nio.ByteBuffer
  */
 internal object ChunkedEncryptedFile {
 
+    /**
+     * Original 1 MiB framing: every file written before ADR-062, and all
+     * attachments (which stay on this version).
+     */
     const val FORMAT_VERSION = 1
+
+    /**
+     * 10 MiB framing for media payloads (ADR-062).
+     *
+     * The Android Keystore key requires a fresh `Cipher.init` per chunk, and each
+     * chunk's data crosses the Binder boundary to the keystore daemon. Ten times
+     * fewer chunks means ten times fewer round-trips for a large video; 10 MiB is
+     * still small enough that peak memory stays around a few tens of MiB and a
+     * corrupted chunk stays contained.
+     */
+    const val FORMAT_VERSION_LARGE_CHUNKS = 2
+
     const val CHUNK_SIZE = 1024 * 1024
+
+    /** Plaintext size of one chunk in the [FORMAT_VERSION_LARGE_CHUNKS] format. */
+    internal const val LARGE_CHUNK_SIZE = 10 * 1024 * 1024
 
     /**
      * AES-256-GCM adds a 12-byte nonce and a 16-byte tag; a one-byte chunk is
@@ -42,13 +61,20 @@ internal object ChunkedEncryptedFile {
     data class Stats(val sizeBytes: Long, val chunkCount: Int)
 
     /** Streams [input] into [target] as encrypted chunks, replacing it atomically. */
-    fun write(input: InputStream, target: File, magic: Int, crypto: FileCrypto): Stats {
+    fun write(
+        input: InputStream,
+        target: File,
+        magic: Int,
+        crypto: FileCrypto,
+        version: Int = FORMAT_VERSION,
+    ): Stats {
+        val chunkSize = chunkSizeFor(version)
         var index = 0
         var totalBytes = 0L
         DataOutputStream(target.outputStream().buffered()).use { output ->
             output.writeInt(magic)
-            output.writeInt(FORMAT_VERSION)
-            val buffer = ByteArray(CHUNK_SIZE)
+            output.writeInt(version)
+            val buffer = ByteArray(chunkSize)
             while (true) {
                 val count = readChunk(input, buffer)
                 if (count == 0) break
@@ -75,14 +101,15 @@ internal object ChunkedEncryptedFile {
     fun copyDecrypted(source: File, magic: Int, crypto: FileCrypto, output: OutputStream): Stats {
         DataInputStream(source.inputStream().buffered()).use { input ->
             check(input.readInt() == magic) { "invalid encrypted chunk header" }
-            check(input.readInt() == FORMAT_VERSION) { "unsupported encrypted chunk format" }
+            val chunkSize = chunkSizeFor(input.readInt())
+            val maxEncryptedSize = maxEncryptedChunkSize(chunkSize)
 
             var chunkIndex = 0
             var bytesCopied = 0L
             while (true) {
                 val encryptedSize = input.readInt()
                 if (encryptedSize == END_OF_DATA) break
-                check(encryptedSize in MIN_ENCRYPTED_CHUNK_SIZE..MAX_ENCRYPTED_CHUNK_SIZE) {
+                check(encryptedSize in MIN_ENCRYPTED_CHUNK_SIZE..maxEncryptedSize) {
                     "invalid encrypted chunk size"
                 }
 
@@ -92,7 +119,7 @@ internal object ChunkedEncryptedFile {
                 val chunkInput = DataInputStream(ByteArrayInputStream(chunk))
                 check(chunkInput.readInt() == chunkIndex) { "encrypted chunk order is invalid" }
                 val content = chunk.copyOfRange(Int.SIZE_BYTES, chunk.size)
-                check(content.isNotEmpty() && content.size <= CHUNK_SIZE) { "invalid encrypted chunk" }
+                check(content.isNotEmpty() && content.size <= chunkSize) { "invalid encrypted chunk" }
                 output.write(content)
                 bytesCopied += content.size
                 chunkIndex++
@@ -122,23 +149,24 @@ internal object ChunkedEncryptedFile {
         val input = DataInputStream(source.inputStream().buffered())
         try {
             check(input.readInt() == magic) { "invalid encrypted chunk header" }
-            check(input.readInt() == FORMAT_VERSION) { "unsupported encrypted chunk format" }
+            val chunkSize = chunkSizeFor(input.readInt())
+            val maxEncryptedSize = maxEncryptedChunkSize(chunkSize)
 
             var chunkIndex = 0
             var remaining = offsetBytes
-            while (remaining >= CHUNK_SIZE) {
+            while (remaining >= chunkSize) {
                 val encryptedSize = input.readInt()
                 check(encryptedSize != END_OF_DATA) { "offset beyond the encrypted payload" }
-                check(encryptedSize in MIN_ENCRYPTED_CHUNK_SIZE..MAX_ENCRYPTED_CHUNK_SIZE) {
+                check(encryptedSize in MIN_ENCRYPTED_CHUNK_SIZE..maxEncryptedSize) {
                     "invalid encrypted chunk size"
                 }
                 skipFully(input, encryptedSize.toLong())
-                remaining -= CHUNK_SIZE
+                remaining -= chunkSize
                 chunkIndex++
             }
 
             // The first chunk handed out starts [remaining] bytes into it.
-            val first = readChunk(input, crypto, chunkIndex)
+            val first = readChunk(input, crypto, chunkIndex, chunkSize, maxEncryptedSize)
                 ?: return EmptyInputStream().also { input.close() }
             val start = remaining.toInt()
             // An offset exactly at the end of the last chunk is a valid empty read.
@@ -146,6 +174,8 @@ internal object ChunkedEncryptedFile {
             return DecryptingInputStream(
                 input = input,
                 crypto = crypto,
+                chunkSize = chunkSize,
+                maxEncryptedSize = maxEncryptedSize,
                 buffer = if (start == 0) first else first.copyOfRange(start, first.size),
                 chunkIndex = chunkIndex + 1,
             )
@@ -155,10 +185,16 @@ internal object ChunkedEncryptedFile {
         }
     }
 
-    private fun readChunk(input: DataInputStream, crypto: FileCrypto, expectedIndex: Int): ByteArray? {
+    private fun readChunk(
+        input: DataInputStream,
+        crypto: FileCrypto,
+        expectedIndex: Int,
+        chunkSize: Int,
+        maxEncryptedSize: Int,
+    ): ByteArray? {
         val encryptedSize = input.readInt()
         if (encryptedSize == END_OF_DATA) return null
-        check(encryptedSize in MIN_ENCRYPTED_CHUNK_SIZE..MAX_ENCRYPTED_CHUNK_SIZE) {
+        check(encryptedSize in MIN_ENCRYPTED_CHUNK_SIZE..maxEncryptedSize) {
             "invalid encrypted chunk size"
         }
         val encrypted = ByteArray(encryptedSize)
@@ -167,7 +203,7 @@ internal object ChunkedEncryptedFile {
         val chunkInput = DataInputStream(ByteArrayInputStream(chunk))
         check(chunkInput.readInt() == expectedIndex) { "encrypted chunk order is invalid" }
         val content = chunk.copyOfRange(Int.SIZE_BYTES, chunk.size)
-        check(content.isNotEmpty() && content.size <= CHUNK_SIZE) { "invalid encrypted chunk" }
+        check(content.isNotEmpty() && content.size <= chunkSize) { "invalid encrypted chunk" }
         return content
     }
 
@@ -196,6 +232,8 @@ internal object ChunkedEncryptedFile {
     private class DecryptingInputStream(
         private val input: DataInputStream,
         private val crypto: FileCrypto,
+        private val chunkSize: Int,
+        private val maxEncryptedSize: Int,
         private var buffer: ByteArray,
         private var chunkIndex: Int,
     ) : InputStream() {
@@ -219,7 +257,8 @@ internal object ChunkedEncryptedFile {
 
         private fun ensureBuffer(): Boolean {
             while (position >= buffer.size) {
-                val next = readChunk(input, crypto, chunkIndex) ?: return false
+                val next = readChunk(input, crypto, chunkIndex, chunkSize, maxEncryptedSize)
+                    ?: return false
                 buffer = next
                 position = 0
                 chunkIndex++
@@ -233,6 +272,17 @@ internal object ChunkedEncryptedFile {
             input.close()
         }
     }
+
+    /** Plaintext chunk size implied by the on-disk format version. */
+    private fun chunkSizeFor(version: Int): Int = when (version) {
+        FORMAT_VERSION -> CHUNK_SIZE
+        FORMAT_VERSION_LARGE_CHUNKS -> LARGE_CHUNK_SIZE
+        else -> error("unsupported encrypted chunk format $version")
+    }
+
+    /** AES-GCM envelope: 1-byte nonce length + nonce + tag, plus the chunk index. */
+    private fun maxEncryptedChunkSize(chunkSize: Int): Int =
+        chunkSize + Int.SIZE_BYTES + 29
 
     private fun readChunk(input: InputStream, buffer: ByteArray): Int {
         var count = 0
