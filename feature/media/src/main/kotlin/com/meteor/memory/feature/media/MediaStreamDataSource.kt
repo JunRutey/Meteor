@@ -49,7 +49,7 @@ class MediaStreamDataSource(
         input = stream
         currentUri = dataSpec.uri
         opened = true
-        remaining = if (dataSpec.length == C.LENGTH_UNSET) {
+        remaining = if (dataSpec.length == C.LENGTH_UNSET.toLong()) {
             available
         } else {
             minOf(dataSpec.length, available)
