@@ -27,6 +27,24 @@
     <string name="people_body_section">正文</string>
     <string name="people_body_empty">（暂无正文）</string>
 
+    <!-- Media section (ADR-052 §5 E, ADR-056) -->
+    <string name="people_media_section">媒体</string>
+    <string name="people_media_add">添加媒体</string>
+    <string name="people_media_importing">导入中…</string>
+    <string name="people_media_empty">这个人还没有媒体</string>
+    <string name="people_media_load_failed">媒体加载失败</string>
+    <string name="people_media_delete_failed">媒体删除失败，请重试。</string>
+    <string name="people_media_import_summary">导入成功 %1$d 个，失败 %2$d 个</string>
+    <string name="people_media_kind_image">图片</string>
+    <string name="people_media_kind_video">视频</string>
+    <string name="people_media_kind_audio">音频</string>
+    <string name="people_media_open_description">打开%1$s</string>
+    <string name="people_media_duration_description">时长 %1$s</string>
+    <string name="people_media_untitled">未命名媒体</string>
+    <string name="people_media_delete_title">删除这个媒体？</string>
+    <string name="people_media_delete_body">文件会被永久删除。引用过这个媒体的正文不会自动改写，那些地方会显示「媒体无法显示」。此操作不可撤销。</string>
+    <string name="people_media_delete_confirm">删除</string>
+
     <string name="people_edit">编辑</string>
     <string name="people_edit_title">编辑人物</string>
     <string name="people_edit_subtitle">改完点右上角保存</string>
@@ -38,6 +56,7 @@
     <string name="people_save">保存</string>
     <string name="people_saving">保存中…</string>
     <string name="people_adding_image">正在处理图片…</string>
+    <string name="people_adding_media">正在处理媒体…</string>
     <string name="people_saved">已保存并加密</string>
 
     <string name="people_relation_family">家人</string>

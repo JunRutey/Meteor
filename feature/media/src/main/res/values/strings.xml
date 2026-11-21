@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Thumbnails -->
+    <string name="media_thumb_description">媒体缩略图</string>
+
+    <!-- Video player -->
+    <string name="media_video_description">视频</string>
+    <string name="media_video_play">播放视频</string>
+    <string name="media_video_stop">停止播放</string>
+    <string name="media_video_preparing">正在准备视频…</string>
+    <string name="media_video_failed">视频无法播放，文件可能已损坏或已被删除。</string>
+
+    <!-- Audio player -->
+    <string name="media_audio_title">音频</string>
+    <string name="media_audio_play">播放音频</string>
+    <string name="media_audio_pause">暂停音频</string>
+    <string name="media_audio_preparing">正在准备音频…</string>
+    <string name="media_audio_failed">音频无法播放，文件可能已损坏或已被删除。</string>
+
+    <!-- In-app media picker -->
+    <string name="media_picker_title">选择媒体</string>
+    <string name="media_picker_back">返回</string>
+    <string name="media_picker_loading">正在读取设备媒体…</string>
+    <string name="media_picker_empty">设备上还没有可选的媒体文件。</string>
+    <string name="media_picker_confirm">确认</string>
+    <string name="media_picker_cancel">取消</string>
+    <string name="media_picker_selected">已选 %1$d 项</string>
+    <string name="media_picker_kind_image">图片</string>
+    <string name="media_picker_kind_video">视频</string>
+    <string name="media_picker_kind_audio">音频</string>
+    <string name="media_picker_hint">点按选择，可多选</string>
+    <!-- Month header pattern; keep the letters y/M literal so java.time reads it as a year/month pattern. -->
+    <string name="media_picker_month_pattern">yyyy 年 M 月</string>
+    <string name="media_picker_month_unknown">日期未知</string>
+
+    <!-- Runtime permission gate -->
+    <string name="media_picker_permission_title">需要读取设备媒体</string>
+    <string name="media_picker_permission_body">要让你从设备里挑选照片、视频或音频，Meteor 需要读取媒体的权限。Meteor 只读取你选中的文件，并把它们加密存进自己的档案，不会上传。</string>
+    <string name="media_picker_permission_denied">还没有获得媒体读取权限，暂时无法列出设备上的媒体文件。</string>
+    <string name="media_picker_permission_retry">重新申请</string>
+    <string name="media_picker_permission_settings">去设置里授权</string>
+</resources>

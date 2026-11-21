@@ -13,6 +13,7 @@ app feature-calendar
 app feature-editor
 app feature-people
 app feature-gallery
+app feature-media
 app feature-ai
 app core-backup
 app core-storage
@@ -28,6 +29,10 @@ feature-editor core-storage
 feature-people core-storage
 feature-ai core-storage
 feature-people feature-editor
+feature-media core-storage
+feature-gallery feature-media
+feature-editor feature-media
+feature-people feature-media
 core-backup core-storage
 core-backup core-crypto
 core-index core-storage

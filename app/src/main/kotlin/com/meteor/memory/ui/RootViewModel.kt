@@ -7,12 +7,17 @@ import androidx.lifecycle.viewModelScope
 import com.meteor.memory.BuildConfig
 import com.meteor.memory.core.crypto.AppLock
 import com.meteor.memory.core.log.AppLog
+import com.meteor.memory.core.storage.ImageStore
+import com.meteor.memory.core.storage.MediaStore
+import com.meteor.memory.feature.media.MediaHost
 import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.SettingsRepository
 import com.meteor.memory.system.LegacyInstallDetector
 import com.meteor.memory.update.UpdateService
 import com.meteor.memory.ui.search.SearchService
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
+import android.content.Context
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -49,7 +54,21 @@ class RootViewModel @Inject constructor(
     private val searchService: SearchService,
     private val updateService: UpdateService,
     private val legacyInstallDetector: LegacyInstallDetector,
+    @ApplicationContext context: Context,
+    mediaStore: MediaStore,
+    imageStore: ImageStore,
 ) : ViewModel() {
+
+    /**
+     * Archive handles for the media composables (ADR-052 §4). Built here rather
+     * than in Compose so the cache directory and the already-injected stores are
+     * reused instead of being rebuilt per composition.
+     */
+    val mediaHost: MediaHost = MediaHost(
+        mediaStore = mediaStore,
+        imageStore = imageStore,
+        cacheDir = context.cacheDir,
+    )
 
     private val _onboardingGate = MutableStateFlow(OnboardingGate.LOADING)
     val onboardingGate: StateFlow<OnboardingGate> = _onboardingGate.asStateFlow()

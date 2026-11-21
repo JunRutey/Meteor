@@ -68,6 +68,7 @@
  ├── :feature-editor     Markdown 编辑与预览
  ├── :feature-people     人物档案、自定义标签与详情页
  ├── :feature-gallery    加密图片浏览
+ ├── :feature-media       共享媒体播放/缩略图/内置选择器（ADR-052、ADR-053）
  ├── :feature-calendar   心情日历
  ├── :feature-settings   设置页（DataStore 偏好）
  ├── :core-backup        明文 zip 备份 / 重新加密导入

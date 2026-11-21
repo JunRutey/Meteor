@@ -66,6 +66,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             aiTotalElapsedMs = prefs[KEY_AI_TOTAL_ELAPSED_MS] ?: 0L,
             aiTotalRequests = prefs[KEY_AI_TOTAL_REQUESTS] ?: 0,
             onboardingCompleted = prefs[KEY_ONBOARDING_COMPLETED] ?: false,
+            albumSortMode = prefs[KEY_ALBUM_SORT_MODE]
+                ?.takeIf { it == "SOURCE_DATE" || it == "IMPORT_DATE" }
+                ?: AppSettings.DEFAULT_ALBUM_SORT_MODE,
         )
     }
 
@@ -154,6 +157,13 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
 
     suspend fun setOnboardingCompleted(completed: Boolean) =
         store.edit { it[KEY_ONBOARDING_COMPLETED] = completed }
+
+    /** Persists the album sort choice; only the two known mode names are accepted. */
+    suspend fun setAlbumSortMode(mode: String) = store.edit { prefs ->
+        if (mode == "SOURCE_DATE" || mode == "IMPORT_DATE") {
+            prefs[KEY_ALBUM_SORT_MODE] = mode
+        }
+    }
 
     /** Adds one custom people tag to the remembered chip list; idempotent. */
     suspend fun addPeopleTag(tag: String) = store.edit { prefs ->
@@ -279,6 +289,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         prefs[KEY_AI_TOTAL_ELAPSED_MS] = snapshot.aiTotalElapsedMs
         prefs[KEY_AI_TOTAL_REQUESTS] = snapshot.aiTotalRequests
         prefs[KEY_ONBOARDING_COMPLETED] = snapshot.onboardingCompleted
+        prefs[KEY_ALBUM_SORT_MODE] = snapshot.albumSortMode
+            .takeIf { it == "SOURCE_DATE" || it == "IMPORT_DATE" }
+            ?: AppSettings.DEFAULT_ALBUM_SORT_MODE
     }
 
     private companion object {
@@ -315,6 +328,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val KEY_AI_TOTAL_ELAPSED_MS = longPreferencesKey("ai_total_elapsed_ms")
         val KEY_AI_TOTAL_REQUESTS = intPreferencesKey("ai_total_requests")
         val KEY_ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
+        val KEY_ALBUM_SORT_MODE = stringPreferencesKey("album_sort_mode")
         const val MAX_PEOPLE_TAGS = 32
     }
 }

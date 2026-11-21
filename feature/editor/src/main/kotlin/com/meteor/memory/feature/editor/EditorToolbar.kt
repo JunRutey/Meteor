@@ -11,11 +11,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,9 +39,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.meteor.memory.core.storage.MediaKind
 
 /**
- * Formatting bar: what the editor can insert (links, images, bold, colour) plus an
+ * Formatting bar: what the editor can insert (links, media, bold, colour) plus an
  * optional preview toggle.
  *
  * Everything here **inserts Markdown syntax** into the plain-text field; nothing
@@ -69,12 +72,29 @@ fun EditorToolbar(
      * becomes a filled dot in the chosen colour.
      */
     activeFormat: InlineFormat? = null,
+    /**
+     * Host-supplied media insert, i.e. ADR-052 §5 D's `onPickMedia(kinds)`.
+     *
+     * Null — the default — keeps the pre-ADR-052 single image button wired to
+     * [onImage]: a host that has not adopted the media archive keeps working
+     * unchanged (R2). Non-null replaces that one button with **three** insert
+     * actions (image / video / audio), each reporting the kinds it wants the
+     * host to let the user choose from. The editor never imports anything
+     * itself: ownership (`personId` / `_self`) is decided by the host.
+     */
+    onPickMedia: ((Set<MediaKind>) -> Unit)? = null,
+    /** True while an import is running: repeat taps are disabled (ADR-052 §5 D). */
+    mediaInserting: Boolean = false,
 ) {
     var paletteOpen by remember { mutableStateOf(false) }
+    var mediaOpen by remember { mutableStateOf(false) }
     // Jumping to preview hides the palette anyway; closing the state keeps the
     // flag from staying "open" behind the preview.
     LaunchedEffect(isPreviewing) {
-        if (isPreviewing) paletteOpen = false
+        if (isPreviewing) {
+            paletteOpen = false
+            mediaOpen = false
+        }
     }
 
     val bold = activeFormat as? InlineFormat.Bold
@@ -100,12 +120,28 @@ fun EditorToolbar(
                 onClick = onLink,
             ) { LinkIcon() }
 
-            val imageLabel = stringResource(R.string.editor_image)
-            ToolbarAction(
-                label = imageLabel,
-                enabled = !isPreviewing,
-                onClick = onImage,
-            ) { ImageIcon() }
+            if (onPickMedia == null) {
+                val imageLabel = stringResource(R.string.editor_image)
+                ToolbarAction(
+                    label = imageLabel,
+                    enabled = !isPreviewing,
+                    onClick = onImage,
+                ) { ImageIcon() }
+            } else {
+                // Three insert actions do not fit beside link/bold/colour/preview
+                // on a 360dp screen, so they live in a second row of the same
+                // card — the shape the colour palette already established. The
+                // row keeps the toolbar height stable and nothing scrolls away.
+                val insertLabel = stringResource(R.string.editor_insert_media)
+                ToolbarAction(
+                    label = insertLabel,
+                    enabled = !isPreviewing && !mediaInserting,
+                    onClick = {
+                        paletteOpen = false
+                        mediaOpen = !mediaOpen
+                    },
+                ) { InsertMediaIcon() }
+            }
 
             val boldLabel = stringResource(R.string.editor_fmt_bold)
             ToolbarAction(
@@ -119,7 +155,10 @@ fun EditorToolbar(
             ToolbarAction(
                 label = colorLabel,
                 enabled = !isPreviewing,
-                onClick = { paletteOpen = !paletteOpen },
+                onClick = {
+                    mediaOpen = false
+                    paletteOpen = !paletteOpen
+                },
                 selected = activeColor != null,
             ) { ColorIcon(paletteOpen = paletteOpen, activeColor = activeColor) }
 
@@ -135,6 +174,16 @@ fun EditorToolbar(
             }
 
             Spacer(modifier = Modifier.weight(1f))
+        }
+
+        if (onPickMedia != null && mediaOpen && !isPreviewing) {
+            MediaInsertRow(
+                enabled = !mediaInserting,
+                onPick = { kinds ->
+                    mediaOpen = false
+                    onPickMedia(kinds)
+                },
+            )
         }
 
         if (paletteOpen && !isPreviewing && colors.isNotEmpty()) {
@@ -511,6 +560,157 @@ private fun PreviewIcon(isPreviewing: Boolean) {
                 style = Stroke(width = stroke),
             )
         }
+    }
+}
+
+/**
+ * The three insert actions of ADR-052 §5 D, as a second row inside the same card.
+ *
+ * Each one reports **the kinds it wants the user to choose from**; the host opens
+ * the picker, imports, and appends the Markdown. Keeping this row inside the card
+ * (rather than a popup) means it cannot end up off-screen and the toolbar height
+ * never jumps while the user is aiming at a button.
+ */
+@Composable
+private fun MediaInsertRow(
+    enabled: Boolean,
+    onPick: (Set<MediaKind>) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        MediaInsertAction(
+            label = stringResource(R.string.editor_insert_image),
+            enabled = enabled,
+            onClick = { onPick(setOf(MediaKind.IMAGE)) },
+        ) { ImageIcon() }
+
+        MediaInsertAction(
+            label = stringResource(R.string.editor_insert_video),
+            enabled = enabled,
+            onClick = { onPick(setOf(MediaKind.VIDEO)) },
+        ) { VideoIcon() }
+
+        MediaInsertAction(
+            label = stringResource(R.string.editor_insert_audio),
+            enabled = enabled,
+            onClick = { onPick(setOf(MediaKind.AUDIO)) },
+        ) { AudioIcon() }
+
+        Spacer(modifier = Modifier.weight(1f))
+    }
+}
+
+/** A labelled insert chip: same 44dp target, but with the word next to the glyph. */
+@Composable
+private fun MediaInsertAction(
+    label: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val tint = if (enabled) {
+        MaterialTheme.colorScheme.secondary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Row(
+        modifier = Modifier
+            .height(36.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 10.dp)
+            .semantics { contentDescription = label },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        content()
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = tint,
+        )
+    }
+}
+
+/**
+ * A "＋" over a small frame: "insert media", opening the second row.
+ *
+ * `Icons.Default` is not on `:feature-editor`'s dependency list (the module draws
+ * its own glyphs), so this is drawn like every other toolbar icon.
+ */
+@Composable
+private fun InsertMediaIcon() {
+    val tint = MaterialTheme.colorScheme.secondary
+    Canvas(Modifier.size(22.dp)) {
+        val stroke = 1.8.dp.toPx()
+        val unit = size.width / 24f
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(3f * unit, 5f * unit),
+            size = Size(12f * unit, 12f * unit),
+            cornerRadius = CornerRadius(2.5f * unit),
+            style = Stroke(width = stroke),
+        )
+        val plus = Path().apply {
+            moveTo(18f * unit, 13f * unit)
+            lineTo(18f * unit, 21f * unit)
+            moveTo(14f * unit, 17f * unit)
+            lineTo(22f * unit, 17f * unit)
+        }
+        drawPath(
+            path = plus,
+            color = tint,
+            style = Stroke(width = stroke, cap = StrokeCap.Round),
+        )
+    }
+}
+
+/** A rounded rectangle with a play triangle: "video". */
+@Composable
+private fun VideoIcon() {
+    val tint = MaterialTheme.colorScheme.secondary
+    Canvas(Modifier.size(20.dp)) {
+        val stroke = 1.6.dp.toPx()
+        val unit = size.width / 24f
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(2f * unit, 5f * unit),
+            size = Size(20f * unit, 14f * unit),
+            cornerRadius = CornerRadius(3f * unit),
+            style = Stroke(width = stroke),
+        )
+        val triangle = Path().apply {
+            moveTo(10f * unit, 9f * unit)
+            lineTo(15.5f * unit, 12f * unit)
+            lineTo(10f * unit, 15f * unit)
+            close()
+        }
+        drawPath(path = triangle, color = tint, style = Stroke(width = stroke, join = StrokeJoin.Round))
+    }
+}
+
+/** Two stacked note bars with a dot: "audio". */
+@Composable
+private fun AudioIcon() {
+    val tint = MaterialTheme.colorScheme.secondary
+    Canvas(Modifier.size(20.dp)) {
+        val stroke = 1.6.dp.toPx()
+        val unit = size.width / 24f
+        val notes = Path().apply {
+            moveTo(10f * unit, 16f * unit)
+            lineTo(10f * unit, 6f * unit)
+            lineTo(18f * unit, 4.5f * unit)
+            lineTo(18f * unit, 14f * unit)
+        }
+        drawPath(path = notes, color = tint, style = Stroke(width = stroke, cap = StrokeCap.Round))
+        drawCircle(color = tint, radius = 2.4f * unit, center = Offset(7.6f * unit, 16.4f * unit))
+        drawCircle(color = tint, radius = 2.4f * unit, center = Offset(15.6f * unit, 14.6f * unit))
     }
 }
 

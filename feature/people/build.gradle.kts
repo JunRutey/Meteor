@@ -30,6 +30,9 @@ dependencies {
     // Editing a person's notes uses the same Markdown surface as a diary entry
     // (ADR-020), so the caret/markup rules live in exactly one place.
     implementation(project(":feature-editor"))
+    // The media section renders thumbnails through the shared media module
+    // (ADR-052 §5 E), so a video/audio cover is drawn by exactly one composable.
+    implementation(project(":feature-media"))
 
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)

@@ -26,6 +26,9 @@ internal enum class GalleryIconKind {
     Share,
     Delete,
     Check,
+    Video,
+    Audio,
+    Sort,
 }
 
 @Composable
@@ -97,6 +100,52 @@ private fun DrawScope.drawGalleryIcon(kind: GalleryIconKind, color: Color) {
             move(5f, 12.4f)
             line(10f, 17.2f)
             line(19f, 7f)
+        }
+
+        GalleryIconKind.Video -> {
+            // A play triangle inside a rounded frame.
+            path {
+                move(4f, 7f)
+                line(4f, 17f)
+                line(9.5f, 13.6f)
+                line(20f, 18f)
+                line(20f, 6f)
+                line(9.5f, 10.4f)
+                close()
+            }
+            path {
+                move(10.2f, 12f)
+                line(14f, 14.4f)
+                line(14f, 9.6f)
+                close()
+            }
+        }
+
+        GalleryIconKind.Audio -> {
+            // A musical note: stem plus a filled head, mirroring the video badge
+            // language but distinct enough to read as sound.
+            path {
+                move(9f, 6.5f)
+                line(9f, 16.5f)
+                move(9f, 16.5f)
+                line(15f, 13.5f)
+                line(15f, 5f)
+                line(9f, 6.5f)
+            }
+            drawCircle(color, radius = 1.9f * unit, center = p(7.5f, 17.5f))
+            drawCircle(color, radius = 1.9f * unit, center = p(13.5f, 14f))
+        }
+
+        GalleryIconKind.Sort -> {
+            // Three descending bars plus an arrow — a "sort" affordance.
+            path {
+                move(5f, 8f)
+                line(19f, 8f)
+                move(5f, 12f)
+                line(15f, 12f)
+                move(5f, 16f)
+                line(11f, 16f)
+            }
         }
     }
 }

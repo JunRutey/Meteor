@@ -26,6 +26,9 @@ android {
 }
 
 dependencies {
+    // MediaThumb / VideoPlayerCard / AudioPlayerCard cross the grid and viewer.
+    implementation(project(":feature-media"))
+
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
     implementation(libs.compose.material3)

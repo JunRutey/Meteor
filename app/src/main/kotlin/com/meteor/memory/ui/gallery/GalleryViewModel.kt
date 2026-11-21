@@ -1,22 +1,22 @@
 package com.meteor.memory.ui.gallery
 
-import android.graphics.BitmapFactory
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meteor.memory.core.log.AppLog
-import com.meteor.memory.core.storage.ImageStore
-import com.meteor.memory.core.storage.StoredImage
+import com.meteor.memory.core.storage.AlbumRepository
+import com.meteor.memory.core.storage.AlbumSortMode
 import com.meteor.memory.feature.gallery.GalleryDay
-import com.meteor.memory.feature.gallery.GalleryItem
-import com.meteor.memory.ui.common.sampledImageOptions
+import com.meteor.memory.feature.gallery.GalleryFilter
+import com.meteor.memory.feature.gallery.GallerySortMode
+import com.meteor.memory.feature.settings.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
@@ -29,7 +29,8 @@ import javax.inject.Inject
 @HiltViewModel
 class GalleryViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    private val imageStore: ImageStore,
+    private val albumRepository: AlbumRepository,
+    private val settingsRepository: SettingsRepository,
     private val appLog: AppLog,
 ) : ViewModel() {
 
@@ -45,33 +46,60 @@ class GalleryViewModel @Inject constructor(
     private val _filterLabel = MutableStateFlow<String?>(null)
     val filterLabel: StateFlow<String?> = _filterLabel.asStateFlow()
 
+    private val _filter = MutableStateFlow(GalleryFilter.ALL)
+    val filter: StateFlow<GalleryFilter> = _filter.asStateFlow()
+
+    private val _sortMode = MutableStateFlow(GallerySortMode.IMPORT_DATE)
+    val sortMode: StateFlow<GallerySortMode> = _sortMode.asStateFlow()
+
     private var refreshInProgress = false
     private var refreshPending = false
-    private var loadedSnapshot: List<StoredImage>? = null
 
     init {
+        // Load the persisted sort choice, then scan.
+        viewModelScope.launch {
+            runCatching { settingsRepository.settings.first() }
+                .onSuccess { settings ->
+                    _sortMode.value = when (settings.albumSortMode) {
+                        AlbumSortMode.SOURCE_DATE.name -> GallerySortMode.SOURCE_DATE
+                        else -> GallerySortMode.IMPORT_DATE
+                    }
+                }
+                .onFailure { error -> appLog.warn(TAG, "album sort preference unreadable", error) }
+            refresh()
+        }
+    }
+
+    fun setFilter(filter: GalleryFilter) {
+        if (_filter.value == filter) return
+        _filter.value = filter
         refresh()
     }
 
-    /** Deletes the encrypted files behind [tokens], then rebuilds the album. */
-    fun delete(tokens: List<String>) {
-        if (tokens.isEmpty()) return
+    fun setSortMode(mode: GallerySortMode) {
+        if (_sortMode.value == mode) return
+        _sortMode.value = mode
+        viewModelScope.launch {
+            runCatching {
+                settingsRepository.setAlbumSortMode(AlbumMapping.toStorageSort(mode).name)
+            }.onFailure { error -> appLog.warn(TAG, "album sort preference write failed", error) }
+            refresh()
+        }
+    }
+
+    /** Deletes the encrypted files behind [refs], then rebuilds the album. */
+    fun delete(refs: List<String>) {
+        if (refs.isEmpty()) return
         viewModelScope.launch {
             val removed = withContext(Dispatchers.IO) {
-                tokens.count { token ->
-                    runCatching { imageStore.delete(token) }.getOrDefault(false)
-                }
+                refs.count { ref -> runCatching { albumRepository.delete(ref) }.getOrDefault(false) }
             }
-            appLog.info(TAG, "deleted $removed/${tokens.size} images")
+            appLog.info(TAG, "deleted $removed/${refs.size} media")
             refresh()
         }
     }
 
     fun refresh() {
-        // A scan is already running: remember that another one is wanted instead
-        // of dropping the request. Dropping it would leave the grid stale — for
-        // example when the album is resumed, or an image is deleted, while the
-        // first scan is still decoding.
         if (refreshInProgress) {
             refreshPending = true
             return
@@ -88,39 +116,30 @@ class GalleryViewModel @Inject constructor(
                     dayFormat.format(date.atStartOfDay(ZoneId.systemDefault()).toInstant())
                 }
                 val zone = ZoneId.systemDefault()
-                val snapshot = withContext(Dispatchers.IO) {
-                    imageStore.list().take(MAX_ITEMS)
+                val mode = AlbumMapping.toStorageSort(_sortMode.value)
+                val kinds = AlbumMapping.toKinds(_filter.value)
+                val days = withContext(Dispatchers.IO) {
+                    val entries = albumRepository.entries()
+                    val sorted = albumRepository.sorted(entries, mode)
+                    val filtered = if (filterDate == null) {
+                        sorted
+                    } else {
+                        sorted.filter { entry ->
+                            entry.importedAt.atZone(zone).toLocalDate() == filterDate
+                        }
+                    }.take(MAX_ITEMS)
+                    // Apply the kind filter in-memory: the repository's `entries`
+                    // already returns all kinds; the chip narrows them here so
+                    // the count-based pagination stays deterministic.
+                    val byKind = if (kinds == null) filtered else filtered.filter { it.kind in kinds }
+                    AlbumMapping.groupByDay(byKind, { date -> dayFormat.format(date) }, zone)
                 }
-                if (loadedSnapshot == snapshot) return@launch
-
-                val decoded = withContext(Dispatchers.IO) {
-                    snapshot.mapNotNull { stored ->
-                        val day = stored.modifiedAt.atZone(zone).toLocalDate()
-                        if (filterDate != null && day != filterDate) return@mapNotNull null
-                        val bytes = imageStore.load(stored.token) ?: return@mapNotNull null
-                        val options = sampledImageOptions(bytes, THUMBNAIL_MAX_EDGE)
-                        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
-                            ?: return@mapNotNull null
-                        Decoded(
-                            date = day,
-                            item = GalleryItem(token = stored.token, bitmap = bitmap.asImageBitmap()),
-                            label = dayFormat.format(stored.modifiedAt),
-                        )
-                    }
-                }
-
-                loadedSnapshot = snapshot
-                appLog.debug(TAG, "gallery loaded ${decoded.size} images")
-                _days.value = decoded
-                    .groupBy { it.date }
-                    .toSortedMap(compareByDescending<LocalDate> { it })
-                    .map { (_, entries) ->
-                        GalleryDay(label = entries.first().label, items = entries.map { it.item })
-                    }
+                _days.value = days
+                appLog.debug(TAG, "album loaded ${days.sumOf { it.items.size }} media")
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                appLog.warn(TAG, "gallery refresh failed", error)
+                appLog.warn(TAG, "album refresh failed", error)
             } finally {
                 refreshInProgress = false
                 _loading.value = false
@@ -132,12 +151,9 @@ class GalleryViewModel @Inject constructor(
         }
     }
 
-    private class Decoded(val date: LocalDate, val item: GalleryItem, val label: String)
-
     companion object {
         const val ARG_DATE = "date"
         const val TAG = "Gallery"
         const val MAX_ITEMS = 120
-        private const val THUMBNAIL_MAX_EDGE = 384
     }
 }

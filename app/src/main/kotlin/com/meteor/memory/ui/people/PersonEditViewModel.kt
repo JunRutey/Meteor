@@ -1,6 +1,7 @@
 package com.meteor.memory.ui.people
 
 import android.content.Context
+import android.net.Uri
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -8,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.Document
 import com.meteor.memory.core.storage.ImageStore
+import com.meteor.memory.core.storage.MediaStore
 import com.meteor.memory.core.storage.PersonProfileCodec
 import com.meteor.memory.core.storage.PersonQueries
 import com.meteor.memory.core.storage.RecordSource
@@ -16,6 +18,8 @@ import com.meteor.memory.core.storage.Relation
 import com.meteor.memory.core.storage.StorageRouter
 import com.meteor.memory.feature.editor.EditorModule
 import com.meteor.memory.feature.editor.MarkdownEditing
+import com.meteor.memory.feature.editor.MediaBlockState
+import com.meteor.memory.feature.media.MediaImporter
 import com.meteor.memory.feature.people.PeopleTagLibrary
 import com.meteor.memory.feature.settings.SettingsRepository
 import com.meteor.memory.ui.common.decodeImages
@@ -48,8 +52,17 @@ data class PersonEditState(
     val images: Map<String, ImageBitmap> = emptyMap(),
     /** Referenced images whose bytes exist but produced no bitmap. */
     val missingImages: Set<String> = emptySet(),
+    /**
+     * How `meteor://media/<id>` references in the body must be drawn.
+     *
+     * Resolved by this view model because the editor cannot read the encrypted
+     * metadata sidecar that holds the kind (ADR-052 §3, ADR-055).
+     */
+    val mediaBlocks: Map<String, MediaBlockState> = emptyMap(),
     val saving: Boolean = false,
     val insertingImage: Boolean = false,
+    /** True while picked media is being encrypted into this person's folder. */
+    val insertingMedia: Boolean = false,
     val saved: Boolean = false,
     val error: String? = null,
 )
@@ -67,6 +80,7 @@ class PersonEditViewModel @Inject constructor(
     private val personQueries: PersonQueries,
     private val editorModule: EditorModule,
     private val imageStore: ImageStore,
+    private val mediaStore: MediaStore,
     private val storageRouter: StorageRouter,
     private val settingsRepository: SettingsRepository,
     @ApplicationContext private val context: Context,
@@ -81,6 +95,7 @@ class PersonEditViewModel @Inject constructor(
     /** Images removed from the notes; their files go away only after a save. */
     private val pendingDeletes = mutableSetOf<String>()
     private var pendingImageInsertions = 0
+    private var pendingMediaInsertions = 0
 
     init {
         load()
@@ -113,6 +128,7 @@ class PersonEditViewModel @Inject constructor(
                 )
             }
             refreshImages(_state.value.notes)
+            refreshMediaBlocks(_state.value.notes)
         }
     }
 
@@ -173,6 +189,10 @@ class PersonEditViewModel @Inject constructor(
 
     fun imageFor(token: String): ImageBitmap? = _state.value.images[token]
 
+    /** Synchronous lookup the body renderer calls for one `meteor://media/` id. */
+    fun mediaBlockFor(id: String): MediaBlockState =
+        _state.value.mediaBlocks[id] ?: MediaBlockState.Pending
+
     fun insertImage(bytes: ByteArray) {
         val base = document()
         pendingImageInsertions++
@@ -199,6 +219,56 @@ class PersonEditViewModel @Inject constructor(
             } finally {
                 pendingImageInsertions--
                 _state.update { it.copy(insertingImage = pendingImageInsertions > 0) }
+            }
+        }
+    }
+
+    /**
+     * Encrypts picked media into **this person's** media folder and appends the
+     * reference to the body (ADR-052 §5 D/E).
+     *
+     * Ownership never comes from the editor: the toolbar only reports the kinds
+     * the user asked for, and this view model — which knows the person — decides
+     * `personId`. `MediaImporter` does metadata, thumbnails and encryption in one
+     * synchronous call, so the batch runs off the main thread and the toolbar
+     * shows a progress label.
+     *
+     * A failed file is logged and skipped; the rest of the batch still lands, so
+     * one unreadable video cannot throw away the pictures chosen with it.
+     */
+    fun insertMedia(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        pendingMediaInsertions++
+        _state.update { it.copy(insertingMedia = true, saved = false) }
+
+        viewModelScope.launch {
+            try {
+                val ids = withContext(Dispatchers.IO) {
+                    val importer = MediaImporter(context.contentResolver, mediaStore)
+                    uris.mapNotNull { uri ->
+                        runCatching { importer.import(uri, personId) }
+                            .onFailure { appLog.warn(TAG, "insert media failed: $uri", it) }
+                            .getOrNull()
+                            ?.id
+                    }
+                }
+                if (ids.isEmpty()) {
+                    appLog.warn(TAG, "no media imported for person: $personId")
+                    return@launch
+                }
+                var body = _state.value.notes
+                ids.forEach { id ->
+                    body = MarkdownEditing.appendMedia(body, id)
+                }
+                _state.update { it.copy(notes = body, saved = false) }
+                refreshMediaBlocks(body)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                appLog.warn(TAG, "insert media failed: $personId", error)
+            } finally {
+                pendingMediaInsertions--
+                _state.update { it.copy(insertingMedia = pendingMediaInsertions > 0) }
             }
         }
     }
@@ -237,7 +307,7 @@ class PersonEditViewModel @Inject constructor(
 
     fun save() {
         val current = _state.value
-        if (current.saving || current.insertingImage) return
+        if (current.saving || current.insertingImage || current.insertingMedia) return
         val name = current.displayName.trim()
         // The button is disabled for a blank name; guard anyway so a profile file
         // can never lose the one field PersonProfileCodec requires.
@@ -304,6 +374,27 @@ class PersonEditViewModel @Inject constructor(
                     images = it.images + decoded.bitmaps,
                     missingImages = it.missingImages + decoded.missing,
                 )
+            }
+        }
+    }
+
+    /**
+     * Resolves the media references the body currently carries.
+     *
+     * Called on load, after an insertion and after a reference is dropped, so
+     * the editor's cards stay in step with the text without it ever touching
+     * `MediaStore` itself (ADR-055).
+     */
+    private fun refreshMediaBlocks(body: String) {
+        val ids = MarkdownEditing.mediaOf(body)
+            .map { it.id }
+            .filter { it !in _state.value.mediaBlocks }
+        if (ids.isEmpty()) return
+
+        viewModelScope.launch {
+            val resolved = decodeMediaBlocks(mediaStore, ids)
+            if (resolved.isNotEmpty()) {
+                _state.update { it.copy(mediaBlocks = it.mediaBlocks + resolved) }
             }
         }
     }

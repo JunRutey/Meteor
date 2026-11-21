@@ -72,6 +72,8 @@ class StorageLayout(private val root: File) {
         const val CHAT = "聊天记录"
         const val IMAGES = "图片"
         const val ATTACHMENTS = "附件"
+        /** Encrypted image/video/audio hub added by ADR-052; new data only. */
+        const val MEDIA = "媒体"
         const val PERSONA = "数字人格"
         /** AI conversation history; encrypted, never scanned as archive records. */
         const val AI_CHAT = "AI对话"

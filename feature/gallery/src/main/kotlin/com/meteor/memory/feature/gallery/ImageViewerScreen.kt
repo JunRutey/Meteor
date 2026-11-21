@@ -39,6 +39,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.meteor.memory.feature.media.AudioPlayerCard
+import com.meteor.memory.feature.media.VideoPlayerCard
 
 /** What the viewer should say when one of its actions failed. */
 enum class ImageViewerError {
@@ -276,5 +278,122 @@ private fun ViewerActionBar(
                 }
             }
         }
+    }
+}
+
+/**
+ * Media viewer reached from the `media/{ref}` route (ADR-054).
+ *
+ * Dispatches on [kind]: images keep the existing full-screen zoom / share /
+ * delete behaviour, videos play full-screen through [VideoPlayerCard], and
+ * audio renders [AudioPlayerCard] above the same share / delete bar.
+ *
+ * [bitmap], [share], [delete] and the state flags stay image-only; when [kind]
+ * is VIDEO or AUDIO the bottom bar is enabled as soon as [hasContent] is true,
+ * so a video can be shared or deleted without an in-memory bitmap.
+ */
+@Composable
+fun MediaViewerScreen(
+    ref: String,
+    kind: GalleryKind,
+    fileName: String?,
+    bitmap: ImageBitmap?,
+    caption: String,
+    onBack: () -> Unit,
+    onShare: () -> Unit,
+    onDelete: () -> Unit,
+    loading: Boolean = false,
+    animationsEnabled: Boolean = true,
+    deleting: Boolean = false,
+    sharing: Boolean = false,
+    dateLabel: String? = null,
+    error: ImageViewerError = ImageViewerError.None,
+    hasContent: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    var confirmingDelete by remember { mutableStateOf(false) }
+
+    Column(modifier = modifier.fillMaxSize()) {
+        ViewerHeader(caption = caption, onBack = onBack)
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            when {
+                loading -> {
+                    if (animationsEnabled) {
+                        CircularProgressIndicator()
+                    } else {
+                        Text(
+                            text = stringResource(R.string.gallery_loading),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+
+                kind == GalleryKind.IMAGE && bitmap == null -> MissingImageCard()
+
+                else -> when (kind) {
+                    GalleryKind.IMAGE -> Image(
+                        bitmap = bitmap!!,
+                        contentDescription = caption,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                    )
+
+                    GalleryKind.VIDEO -> VideoPlayerCard(
+                        ref = ref,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+
+                    GalleryKind.AUDIO -> AudioPlayerCard(
+                        ref = ref,
+                        modifier = Modifier.fillMaxWidth(),
+                        title = fileName,
+                    )
+                }
+            }
+        }
+
+        ViewerActionBar(
+            dateLabel = dateLabel,
+            error = error,
+            enabled = when (kind) {
+                GalleryKind.IMAGE -> bitmap != null
+                else -> hasContent
+            },
+            deleting = deleting,
+            sharing = sharing,
+            onShare = onShare,
+            onDelete = { confirmingDelete = true },
+        )
+    }
+
+    if (confirmingDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmingDelete = false },
+            title = { Text(stringResource(R.string.gallery_delete_confirm_title)) },
+            text = { Text(stringResource(R.string.gallery_delete_confirm_body)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        confirmingDelete = false
+                        onDelete()
+                    },
+                ) {
+                    Text(stringResource(R.string.gallery_delete))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmingDelete = false }) {
+                    Text(stringResource(R.string.gallery_cancel))
+                }
+            },
+        )
     }
 }

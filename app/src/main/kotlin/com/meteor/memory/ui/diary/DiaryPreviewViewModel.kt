@@ -7,7 +7,9 @@ import androidx.lifecycle.viewModelScope
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.storage.ImageStore
+import com.meteor.memory.core.storage.MediaStore
 import com.meteor.memory.feature.editor.MarkdownEditing
+import com.meteor.memory.feature.editor.MediaBlockState
 import com.meteor.memory.ui.common.decodeImages
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -37,6 +39,8 @@ data class DiaryPreviewState(
     val exists: Boolean = false,
     val images: Map<String, ImageBitmap> = emptyMap(),
     val missingImages: Set<String> = emptySet(),
+    /** `meteor://media/<id>` 引用该怎么画（ADR-055），与编辑模式同一份状态。 */
+    val mediaBlocks: Map<String, MediaBlockState> = emptyMap(),
     val loading: Boolean = true,
 )
 
@@ -45,6 +49,7 @@ class DiaryPreviewViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val diaryQueries: DiaryQueries,
     private val imageStore: ImageStore,
+    private val mediaStore: MediaStore,
     private val appLog: AppLog,
 ) : ViewModel() {
 
@@ -68,8 +73,13 @@ class DiaryPreviewViewModel @Inject constructor(
                 )
             }
             document?.let { refreshImages(it.body) }
+            document?.let { refreshMedia(it.body) }
         }
     }
+
+    /** How to draw one `meteor://media/<id>` reference (ADR-055). */
+    fun mediaState(id: String): MediaBlockState =
+        _state.value.mediaBlocks[id] ?: MediaBlockState.Pending
 
     private fun refreshImages(body: String) {
         val known = _state.value.images.keys + _state.value.missingImages
@@ -83,6 +93,17 @@ class DiaryPreviewViewModel @Inject constructor(
                     missingImages = it.missingImages + decoded.missing,
                 )
             }
+        }
+    }
+
+    private fun refreshMedia(body: String) {
+        if (!body.contains(MediaStore.MEDIA_SCHEME)) return
+        val known = _state.value.mediaBlocks.keys
+        val ids = MarkdownEditing.mediaOf(body).map { it.id }.filter { it !in known }
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            val states = decodeMediaStates(mediaStore, ids)
+            _state.update { it.copy(mediaBlocks = it.mediaBlocks + states) }
         }
     }
 
