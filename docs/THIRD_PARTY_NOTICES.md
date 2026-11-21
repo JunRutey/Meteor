@@ -18,7 +18,6 @@ Meteor 的实现和发布流程依赖以下开源项目。这里列出直接依�
 | 项目 | 用途 | 许可证 |
 |---|---|---|
 | [JUnit 4](https://github.com/junit-team/junit4) | JVM 单元测试 | EPL-1.0 |
-| [AndroidX Test](https://github.com/androidx/androidx) / [Espresso](https://github.com/androidx/androidx) | Android instrumentation 测试 | Apache-2.0 |
 | [org.json](https://github.com/stleary/JSON-java) | JVM 测试中的 JSON 实现（Android 运行时使用系统 `org.json`） | JSON License |
 
 ## 构建工具
@@ -38,6 +37,7 @@ Meteor 的实现和发布流程依赖以下开源项目。这里列出直接依�
 | [distilly](https://github.com/titanwings/distilly) | 人格蒸馏与档案问答技能格式 | MIT |
 | [ex-skill](https://github.com/therealXiaomanChu/ex-skill) | 人物对话技能格式 | MIT |
 | [chat-demo](https://github.com/deepseek-ai/chat-demo) | AI 对话界面的布局与交互参考 | MIT |
+| 公开通用的 1900–2100 农历数据表（`lunarInfo`，见 [jjonline/calendar.js](https://github.com/jjonline/calendar.js) 等） | `LunarYearTable` 的农历月序事实数据来源（历法事实数据，非代码复制；1933 年条目按紫金山口径修正，见 ADR-047） | 事实数据 |
 
 ## 说明
 
