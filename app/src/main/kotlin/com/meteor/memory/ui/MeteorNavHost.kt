@@ -1194,6 +1194,8 @@ fun MeteorNavHost(
                 viewModel.enqueueMediaImport(uris.map { uri -> Uri.parse(uri) })
             }
 
+            var savedNavigated by remember { mutableStateOf(false) }
+
             DiaryEditScreen(
                 state = state,
                 onTextChanged = viewModel::onTextChanged,
@@ -1209,7 +1211,36 @@ fun MeteorNavHost(
                         systemMediaPicker()
                     }
                 },
-                onSave = { viewModel.save() },
+                onSave = {
+                    viewModel.save {
+                        if (!savedNavigated && navController.currentBackStackEntry?.id == entry.id) {
+                            savedNavigated = true
+                            // The usual way in is 预览 → 编辑: `onEdit` above pushes
+                            // the editor on top of the view, so popping the editor
+                            // reveals that very preview. Its `RefreshOnResume` reads
+                            // the archive again on the way back, so it shows the body
+                            // that was just written — no second view page, no reload
+                            // route. Only a direct 日历 → 编辑 entry has nothing to
+                            // return to and needs a fresh preview pushed.
+                            val below = navController.previousBackStackEntry
+                            val viewBelow = below?.destination?.route == ROUTE_DIARY_VIEW &&
+                                below.arguments?.getString(DiaryPreviewViewModel.ARG_DATE) ==
+                                state.date.toString()
+                            if (viewBelow) {
+                                navController.popBackStack()
+                            } else {
+                                navController.navigate(diaryViewRoute(state.date)) {
+                                    // Drop the editor: a back press from the preview
+                                    // must not land on a stale, already-saved editor.
+                                    // The destination id (not `entry.id`, a UUID that
+                                    // would bind to the route overload) is what
+                                    // NavOptionsBuilder matches here.
+                                    popUpTo(entry.destination.id) { inclusive = true }
+                                }
+                            }
+                        }
+                    }
+                },
                 onBack = { navController.popBackStack() },
                 // T10: 删除日记 confirms first, then deletes the archive record,
                 // drops its search-index entry and pops the editor. The pop is
