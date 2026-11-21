@@ -42,6 +42,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meteor.memory.core.storage.ImageStore
@@ -103,11 +105,19 @@ fun MarkdownField(
 
     val focusedBlocks = remember { mutableStateListOf<Int>() }
 
+    // Formatting acts on the block that holds the caret, so the selection has to
+    // live above the individual text fields. -1 means "no block has focus yet".
+    var activeBlock by remember { mutableStateOf(-1) }
+    var activeSelection by remember { mutableStateOf(TextRange.Zero) }
+    // Selection a formatting action wants restored after it rewrites a block.
+    var pendingSelection by remember { mutableStateOf<TextRange?>(null) }
+
     // Preview removes the body, so nothing can keep focus. Report the blur
     // explicitly instead of leaving a stale "focused" flag in the host screen.
     LaunchedEffect(previewing) {
         if (previewing) {
             focusedBlocks.clear()
+            activeBlock = -1
             onFocusChanged(false)
         }
     }
@@ -120,6 +130,24 @@ fun MarkdownField(
         onTextChanged(MarkdownBlocks.serialize(next))
     }
 
+    /** Applies one inline-format edit to the focused text block. */
+    fun applyInline(edit: (String, Int, Int) -> InlineEdit) {
+        // With nothing focused yet (the toolbar can be tapped before the caret
+        // ever lands), fall back to the first text block and its end — otherwise
+        // the button would look broken on a fresh page.
+        val index = activeBlock.takeIf { blocks.getOrNull(it) is BodyBlock.Text }
+            ?: blocks.indexOfFirst { it is BodyBlock.Text }
+        val block = blocks.getOrNull(index) as? BodyBlock.Text ?: return
+
+        val selection = if (activeBlock == index) activeSelection else TextRange(block.raw.length)
+        val result = edit(block.raw, selection.min, selection.max)
+        if (result.text == block.raw) return
+
+        activeBlock = index
+        setBlockText(index, result.text)
+        pendingSelection = TextRange(result.selectionStart, result.selectionEnd)
+    }
+
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         EditorToolbar(
             isPreviewing = previewing,
@@ -127,6 +155,12 @@ fun MarkdownField(
             onImage = onPickImage,
             onTogglePreview = onPreviewToggle,
             showPreviewAction = showPreviewAction,
+            onBold = { applyInline(MarkdownInlineFormat::toggleBold) },
+            onColor = { hex ->
+                applyInline { text, start, end ->
+                    MarkdownInlineFormat.applyColor(text, start, end, hex)
+                }
+            },
         )
 
         if (previewing) {
@@ -168,11 +202,17 @@ fun MarkdownField(
                                     onFocusChanged = { focused ->
                                         if (focused) {
                                             if (index !in focusedBlocks) focusedBlocks.add(index)
+                                            activeBlock = index
                                         } else {
                                             focusedBlocks.remove(index)
                                         }
                                         onFocusChanged(focusedBlocks.isNotEmpty())
                                     },
+                                    onSelectionChanged = { selection ->
+                                        if (activeBlock == index) activeSelection = selection
+                                    },
+                                    restoredSelection = pendingSelection.takeIf { activeBlock == index },
+                                    onSelectionRestored = { pendingSelection = null },
                                 )
 
                                 is BodyBlock.Image -> ImageBlock(
@@ -232,10 +272,56 @@ private fun TextBlock(
     placeholder: (@Composable () -> Unit)?,
     onValueChange: (String) -> Unit,
     onFocusChanged: (Boolean) -> Unit,
+    onSelectionChanged: (TextRange) -> Unit,
+    restoredSelection: TextRange?,
+    onSelectionRestored: () -> Unit,
 ) {
+    // The field keeps its own value object so the selection is available to the
+    // formatting actions. Only [TextFieldValue.text] is ever read back, and no
+    // transformation is applied, so text and storage stay identical (ADR-021).
+    var field by remember { mutableStateOf(TextFieldValue(value)) }
+    // The last text this field itself echoed upward. Only a change that did not
+    // come from here is an outside edit (an inserted image or link), and only an
+    // outside edit may reset the caret.
+    var echo by remember { mutableStateOf(value) }
+
+    LaunchedEffect(value) {
+        // A formatting action brings its own selection; letting the resync also
+        // run would overwrite it with "caret at the end".
+        if (restoredSelection != null) {
+            echo = value
+            return@LaunchedEffect
+        }
+        if (value != echo) {
+            field = TextFieldValue(value, selection = TextRange(value.length))
+            echo = value
+        }
+    }
+
+    // A formatting action rewrote this block: put the caret back where it asked.
+    LaunchedEffect(restoredSelection, value) {
+        val target = restoredSelection ?: return@LaunchedEffect
+        val clamped = TextRange(
+            target.start.coerceIn(0, field.text.length),
+            target.end.coerceIn(0, field.text.length),
+        )
+        field = field.copy(selection = clamped)
+        onSelectionRestored()
+    }
+
+    // Report the caret so a toolbar action applied from outside knows what to
+    // wrap. The effect re-runs on every keystroke and every caret move.
+    LaunchedEffect(field.selection, field.text) {
+        onSelectionChanged(field.selection)
+    }
+
     OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
+        value = field,
+        onValueChange = { next ->
+            field = next
+            echo = next.text
+            onValueChange(next.text)
+        },
         modifier = Modifier
             .fillMaxWidth()
             .onFocusChanged { onFocusChanged(it.isFocused) },
