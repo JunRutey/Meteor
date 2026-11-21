@@ -55,25 +55,25 @@ class PlaintextBackupModule(
             // The router aborts on the first bad file; the entry it had already
             // written is not rolled back by the zip stream, so drop the file.
             discardPartialArchive(dest)
-            BackupResult.Failure("导出失败：${failure.message}", failure)
+            BackupResult.Failure("export failed: ${failure.message}", failure)
         }
     }
 
     override suspend fun importFrom(src: Uri): ImportResult = withContext(Dispatchers.IO) {
         runCatching { readArchive(src) }
-            .getOrElse { ImportResult.Failure("导入失败：${it.message}", it) }
+            .getOrElse { ImportResult.Failure("import failed: ${it.message}", it) }
     }
 
     override suspend fun autoBackup(): BackupResult = withContext(Dispatchers.IO) {
         val target = File(backupDir, fileNameFor(clock()))
         runCatching {
             if (!backupDir.exists() && !backupDir.mkdirs()) {
-                return@runCatching BackupResult.Failure("无法创建备份目录") as BackupResult
+                return@runCatching BackupResult.Failure("cannot create backup directory") as BackupResult
             }
 
             val (files, _) = countStoredFiles()
             if (files == 0) {
-                return@runCatching BackupResult.Failure("还没有可备份的内容") as BackupResult
+                return@runCatching BackupResult.Failure("nothing to back up") as BackupResult
             }
 
             // Same path as a manual export, so a rolling snapshot carries media too.
@@ -89,7 +89,7 @@ class PlaintextBackupModule(
             // A truncated zip must not stay in `bak/` where listBackups() would
             // offer it as a restorable snapshot.
             discardPartialArchive(Uri.fromFile(target))
-            BackupResult.Failure("自动备份失败：${failure.message}", failure)
+            BackupResult.Failure("automatic backup failed: ${failure.message}", failure)
         }
     }
 

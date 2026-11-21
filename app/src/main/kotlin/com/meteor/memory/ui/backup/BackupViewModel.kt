@@ -17,7 +17,14 @@ import javax.inject.Inject
 sealed interface BackupOutcome {
     data class Exported(val files: Int, val bytes: Long) : BackupOutcome
     data class Imported(val files: Int) : BackupOutcome
-    data class Failed(val message: String?) : BackupOutcome
+
+    /**
+     * [reason] is the raw, untranslated failure detail. It is kept for
+     * diagnostics only and is deliberately not rendered: core-backup has no
+     * resources and used to build its own Chinese sentences, which bypassed
+     * strings.xml and landed on screen verbatim.
+     */
+    data class Failed(val reason: String?) : BackupOutcome
 }
 
 data class BackupUiState(

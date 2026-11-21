@@ -28,6 +28,7 @@ jobs:
   module-graph:
     name: Module graph
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
       - name: Verify module dependency graph
@@ -37,6 +38,7 @@ jobs:
     name: Build / Test / Lint
     runs-on: ubuntu-latest
     needs: module-graph
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
 
@@ -54,10 +56,18 @@ jobs:
           gradle-version: '8.11.1'
 
       # One invocation instead of four separate ones: the validation tasks
-      # share the same configuration and daemon round trip. R8 only runs in
-      # the Release workflow (it builds the release variant); CI stays on debug.
+      # share the same configuration and daemon round trip.
+      #
+      # :app:assembleRelease is part of this run on purpose. app/build.gradle.kts
+      # enables R8 + resource shrinking for release, and without building that
+      # variant here the shrinker rules were only ever exercised for the first
+      # time on a release tag — a broken rule would have surfaced as a failed
+      # publish rather than a failed PR. The release build is unsigned here
+      # (SIGNING_* is unset), which is fine: R8 runs regardless.
       - name: Build, test and lint
-        run: gradle :app:assembleDebug testDebugUnitTest :app:lintDebug --stacktrace --no-daemon
+        run: >-
+          gradle :app:assembleDebug :app:assembleRelease testDebugUnitTest
+          :app:lintDebug --stacktrace --no-daemon
 
       - name: Upload debug APK
         if: always()

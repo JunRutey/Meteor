@@ -93,7 +93,7 @@ fun BackupActions(
                 stringResource(R.string.backup_import_done, outcome.files),
             )
             is BackupOutcome.Failed -> Text(
-                text = outcome.message ?: stringResource(R.string.backup_failed),
+                text = stringResource(R.string.backup_failed),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.error,
             )
