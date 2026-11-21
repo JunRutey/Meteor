@@ -121,13 +121,32 @@ interface MediaStore {
  * (chunk frames), `<id>.meta.enc` (encrypted metadata), `<id>.thumb.enc` (optional
  * encrypted PNG) — so a large video is streamed chunk by chunk and never held in
  * memory, while the attachment store's own format stays untouched.
+ *
+ * Media payloads are written as format version 3 with [mediaKeyCrypto], a random
+ * data key wrapped by the Keystore key (ADR-063), so chunks can be encrypted in
+ * parallel inside this process. The metadata sidecar and the thumbnail keep using
+ * [crypto]. Reads pick the key from the payload's version, so v1/v2 media written
+ * before ADR-063 stays readable.
  */
 class EncryptedMediaStore(
     rootDir: File,
     private val crypto: FileCrypto,
+    /**
+     * Key for the media payload itself (ADR-063). Defaults to [crypto] so existing
+     * callers and tests keep the pre-ADR-063 single-key behaviour.
+     */
+    private val mediaKeyCrypto: FileCrypto = crypto,
 ) : MediaStore {
 
     private val mediaDir = File(rootDir, "${StorageLayout.LEGACY}/${StorageLayout.MEDIA}")
+
+    /**
+     * Reads pick the payload key from the format version: v3 files were written
+     * with [mediaKeyCrypto], older v1/v2 files with [crypto].
+     */
+    private val cryptoFor: (Int) -> FileCrypto = { version ->
+        if (version >= ChunkedEncryptedFile.FORMAT_VERSION_MEDIA_KEY) mediaKeyCrypto else crypto
+    }
 
     override fun save(input: InputStream, meta: MediaMetaInput, thumbnailPng: ByteArray?): StoredMedia =
         writeEntry(id = null, meta = meta, input = input, thumbnailPng = thumbnailPng)
@@ -178,10 +197,12 @@ class EncryptedMediaStore(
                 input = input,
                 target = dataTemp,
                 magic = DATA_MAGIC,
-                crypto = crypto,
-                // Media uses the large-chunk format (ADR-062): fewer Keystore
-                // round-trips for a big video. Attachments keep the 1 MiB format.
-                version = ChunkedEncryptedFile.FORMAT_VERSION_LARGE_CHUNKS,
+                crypto = mediaKeyCrypto,
+                // Media uses the media data key with 10 MiB chunks and two
+                // encryption workers (ADR-062, ADR-063); attachments keep the
+                // 1 MiB format and the Keystore key.
+                version = ChunkedEncryptedFile.FORMAT_VERSION_MEDIA_KEY,
+                parallelism = PARALLELISM,
             )
             if (thumbnailPng != null) thumbnailTemp.writeBytes(crypto.encrypt(thumbnailPng))
 
@@ -278,7 +299,7 @@ class EncryptedMediaStore(
         require(offsetBytes in 0..metadata.media.sizeBytes) { "offset outside media" }
         val dataFile = File(metadataFile.parentFile, "$id$DATA_SUFFIX")
         check(dataFile.isFile) { "encrypted media is missing" }
-        return ChunkedEncryptedFile.openDecrypted(dataFile, DATA_MAGIC, crypto, offsetBytes)
+        return ChunkedEncryptedFile.openDecrypted(dataFile, DATA_MAGIC, cryptoFor, offsetBytes)
     }
 
     override fun loadThumbnail(id: String): ByteArray? {
@@ -303,7 +324,13 @@ class EncryptedMediaStore(
     }
 
     private fun copyChunks(dataFile: File, metadata: MediaMetadata, output: OutputStream): Long {
-        val stats = ChunkedEncryptedFile.copyDecrypted(dataFile, DATA_MAGIC, crypto, output)
+        val stats = ChunkedEncryptedFile.copyDecrypted(
+            source = dataFile,
+            magic = DATA_MAGIC,
+            cryptoFor = cryptoFor,
+            output = output,
+            parallelism = PARALLELISM,
+        )
         check(stats.chunkCount == metadata.chunkCount && stats.sizeBytes == metadata.media.sizeBytes) {
             "media size does not match metadata"
         }
@@ -437,6 +464,13 @@ class EncryptedMediaStore(
         const val THUMBNAIL_SUFFIX = ".thumb.enc"
 
         private const val MAX_ID_ATTEMPTS = 3
+
+        /**
+         * Payload chunks encrypted/decrypted concurrently (ADR-063). Two workers
+         * hide the per-chunk AES latency without doubling the ~10 MiB block
+         * buffers beyond what a phone comfortably keeps in memory.
+         */
+        private const val PARALLELISM = 2
         private const val DATA_MAGIC = 0x4D454449
         private const val METADATA_MAGIC = 0x4D4D4554
         private const val FORMAT_VERSION = ChunkedEncryptedFile.FORMAT_VERSION

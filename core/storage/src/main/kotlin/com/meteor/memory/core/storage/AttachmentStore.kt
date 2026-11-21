@@ -164,7 +164,14 @@ class EncryptedAttachmentStore(
         val dataFile = File(metadataFile.parentFile, "$id$ATTACHMENT_DATA_SUFFIX")
         check(dataFile.isFile) { "encrypted attachment is missing" }
 
-        val stats = ChunkedEncryptedFile.copyDecrypted(dataFile, DATA_MAGIC, crypto, output)
+        // Attachments keep the v1 1 MiB format and the Keystore key (ADR-062,
+        // ADR-063): they never use the media data key and stay sequential.
+        val stats = ChunkedEncryptedFile.copyDecrypted(
+            source = dataFile,
+            magic = DATA_MAGIC,
+            cryptoFor = { crypto },
+            output = output,
+        )
         check(stats.chunkCount == metadata.chunkCount && stats.sizeBytes == metadata.attachment.sizeBytes) {
             "attachment size does not match metadata"
         }

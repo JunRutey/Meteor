@@ -13,9 +13,11 @@ import com.meteor.memory.core.backup.BackupRetentionProvider
 import com.meteor.memory.core.backup.ExternalBackupMirror
 import com.meteor.memory.core.backup.NoExternalBackupMirror
 import com.meteor.memory.core.backup.PlaintextBackupModule
+import com.meteor.memory.core.crypto.AesGcmFileCrypto
 import com.meteor.memory.core.crypto.AppLock
 import com.meteor.memory.core.crypto.EncryptedPrefsAppLock
 import com.meteor.memory.core.crypto.FileCrypto
+import com.meteor.memory.core.crypto.MediaKeyStore
 import com.meteor.memory.core.crypto.SecretStore
 import com.meteor.memory.core.crypto.androidKeystoreFileCrypto
 import com.meteor.memory.core.crypto.androidKeystoreSecretStore
@@ -71,7 +73,16 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import java.io.File
+import javax.inject.Qualifier
 import javax.inject.Singleton
+
+/**
+ * Distinguishes the media data key (ADR-063) from the archive's Keystore key.
+ * Both are [FileCrypto]s, so an unqualified second binding would be ambiguous.
+ */
+@Qualifier
+@Retention(AnnotationRetention.RUNTIME)
+annotation class MediaKeyCrypto
 
 /**
  * Composition root. `:app` is the only module that knows about Hilt, which keeps
@@ -88,6 +99,30 @@ object AppModule {
     @Provides
     @Singleton
     fun provideFileCrypto(): FileCrypto = androidKeystoreFileCrypto()
+
+    /**
+     * Random 256-bit media data key (ADR-063), generated on first use and kept in
+     * process memory. The file only ever holds the Keystore-wrapped copy.
+     */
+    @Provides
+    @Singleton
+    fun provideMediaKeyStore(
+        @ApplicationContext context: Context,
+        fileCrypto: FileCrypto,
+    ): MediaKeyStore = MediaKeyStore(
+        file = File(context.filesDir, MEDIA_KEY_FILE_NAME),
+        wrappingCrypto = fileCrypto,
+    )
+
+    /**
+     * File crypto over the in-process media data key: media chunks are encrypted
+     * here (so they can run in parallel) instead of inside the keystore daemon.
+     */
+    @Provides
+    @Singleton
+    @MediaKeyCrypto
+    fun provideMediaKeyCrypto(mediaKeyStore: MediaKeyStore): FileCrypto =
+        AesGcmFileCrypto { mediaKeyStore.key() }
 
     @Provides
     @Singleton
@@ -339,15 +374,17 @@ object AppModule {
         crypto = crypto,
     )
 
-    /** Unified media storage for images, video and audio (ADR-052). */
+    /** Unified media storage for images, video and audio (ADR-052, ADR-063). */
     @Provides
     @Singleton
     fun provideMediaStore(
         @ApplicationContext context: Context,
         crypto: FileCrypto,
+        @MediaKeyCrypto mediaKeyCrypto: FileCrypto,
     ): MediaStore = EncryptedMediaStore(
         rootDir = File(context.filesDir, StorageLayout.ROOT_NAME),
         crypto = crypto,
+        mediaKeyCrypto = mediaKeyCrypto,
     )
 
     /** Album view over both the new media store and legacy images (ADR-052). */
@@ -383,4 +420,7 @@ object AppModule {
 
     /** Pre-v1.3.0 birth profile ciphertext location directly under `filesDir`. */
     private const val LEGACY_BIRTH_PROFILE_NAME = "meteor_birth_profile"
+
+    /** Wrapped media data key under `filesDir` (ADR-063); never backed up. */
+    private const val MEDIA_KEY_FILE_NAME = "media_key.bin"
 }

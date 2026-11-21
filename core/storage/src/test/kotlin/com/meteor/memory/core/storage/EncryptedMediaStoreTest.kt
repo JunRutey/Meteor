@@ -12,6 +12,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.DataInputStream
 import java.io.File
 import java.time.Instant
 
@@ -39,6 +40,27 @@ class EncryptedMediaStoreTest {
 
         private companion object {
             const val ENVELOPE_SIZE = 29
+        }
+    }
+
+    /**
+     * Reverses and XORs behind the same 29-byte envelope but with a key byte, so
+     * a payload written with one media key cannot be read with another.
+     */
+    private class MaskedCrypto(private val mask: Byte) : FileCrypto {
+        override fun encrypt(plaintext: ByteArray): ByteArray {
+            val masked = ByteArray(plaintext.size) { (plaintext[it].toInt() xor mask.toInt()).toByte() }
+            return ByteArray(plaintext.size + 29).also { encrypted ->
+                masked.reversedArray().copyInto(encrypted, destinationOffset = 29)
+            }
+        }
+
+        override fun decrypt(ciphertext: ByteArray): ByteArray {
+            require(ciphertext.size >= 29)
+            return ByteArray(ciphertext.size - 29) {
+                // Reverse the stored order and undo the mask in one pass.
+                (ciphertext[ciphertext.size - 1 - it].toInt() xor mask.toInt()).toByte()
+            }
         }
     }
 
@@ -316,6 +338,51 @@ class EncryptedMediaStoreTest {
         assertEquals(id, restored.id)
         assertArrayEquals(byteArrayOf(3), requireNotNull(store().load(id)))
         assertEquals(2, store().list("person_123").size)
+    }
+
+    @Test
+    fun `new media payloads use the media key while metadata keeps the keystore key`() {
+        val keystoreCrypto = TestCrypto()
+        val mediaKeyCrypto = MaskedCrypto(0x5A)
+        val store = EncryptedMediaStore(tmp.root, keystoreCrypto, mediaKeyCrypto)
+        val payload = "media payload".toByteArray()
+
+        val saved = store.save(ByteArrayInputStream(payload), meta(personId = "person_123"))
+
+        assertArrayEquals(payload, requireNotNull(store.load(saved.id)))
+        // Format version 3 is on disk (ADR-063).
+        val dataFile = File(tmp.root, "${StorageLayout.LEGACY}/${StorageLayout.MEDIA}/person_123/${saved.id}${EncryptedMediaStore.DATA_SUFFIX}")
+        assertEquals(3, DataInputStream(dataFile.inputStream()).use { it.readInt(); it.readInt() })
+
+        // The metadata sidecar still uses the Keystore crypto: a store with the
+        // wrong media key can list the entry but cannot decrypt its payload.
+        val wrongMediaKeyStore = EncryptedMediaStore(tmp.root, keystoreCrypto, MaskedCrypto(0x33))
+        assertEquals(listOf(saved), wrongMediaKeyStore.list())
+        assertNull(wrongMediaKeyStore.load(saved.id))
+    }
+
+    @Test
+    fun `media written before version 3 stays readable through the version dispatch`() {
+        val keystoreCrypto = TestCrypto()
+        val store = EncryptedMediaStore(tmp.root, keystoreCrypto, MaskedCrypto(0x5A))
+        val payload = "legacy media payload".toByteArray()
+        val saved = store.save(ByteArrayInputStream(payload), meta(personId = "person_123"))
+        val dataFile = File(tmp.root, "${StorageLayout.LEGACY}/${StorageLayout.MEDIA}/person_123/${saved.id}${EncryptedMediaStore.DATA_SUFFIX}")
+
+        // Rewrite the payload in the previous v2 format (10 MiB chunks, Keystore
+        // key), keeping the sidecar untouched: the reader must pick the Keystore
+        // crypto from the header version rather than the store's media key.
+        val magic = DataInputStream(dataFile.inputStream()).use { it.readInt() }
+        ChunkedEncryptedFile.write(
+            input = ByteArrayInputStream(payload),
+            target = dataFile,
+            magic = magic,
+            crypto = keystoreCrypto,
+            version = ChunkedEncryptedFile.FORMAT_VERSION_LARGE_CHUNKS,
+        )
+
+        assertArrayEquals(payload, requireNotNull(store.load(saved.id)))
+        assertEquals(payload.size.toLong(), store.copyDecrypted(saved.id, ByteArrayOutputStream()))
     }
 
     @Test

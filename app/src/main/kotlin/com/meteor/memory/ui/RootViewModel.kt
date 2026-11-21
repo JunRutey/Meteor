@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meteor.memory.BuildConfig
 import com.meteor.memory.core.crypto.AppLock
+import com.meteor.memory.core.crypto.MediaKeyStore
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.ImageStore
 import com.meteor.memory.core.storage.MediaStore
@@ -54,6 +55,7 @@ class RootViewModel @Inject constructor(
     private val searchService: SearchService,
     private val updateService: UpdateService,
     private val legacyInstallDetector: LegacyInstallDetector,
+    private val mediaKeyStore: MediaKeyStore,
     @ApplicationContext context: Context,
     mediaStore: MediaStore,
     imageStore: ImageStore,
@@ -122,6 +124,16 @@ class RootViewModel @Inject constructor(
     )
 
     init {
+        // Media files use a random data key wrapped by the Keystore key (ADR-063).
+        // Generating it during startup on an IO thread keeps the first media
+        // import from paying for it. Only the failure is logged — never the key.
+        // A damaged key file must stay visible instead of being silently replaced,
+        // so the warm-up only reports the error.
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { mediaKeyStore.ensureGenerated() }
+                .onFailure { appLog.warn(TAG, "media key warm-up failed", it) }
+        }
+
         // The gate must not resolve before the upgrade migration has run, so
         // both steps share one coroutine and keep LOADING until both are done.
         viewModelScope.launch {
