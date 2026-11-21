@@ -26,6 +26,9 @@ internal const val TAG_TARGET = "meteor-target"
 object MarkdownStyles {
 
     private val COLOR = Regex("""<span style="color:(#[0-9A-Fa-f]{6})">(.*?)</span>""", RegexOption.DOT_MATCHES_ALL)
+    /** Used only to detect an unterminated colour span; see [earliest]. */
+    private val SPAN_OPEN = Regex("""<span style="color:(#[0-9A-Fa-f]{6})">""")
+    private const val SPAN_CLOSE = "</span>"
     private val IMAGE = Regex("""!\[([^\]]*)]\(([^)]*)\)""")
     private val LINK = Regex("""\[([^\]]*)]\(([^)]*)\)""")
     private val BOLD = Regex("""\*\*(.+?)\*\*""", RegexOption.DOT_MATCHES_ALL)
@@ -117,6 +120,27 @@ object MarkdownStyles {
                         extra = it.groupValues[1],
                     ),
                 )
+            }
+            // An unterminated colour span styles the rest of the range. The editing
+            // surface already renders it that way (`MarkdownInlineRendering` treats a
+            // missing `</span>` as "to the end"), so the preview must not print the
+            // raw tag: a record whose closing tag was lost while editing would look
+            // different in the two modes.
+            SPAN_OPEN.find(text, from)?.takeIf { it.range.first < to }?.let { open ->
+                val closeIndex = text.indexOf(SPAN_CLOSE, open.range.last + 1)
+                val closedInsideRange =
+                    closeIndex >= 0 && closeIndex + SPAN_CLOSE.length <= to
+                if (!closedInsideRange) {
+                    add(
+                        InlineMatch(
+                            kind = Kind.COLOR,
+                            range = open.range.first until to,
+                            groupStart = open.range.last + 1,
+                            groupEnd = to,
+                            extra = open.groupValues[1],
+                        ),
+                    )
+                }
             }
             IMAGE.find(text, from)?.takeIf { it.range.last < to }?.let {
                 add(

@@ -56,6 +56,19 @@ class MarkdownStylesTest {
     }
 
     @Test
+    fun `unclosed colour span hides the tag and styles the rest`() {
+        val annotated = MarkdownStyles.annotate(
+            """哈哈哈哈哈<span style="color:#1E88E5">刚刚""",
+            placeholder,
+        )
+
+        assertEquals("哈哈哈哈哈刚刚", annotated.text)
+        val style = annotated.spanStyles.single()
+        assertEquals(5, style.start)
+        assertEquals(7, style.end)
+    }
+
+    @Test
     fun `unknown markup is left alone`() {
         assertTrue(MarkdownStyles.annotate("__x__", placeholder).text == "__x__")
     }
