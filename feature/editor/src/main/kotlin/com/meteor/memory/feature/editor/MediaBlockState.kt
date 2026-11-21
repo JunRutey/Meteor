@@ -41,6 +41,18 @@ sealed interface MediaBlockState {
     data object Audio : MediaBlockState
 
     /**
+     * The user picked this file and it is still being encrypted in the background
+     * (ADR-061).
+     *
+     * The body already carries a placeholder `meteor://media/<temp-id>` so the
+     * editor never has to wait for a large import: the card says "importing" and
+     * is replaced with the real id once [MediaStore.save] returns. It is not the
+     * same value as [Pending]: pending means "host has not resolved yet", while
+     * this means "the file is actively being imported".
+     */
+    data object Importing : MediaBlockState
+
+    /**
      * The entry is gone (deleted, or the metadata cannot be read).
      *
      * Shown as a "cannot display" frame plus the caption, mirroring the legacy

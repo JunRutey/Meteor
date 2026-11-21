@@ -144,6 +144,25 @@ object MarkdownEditing {
     }
 
     /**
+     * Rewrites the id of one `meteor://media/` reference, keeping its caption
+     * (ADR-061).
+     *
+     * The editor inserts a placeholder id while a large file is still being
+     * encrypted, then swaps in the stored id when the import finishes. Only the
+     * target changes, so anything the user typed next to the card survives.
+     *
+     * @return [body] unchanged when no reference points at [fromId].
+     */
+    fun replaceMediaId(body: String, fromId: String, toId: String): String {
+        if (fromId.isBlank() || toId.isBlank() || fromId == toId) return body
+        val reference = Regex("""!\[([^\]]*)]\(${Regex.escape(MediaStore.MEDIA_SCHEME + fromId)}\)""")
+        if (!reference.containsMatchIn(body)) return body
+        return reference.replace(body) { match ->
+            "![${match.groupValues[1]}](${MediaStore.MEDIA_SCHEME}$toId)"
+        }
+    }
+
+    /**
      * Keeps a caption from breaking the surrounding Markdown: brackets would end
      * the alt text early and a line break would split the reference in two, so
      * both collapse into the nearest harmless character.

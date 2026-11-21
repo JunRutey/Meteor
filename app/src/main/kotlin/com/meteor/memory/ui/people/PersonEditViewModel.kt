@@ -33,9 +33,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
+import java.util.UUID
 import javax.inject.Inject
 
 data class PersonEditState(
@@ -61,11 +64,17 @@ data class PersonEditState(
     val mediaBlocks: Map<String, MediaBlockState> = emptyMap(),
     val saving: Boolean = false,
     val insertingImage: Boolean = false,
-    /** True while picked media is being encrypted into this person's folder. */
-    val insertingMedia: Boolean = false,
+    /**
+     * Placeholder ids for media imports still running in the background (ADR-061).
+     * Each renders as an "importing" card until the stored id replaces it.
+     */
+    val pendingMedia: Set<String> = emptySet(),
     val saved: Boolean = false,
     val error: String? = null,
-)
+) {
+    /** True while any picked media is still being encrypted in the background. */
+    val insertingMedia: Boolean get() = pendingMedia.isNotEmpty()
+}
 
 /**
  * Writes a person's profile back to `<person_id>/profile.md` (ADR-020).
@@ -95,7 +104,11 @@ class PersonEditViewModel @Inject constructor(
     /** Images removed from the notes; their files go away only after a save. */
     private val pendingDeletes = mutableSetOf<String>()
     private var pendingImageInsertions = 0
-    private var pendingMediaInsertions = 0
+
+    /** Serialises background media imports so several large files do not fight for IO (ADR-061). */
+    private val importGate = Mutex()
+
+    private data class ImportJob(val placeholder: String, val uri: Uri)
 
     init {
         load()
@@ -191,7 +204,11 @@ class PersonEditViewModel @Inject constructor(
 
     /** Synchronous lookup the body renderer calls for one `meteor://media/` id. */
     fun mediaBlockFor(id: String): MediaBlockState =
-        _state.value.mediaBlocks[id] ?: MediaBlockState.Pending
+        if (id in _state.value.pendingMedia) {
+            MediaBlockState.Importing
+        } else {
+            _state.value.mediaBlocks[id] ?: MediaBlockState.Pending
+        }
 
     fun insertImage(bytes: ByteArray) {
         val base = document()
@@ -236,41 +253,63 @@ class PersonEditViewModel @Inject constructor(
      * A failed file is logged and skipped; the rest of the batch still lands, so
      * one unreadable video cannot throw away the pictures chosen with it.
      */
+    /**
+     * Starts importing picked media into **this person's** folder and inserts a
+     * placeholder card for each immediately (ADR-061).
+     *
+     * Ownership never comes from the editor: the toolbar only reports the kinds
+     * the user asked for, and this view model — which knows the person — decides
+     * `personId`. Because the cards land before the encryption runs, a large video
+     * never blocks editing or a second insert.
+     */
     fun insertMedia(uris: List<Uri>) {
         if (uris.isEmpty()) return
-        pendingMediaInsertions++
-        _state.update { it.copy(insertingMedia = true, saved = false) }
-
-        viewModelScope.launch {
-            try {
-                val ids = withContext(Dispatchers.IO) {
-                    val importer = MediaImporter(context.contentResolver, mediaStore)
-                    uris.mapNotNull { uri ->
-                        runCatching { importer.import(uri, personId) }
-                            .onFailure { appLog.warn(TAG, "insert media failed: $uri", it) }
+        val jobs = uris.map { uri ->
+            ImportJob(placeholder = UUID.randomUUID().toString().replace("-", ""), uri = uri)
+        }
+        var body = _state.value.notes
+        jobs.forEach { job -> body = MarkdownEditing.appendMedia(body, job.placeholder) }
+        _state.update {
+            it.copy(
+                notes = body,
+                pendingMedia = it.pendingMedia + jobs.map { job -> job.placeholder },
+                saved = false,
+            )
+        }
+        jobs.forEach { job ->
+            viewModelScope.launch {
+                importGate.withLock {
+                    val storedId = withContext(Dispatchers.IO) {
+                        val importer = MediaImporter(context.contentResolver, mediaStore)
+                        runCatching { importer.import(job.uri, personId) }
+                            .onFailure { appLog.warn(TAG, "insert media failed: ${job.uri}", it) }
                             .getOrNull()
                             ?.id
                     }
+                    finishMediaImport(job.placeholder, storedId)
                 }
-                if (ids.isEmpty()) {
-                    appLog.warn(TAG, "no media imported for person: $personId")
-                    return@launch
-                }
-                var body = _state.value.notes
-                ids.forEach { id ->
-                    body = MarkdownEditing.appendMedia(body, id)
-                }
-                _state.update { it.copy(notes = body, saved = false) }
-                refreshMediaBlocks(body)
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                appLog.warn(TAG, "insert media failed: $personId", error)
-            } finally {
-                pendingMediaInsertions--
-                _state.update { it.copy(insertingMedia = pendingMediaInsertions > 0) }
             }
         }
+    }
+
+    /** Swaps the placeholder for the stored id, or drops it when the import failed. */
+    private fun finishMediaImport(placeholder: String, storedId: String?) {
+        val current = _state.value.notes
+        val updated = if (storedId != null) {
+            MarkdownEditing.replaceMediaId(current, placeholder, storedId)
+        } else {
+            MarkdownEditing.removeMedia(current, placeholder)
+        }
+        _state.update {
+            it.copy(
+                notes = updated,
+                pendingMedia = it.pendingMedia - placeholder,
+                mediaBlocks = it.mediaBlocks - placeholder,
+                saved = false,
+            )
+        }
+        refreshMediaBlocks(updated)
+        appLog.info(TAG, "person media import finished: ${storedId != null}")
     }
 
     /**
@@ -401,7 +440,8 @@ class PersonEditViewModel @Inject constructor(
     private fun refreshMediaBlocks(body: String) {
         val ids = MarkdownEditing.mediaOf(body)
             .map { it.id }
-            .filter { it !in _state.value.mediaBlocks }
+            // An importing placeholder is not in the store yet (ADR-061).
+            .filter { it !in _state.value.mediaBlocks && it !in _state.value.pendingMedia }
         if (ids.isEmpty()) return
 
         viewModelScope.launch {

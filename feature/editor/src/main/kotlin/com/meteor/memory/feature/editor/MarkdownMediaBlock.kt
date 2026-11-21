@@ -71,6 +71,15 @@ internal fun StoredMediaSurface(
             modifier = modifier,
         )
 
+        MediaBlockState.Importing -> MediaFrame(
+            label = stringResource(R.string.editor_media_importing),
+            container = MaterialTheme.colorScheme.secondaryContainer,
+            content = MaterialTheme.colorScheme.onSecondaryContainer,
+            shape = shape,
+            height = frameHeight,
+            modifier = modifier,
+        )
+
         MediaBlockState.Missing -> MediaFrame(
             label = stringResource(R.string.editor_media_missing),
             container = MaterialTheme.colorScheme.errorContainer,
@@ -158,7 +167,10 @@ internal fun MediaBlock(
                 onActivate = onActivate,
             )
 
-            if (enabled) {
+            // An importing card has no stored id yet, so removing it would only
+            // orphan a job already running; the remove affordance appears once it
+            // resolves (ADR-061).
+            if (enabled && state != MediaBlockState.Importing) {
                 val removeLabel = stringResource(R.string.editor_remove_media)
                 Box(
                     modifier = Modifier

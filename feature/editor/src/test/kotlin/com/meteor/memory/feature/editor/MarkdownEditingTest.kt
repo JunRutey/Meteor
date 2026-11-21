@@ -154,4 +154,33 @@ class MarkdownEditingTest {
         val body = "![](meteor://image/t/a.enc)"
         assertEquals(body, MarkdownEditing.setImageCaption(body, "t/gone.enc", "无"))
     }
+
+    @Test
+    fun `replacing a placeholder keeps the caption and swaps the id`() {
+        val from = "a".repeat(32)
+        val to = "b".repeat(32)
+        val body = "![假期](meteor://media/$from)"
+
+        assertEquals("![假期](meteor://media/$to)", MarkdownEditing.replaceMediaId(body, from, to))
+    }
+
+    @Test
+    fun `replacing an unknown placeholder changes nothing`() {
+        val body = "![](meteor://media/${"a".repeat(32)})"
+
+        assertEquals(body, MarkdownEditing.replaceMediaId(body, "c".repeat(32), "b".repeat(32)))
+    }
+
+    @Test
+    fun `replacing a placeholder only touches that reference`() {
+        val from = "a".repeat(32)
+        val other = "c".repeat(32)
+        val to = "b".repeat(32)
+        val body = "![](meteor://media/$from)\n\n![](meteor://media/$other)"
+
+        val result = MarkdownEditing.replaceMediaId(body, from, to)
+
+        assertTrue(result.startsWith("![](meteor://media/$to)"))
+        assertTrue(result.endsWith("![](meteor://media/$other)"))
+    }
 }

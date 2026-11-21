@@ -97,7 +97,6 @@ import com.meteor.memory.ui.diary.DiaryPreviewScreen
 import com.meteor.memory.ui.diary.DiaryPreviewViewModel
 import com.meteor.memory.ui.gallery.GalleryViewModel
 import com.meteor.memory.ui.gallery.MediaViewerViewModel
-import com.meteor.memory.ui.media.MediaPickerViewModel
 import com.meteor.memory.ui.home.AlbumHubScreen
 import com.meteor.memory.ui.home.HomeTabsScreen
 import com.meteor.memory.ui.life.BirthDateSettingsScreen
@@ -451,7 +450,9 @@ fun MeteorNavHost(
             val pickPersonMedia = rememberMediaUriPicker(viewModel::importMedia)
             // The standalone picker already imported the files; the detail page
             // only has to reload the media section (ADR-059).
-            HandleMediaPickerResult(navController) { viewModel.load() }
+            HandleMediaPickerResult(navController) { uris ->
+                viewModel.importMedia(uris.map { uri -> Uri.parse(uri) })
+            }
             var pendingExportId by remember { mutableStateOf<String?>(null) }
             var pendingExportName by remember { mutableStateOf("attachment") }
             val exporter = rememberLauncherForActivityResult(
@@ -542,7 +543,9 @@ fun MeteorNavHost(
                 .orEmpty()
             val pickImage = rememberImagePicker(viewModel::insertImage)
             val pickMedia = rememberMediaUriPicker(viewModel::insertMedia)
-            HandleMediaPickerResult(navController) { ids -> viewModel.appendMediaIds(ids) }
+            HandleMediaPickerResult(navController) { uris ->
+                viewModel.insertMedia(uris.map { uri -> Uri.parse(uri) })
+            }
 
             PersonEditScreen(
                 displayName = state.displayName,
@@ -759,10 +762,7 @@ fun MeteorNavHost(
                     defaultValue = null
                 },
             ),
-        ) { entry ->
-            val personId = entry.arguments
-                ?.getString(ARG_MEDIA_PICKER_PERSON)
-                ?.takeIf { it.isNotBlank() }
+        ) {
             val requestedKinds = entry.arguments
                 ?.getString(ARG_MEDIA_PICKER_KINDS)
                 .orEmpty()
@@ -770,16 +770,17 @@ fun MeteorNavHost(
                 .mapNotNull { name -> runCatching { MediaKind.valueOf(name.trim()) }.getOrNull() }
                 .toSet()
                 .ifEmpty { MediaKind.entries.toSet() }
-            val pickerViewModel: MediaPickerViewModel = hiltViewModel()
             MediaPickerScreen(
                 kinds = requestedKinds,
                 onConfirm = { picked ->
-                    pickerViewModel.importPicked(picked, personId) { ids ->
-                        navController.previousBackStackEntry
-                            ?.savedStateHandle
-                            ?.set(MEDIA_PICKER_RESULT, ArrayList(ids))
-                        navController.popBackStack()
-                    }
+                    // Only the URIs go back: the host inserts placeholders and runs
+                    // the import in the background, so the picker returns at once
+                    // and a large video never blocks editing (ADR-061).
+                    val uris = ArrayList(picked.map { it.uri.toString() })
+                    navController.previousBackStackEntry
+                        ?.savedStateHandle
+                        ?.set(MEDIA_PICKER_RESULT, uris)
+                    navController.popBackStack()
                 },
                 onBack = { navController.popBackStack() },
             )
@@ -1176,7 +1177,9 @@ fun MeteorNavHost(
             val context = LocalContext.current
             val pickImage = rememberImagePicker(viewModel::insertImage)
             val systemMediaPicker = rememberMediaUriPicker(viewModel::importMediaUris)
-            HandleMediaPickerResult(navController) { ids -> viewModel.appendMediaIds(ids) }
+            HandleMediaPickerResult(navController) { uris ->
+                viewModel.enqueueMediaImport(uris.map { uri -> Uri.parse(uri) })
+            }
 
             DiaryEditScreen(
                 state = state,
@@ -1341,8 +1344,11 @@ private fun mediaPickerRoute(personId: String?, kinds: Set<MediaKind>): String {
 }
 
 /**
- * Delivers the media ids returned by the standalone picker and clears the
+ * Delivers the device URIs returned by the standalone picker and clears the
  * result, so a configuration change cannot replay the insertion twice.
+ *
+ * The picker only chooses; the host inserts placeholder cards and runs the
+ * import in the background (ADR-061).
  */
 @Composable
 private fun HandleMediaPickerResult(

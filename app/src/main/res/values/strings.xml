@@ -94,6 +94,7 @@
     <string name="diary_save">保存</string>
     <string name="diary_saving">保存中…</string>
     <string name="diary_adding_image">正在处理图片…</string>
+    <string name="diary_media_import_failed">媒体导入失败，请重试。</string>
     <!-- ADR-052 / ADR-055：插入图片、视频、音频 -->
     <string name="diary_adding_media_image">正在处理图片…</string>
     <string name="diary_adding_video">正在处理视频…</string>

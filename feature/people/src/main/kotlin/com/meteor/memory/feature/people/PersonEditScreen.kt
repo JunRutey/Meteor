@@ -247,7 +247,9 @@ fun PersonEditScreen(
                         // Person bodies file new media under this person
                         // (ADR-052 §5 D); the editor itself stays owner-agnostic.
                         onPickMedia = onPickMedia,
-                        mediaInserting = insertingMedia,
+                        // A background import must not disable insert (ADR-061): the
+                        // user can queue another file while the first one encrypts.
+                        mediaInserting = insertingImage,
                         resolveMedia = resolveMedia,
                         onRemoveMedia = onRemoveMedia,
                         onMediaCaptionChanged = onMediaCaptionChanged,

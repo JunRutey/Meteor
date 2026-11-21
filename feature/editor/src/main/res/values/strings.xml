@@ -33,6 +33,7 @@
     <string name="editor_media_audio">［音频］</string>
     <string name="editor_media_missing">无法显示</string>
     <string name="editor_media_pending">正在载入…</string>
+    <string name="editor_media_importing">正在导入…</string>
     <string name="editor_media_inserting">正在处理媒体…</string>
     <string name="editor_remove_media">删除媒体</string>
     <string name="editor_remove_media_title">删除这段媒体？</string>

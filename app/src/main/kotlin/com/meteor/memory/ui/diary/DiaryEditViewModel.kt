@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.meteor.memory.R
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.storage.Document
@@ -32,6 +33,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
@@ -39,6 +42,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
+import java.util.UUID
 import javax.inject.Inject
 
 data class DiaryEditorState(
@@ -71,13 +75,20 @@ data class DiaryEditorState(
      * non-null, repeated insert taps and saving are both disabled.
      */
     val insertingMedia: MediaKind? = null,
+    /**
+     * Placeholder ids inserted for imports still running in the background
+     * (ADR-061). Each one is already a `meteor://media/<placeholder>` line, so the
+     * editor shows an "importing" card and keeps accepting input; the stored id
+     * replaces it when the import finishes.
+     */
+    val pendingMedia: Set<String> = emptySet(),
     val saved: Boolean = false,
     val error: String? = null,
     /** 记录所属日期，用于页头「11 月 7 日 · 周六」标题。 */
     val date: LocalDate = LocalDate.now(),
 ) {
-    /** True while any insert — the legacy image path or an ADR-052 media import — is running. */
-    val isInserting: Boolean get() = isInsertingImage || insertingMedia != null
+    /** True while any insert — the legacy image path or a background media import — is running. */
+    val isInserting: Boolean get() = isInsertingImage || pendingMedia.isNotEmpty()
 }
 
 @HiltViewModel
@@ -109,6 +120,14 @@ class DiaryEditViewModel @Inject constructor(
      */
     private val pendingDeletes = mutableSetOf<String>()
     private var pendingImageInsertions = 0
+
+    /**
+     * Serialises background media imports (ADR-061): several large videos should
+     * not fight for IO, and the editor stays responsive while they run.
+     */
+    private val importGate = Mutex()
+
+    private data class ImportJob(val placeholder: String, val uri: Uri)
 
     init {
         viewModelScope.launch {
@@ -142,10 +161,15 @@ class DiaryEditViewModel @Inject constructor(
      *
      * Unresolved ids answer [MediaBlockState.Pending], which is exactly what the
      * editor shows while the metadata is still being read — the same frame it uses
-     * when no resolver is installed at all.
+     * when no resolver is installed at all. A placeholder whose import is still
+     * running answers [MediaBlockState.Importing] instead (ADR-061).
      */
     fun mediaState(id: String): MediaBlockState =
-        _state.value.mediaBlocks[id] ?: MediaBlockState.Pending
+        if (id in _state.value.pendingMedia) {
+            MediaBlockState.Importing
+        } else {
+            _state.value.mediaBlocks[id] ?: MediaBlockState.Pending
+        }
 
     /** Writes the description (alt text / title) of one media reference. */
     fun setMediaCaption(id: String, caption: String) {
@@ -175,61 +199,6 @@ class DiaryEditViewModel @Inject constructor(
     }
 
     /**
-     * Imports the user's picker selection and appends the references (ADR-052 §5 D).
-     *
-     * Runs on `Dispatchers.IO` because [MediaImporter] streams the whole file
-     * through decryption; a video import can take a while, which is exactly why
-     * [DiaryEditorState.insertingMedia] exists — the editor disables repeat taps and
-     * shows a progress line meanwhile.
-     *
-     * A diary belongs to nobody, so every file is stored under `_self`
-     * (`personId = null`). The person editor passes the person id through the same
-     * importer.
-     */
-    fun importMedia(picked: List<PickedMedia>) {
-        if (picked.isEmpty()) return
-        // One import at a time: two concurrent streams would interleave their
-        // progress states and both append into a body that keeps changing.
-        if (_state.value.insertingMedia != null) return
-
-        _state.update { it.copy(insertingMedia = picked.first().kind, saved = false, error = null) }
-
-        viewModelScope.launch {
-            try {
-                val stored = withContext(Dispatchers.IO) {
-                    val importer = MediaImporter(context.contentResolver, mediaStore)
-                    picked.mapNotNull { media ->
-                        runCatching { importer.import(media.uri, personId = null) }
-                            .onFailure { appLog.warn(TAG, "media import failed: ${media.mimeType}", it) }
-                            .getOrNull()
-                    }
-                }
-                if (stored.isEmpty()) {
-                    appLog.warn(TAG, "media import produced no stored entries")
-                    return@launch
-                }
-
-                // Append onto the *live* text: typing while the import runs must not
-                // be overwritten (the same trap the legacy image path documents).
-                var body = _state.value.text
-                stored.forEach { media ->
-                    body = MarkdownEditing.appendMedia(body, media.id)
-                }
-                document = document.copy(body = body)
-                _state.update { it.copy(text = body, saved = false) }
-                refreshMedia(body)
-                appLog.info(TAG, "media inserted: ${stored.size} entries")
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                appLog.warn(TAG, "media insert failed", error)
-            } finally {
-                _state.update { it.copy(insertingMedia = null) }
-            }
-        }
-    }
-
-    /**
      * Appends references that were already imported by the standalone picker
      * route (ADR-059), keeping the editor free of import responsibilities.
      */
@@ -243,29 +212,86 @@ class DiaryEditViewModel @Inject constructor(
     }
 
     /**
-     * Imports URIs from the platform document picker (ADR-059, "system" mode).
-     *
-     * The importer reads the real name/MIME/source date itself, so wrapping the
-     * URIs in a minimal [PickedMedia] is enough to reuse the existing batch path.
+     * Imports URIs from the platform document picker (ADR-059, "system" mode)
+     * through the same background placeholder path as the in-app picker (ADR-061).
      */
     fun importMediaUris(uris: List<Uri>) {
+        enqueueMediaImport(uris)
+    }
+
+    /**
+     * Starts importing [uris] in the background and inserts a placeholder card for
+     * each immediately (ADR-061).
+     *
+     * This is the whole point of the placeholder: a multi-hundred-megabyte video
+     * must not freeze the editor or block a second insert. The user can keep
+     * typing, pick another file, and watch each card resolve on its own. Imports
+     * are serialised on [importGate] so several large files do not fight for IO.
+     */
+    fun enqueueMediaImport(uris: List<Uri>) {
         if (uris.isEmpty()) return
-        val picked = uris.map { uri ->
-            val mime = context.contentResolver.getType(uri).orEmpty()
-            PickedMedia(
-                uri = uri,
-                displayName = uri.lastPathSegment ?: "media",
-                mimeType = mime,
-                sizeBytes = 0L,
-                kind = when (mime.substringBefore('/')) {
-                    "image" -> MediaKind.IMAGE
-                    "video" -> MediaKind.VIDEO
-                    else -> MediaKind.AUDIO
-                },
-                sourceDate = null,
+        val jobs = uris.map { uri ->
+            ImportJob(placeholder = UUID.randomUUID().toString().replace("-", ""), uri = uri)
+        }
+        var body = _state.value.text
+        jobs.forEach { job -> body = MarkdownEditing.appendMedia(body, job.placeholder) }
+        document = document.copy(body = body)
+        _state.update {
+            it.copy(
+                text = body,
+                pendingMedia = it.pendingMedia + jobs.map { job -> job.placeholder },
+                saved = false,
+                error = null,
             )
         }
-        importMedia(picked)
+        jobs.forEach { job ->
+            viewModelScope.launch {
+                importGate.withLock {
+                    val storedId = withContext(Dispatchers.IO) {
+                        val importer = MediaImporter(context.contentResolver, mediaStore)
+                        runCatching { importer.import(job.uri, personId = null) }
+                            .onFailure { appLog.warn(TAG, "media import failed: ${job.uri}", it) }
+                            .getOrNull()
+                            ?.id
+                    }
+                    finishMediaImport(job.placeholder, storedId)
+                }
+            }
+        }
+    }
+
+    /**
+     * Swaps the placeholder for the stored id, or drops the line when the import
+     * failed, so no reference is ever left pointing at a temp id.
+     */
+    private fun finishMediaImport(placeholder: String, storedId: String?) {
+        val current = _state.value.text
+        val updated = if (storedId != null) {
+            MarkdownEditing.replaceMediaId(current, placeholder, storedId)
+        } else {
+            MarkdownEditing.removeMedia(current, placeholder)
+        }
+        document = document.copy(body = updated)
+        _state.update {
+            it.copy(
+                text = updated,
+                pendingMedia = it.pendingMedia - placeholder,
+                mediaBlocks = it.mediaBlocks - placeholder,
+                saved = false,
+                error = if (storedId == null) {
+                    context.getString(R.string.diary_media_import_failed)
+                } else {
+                    it.error
+                },
+            )
+        }
+        refreshMedia(updated)
+        appLog.info(TAG, "media import finished: ${storedId != null}")
+    }
+
+    /** Legacy entry point: the old in-editor picker already picked the files. */
+    fun importMedia(picked: List<PickedMedia>) {
+        enqueueMediaImport(picked.map { it.uri })
     }
 
     fun insertImage(bytes: ByteArray) {
@@ -422,7 +448,9 @@ class DiaryEditViewModel @Inject constructor(
         val known = _state.value.mediaBlocks.keys
         val ids = MarkdownEditing.mediaOf(body)
             .map { it.id }
-            .filter { it !in known }
+            // Placeholders are inserted before their import starts; resolving one
+            // against the store would only mark it "missing" (ADR-061).
+            .filter { it !in known && it !in _state.value.pendingMedia }
         if (ids.isEmpty()) return
 
         viewModelScope.launch {

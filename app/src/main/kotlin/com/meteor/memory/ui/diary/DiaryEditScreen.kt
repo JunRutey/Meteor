@@ -149,7 +149,10 @@ fun DiaryEditScreen(
                     onImportMedia != null -> mediaPicker::open
                     else -> null
                 },
-                mediaInserting = state.isInserting,
+                // Background imports must not disable the toolbar (ADR-061): the
+                // user is supposed to be able to add another file while one is
+                // still encrypting. Only the legacy in-place image insert blocks it.
+                mediaInserting = state.isInsertingImage,
                 resolveMedia = resolveMedia,
                 onRemoveMedia = onRemoveMedia,
                 onMediaCaptionChanged = onMediaCaptionChanged,
