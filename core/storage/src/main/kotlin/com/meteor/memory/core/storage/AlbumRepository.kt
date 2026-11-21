@@ -65,7 +65,7 @@ class AlbumRepository(
             .mapNotNull { image -> image.toAlbumEntry() }
             .filter { entry -> entry.kind in wanted && belongs(entry.personId) }
 
-        return (stored + legacy).sortedByDescending { it.importedAt }
+        return (stored + legacy).toList().sortedByDescending { it.importedAt }
     }
 
     /** SOURCE_DATE falls back to the import date; both orders are newest first. */
