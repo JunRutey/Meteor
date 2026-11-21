@@ -61,6 +61,14 @@ fun EditorToolbar(
     onBold: () -> Unit = {},
     onColor: (String) -> Unit = { },
     colors: List<String> = MarkdownInlineFormat.COLORS,
+    /**
+     * The format mode currently switched on, if any.
+     *
+     * ADR-051: the buttons are **toggles**, not one-shot commands, so they have
+     * to show what is active. The bold button tints, and the colour button
+     * becomes a filled dot in the chosen colour.
+     */
+    activeFormat: InlineFormat? = null,
 ) {
     var paletteOpen by remember { mutableStateOf(false) }
     // Jumping to preview hides the palette anyway; closing the state keeps the
@@ -68,6 +76,9 @@ fun EditorToolbar(
     LaunchedEffect(isPreviewing) {
         if (isPreviewing) paletteOpen = false
     }
+
+    val bold = activeFormat as? InlineFormat.Bold
+    val activeColor = (activeFormat as? InlineFormat.Color)?.hex
 
     val shape = RoundedCornerShape(16.dp)
     Column(
@@ -101,14 +112,16 @@ fun EditorToolbar(
                 label = boldLabel,
                 enabled = !isPreviewing,
                 onClick = onBold,
-            ) { BoldIcon() }
+                selected = bold != null,
+            ) { BoldIcon(selected = bold != null) }
 
             val colorLabel = stringResource(R.string.editor_fmt_color)
             ToolbarAction(
                 label = colorLabel,
                 enabled = !isPreviewing,
                 onClick = { paletteOpen = !paletteOpen },
-            ) { ColorIcon(paletteOpen = paletteOpen) }
+                selected = activeColor != null,
+            ) { ColorIcon(paletteOpen = paletteOpen, activeColor = activeColor) }
 
             if (showPreviewAction) {
                 val previewLabel = stringResource(
@@ -127,6 +140,7 @@ fun EditorToolbar(
         if (paletteOpen && !isPreviewing && colors.isNotEmpty()) {
             ColorPalette(
                 colors = colors,
+                activeColor = activeColor,
                 onPick = { hex ->
                     paletteOpen = false
                     onColor(hex)
@@ -141,7 +155,11 @@ fun EditorToolbar(
  * its height while open and the palette can never end up off-screen.
  */
 @Composable
-private fun ColorPalette(colors: List<String>, onPick: (String) -> Unit) {
+private fun ColorPalette(
+    colors: List<String>,
+    activeColor: String?,
+    onPick: (String) -> Unit,
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -152,6 +170,7 @@ private fun ColorPalette(colors: List<String>, onPick: (String) -> Unit) {
         colors.forEach { hex ->
             val swatch = swatchColor(hex) ?: MaterialTheme.colorScheme.secondary
             val label = swatchLabel(hex)
+            val active = activeColor != null && activeColor.equals(hex, ignoreCase = true)
             Box(
                 modifier = Modifier
                     .size(SWATCH_TOUCH)
@@ -165,7 +184,16 @@ private fun ColorPalette(colors: List<String>, onPick: (String) -> Unit) {
                         .clip(CircleShape)
                         .background(swatch)
                         .border(
-                            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            // The active swatch gets a heavy ring so "on" is
+                            // visible without relying on colour alone.
+                            BorderStroke(
+                                if (active) ACTIVE_RING else 1.dp,
+                                if (active) {
+                                    MaterialTheme.colorScheme.onSurface
+                                } else {
+                                    MaterialTheme.colorScheme.outlineVariant
+                                },
+                            ),
                             CircleShape,
                         ),
                 )
@@ -217,11 +245,22 @@ private fun ToolbarAction(
     label: String,
     enabled: Boolean,
     onClick: () -> Unit,
+    selected: Boolean = false,
     content: @Composable () -> Unit,
 ) {
     Box(
         modifier = Modifier
             .size(44.dp)
+            // A selected action gets a tinted pill: the toggle has to be visible
+            // at a glance, since it changes what typing does (ADR-051).
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                if (selected) {
+                    MaterialTheme.colorScheme.secondaryContainer
+                } else {
+                    Color.Transparent
+                },
+            )
             .clickable(enabled = enabled, onClick = onClick)
             .semantics { contentDescription = label },
         contentAlignment = Alignment.Center,
@@ -232,8 +271,12 @@ private fun ToolbarAction(
 
 /** A bold "B", drawn as two stacked bowls so no font is required. */
 @Composable
-private fun BoldIcon() {
-    val tint = MaterialTheme.colorScheme.secondary
+private fun BoldIcon(selected: Boolean) {
+    val tint = if (selected) {
+        MaterialTheme.colorScheme.onSecondaryContainer
+    } else {
+        MaterialTheme.colorScheme.secondary
+    }
     Canvas(Modifier.size(22.dp)) {
         val stroke = 2.2.dp.toPx()
         val unit = size.width / 24f
@@ -277,12 +320,19 @@ private fun BoldIcon() {
 
 /**
  * An "A" with a colour bar underneath: the glyph says "text", the bar says
- * "colour". When the palette is open the bar becomes a filled dot so the state is
- * visible without reading the content description.
+ * "colour". While a colour mode is on the bar becomes a filled dot **in that
+ * colour**, so the active format is readable at a glance (ADR-051).
  */
 @Composable
-private fun ColorIcon(paletteOpen: Boolean) {
-    val tint = MaterialTheme.colorScheme.secondary
+private fun ColorIcon(paletteOpen: Boolean, activeColor: String?) {
+    val selected = activeColor != null
+    val tint = if (selected) {
+        MaterialTheme.colorScheme.onSecondaryContainer
+    } else {
+        MaterialTheme.colorScheme.secondary
+    }
+    val markColor = activeColor?.let(::swatchColor) ?: tint
+
     Canvas(Modifier.size(22.dp)) {
         val stroke = 1.8.dp.toPx()
         val unit = size.width / 24f
@@ -298,10 +348,11 @@ private fun ColorIcon(paletteOpen: Boolean) {
             color = tint,
             style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round),
         )
-        if (paletteOpen) {
+        if (paletteOpen || selected) {
+            // Filled dot: either the palette is open, or a colour is active.
             drawCircle(
-                color = tint,
-                radius = 2.4f * unit,
+                color = markColor,
+                radius = 2.6f * unit,
                 center = Offset(12f * unit, 19f * unit),
             )
         } else {
@@ -466,4 +517,4 @@ private fun PreviewIcon(isPreviewing: Boolean) {
 /** Small dot, but a full-size tap target: 5 swatches fit a 360dp-wide toolbar. */
 private val SWATCH_TOUCH = 44.dp
 private val SWATCH_DOT = 26.dp
-
+private val ACTIVE_RING = 2.5.dp

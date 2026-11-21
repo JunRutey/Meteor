@@ -112,12 +112,22 @@ fun MarkdownField(
     // Selection a formatting action wants restored after it rewrites a block.
     var pendingSelection by remember { mutableStateOf<TextRange?>(null) }
 
+    /**
+     * The format mode currently on, if any (ADR-051).
+     *
+     * Held here, next to the text, so the toolbar's highlight and what typing
+     * actually produces are the same state — a mode stored in two places would
+     * eventually disagree.
+     */
+    var activeFormat by remember { mutableStateOf<InlineFormat?>(null) }
+
     // Preview removes the body, so nothing can keep focus. Report the blur
     // explicitly instead of leaving a stale "focused" flag in the host screen.
     LaunchedEffect(previewing) {
         if (previewing) {
             focusedBlocks.clear()
             activeBlock = -1
+            activeFormat = null
             onFocusChanged(false)
         }
     }
@@ -130,22 +140,89 @@ fun MarkdownField(
         onTextChanged(MarkdownBlocks.serialize(next))
     }
 
-    /** Applies one inline-format edit to the focused text block. */
-    fun applyInline(edit: (String, Int, Int) -> InlineEdit) {
-        // With nothing focused yet (the toolbar can be tapped before the caret
-        // ever lands), fall back to the first text block and its end — otherwise
-        // the button would look broken on a fresh page.
+    /** The block a formatting toggle should act on, with the caret inside it. */
+    fun targetBlock(): Pair<Int, BodyBlock.Text>? {
         val index = activeBlock.takeIf { blocks.getOrNull(it) is BodyBlock.Text }
             ?: blocks.indexOfFirst { it is BodyBlock.Text }
-        val block = blocks.getOrNull(index) as? BodyBlock.Text ?: return
+        val block = blocks.getOrNull(index) as? BodyBlock.Text ?: return null
+        return index to block
+    }
 
-        val selection = if (activeBlock == index) activeSelection else TextRange(block.raw.length)
-        val result = edit(block.raw, selection.min, selection.max)
-        if (result.text == block.raw) return
+    /**
+     * Switches one format mode on or off (ADR-051).
+     *
+     * Two shapes, because both are natural:
+     *
+     * - **a selection exists** — wrap it right now, and arm the mode so the caret
+     *   lands just past the run and keeps typing in that style;
+     * - **no selection** — arm the mode and write the opening marker so typing
+     *   starts inside the run, then close it when the mode is switched off.
+     *
+     * Tapping the same format again always turns it off and balances the markers.
+     */
+    fun toggleFormat(tapped: InlineFormat) {
+        val target = targetBlock() ?: return
+        val (index, block) = target
+        val selection = if (activeBlock == index) {
+            activeSelection
+        } else {
+            TextRange(block.raw.length)
+        }
 
+        val wasActive = activeFormat == tapped
+
+        // A real selection is a one-shot wrap; the mode stays armed afterwards.
+        if (!wasActive && !selection.collapsed) {
+            val wrapped = wrapSelection(block.raw, selection, tapped)
+            activeBlock = index
+            activeFormat = tapped
+            setBlockText(index, wrapped.text)
+            pendingSelection = TextRange(wrapped.selectionEnd, wrapped.selectionEnd)
+            return
+        }
+
+        val caret = selection.max
+
+        if (wasActive) {
+            val closed = MarkdownInlineEditing.close(block.raw, caret, tapped)
+            activeBlock = index
+            activeFormat = null
+            if (closed.text != block.raw) {
+                setBlockText(index, closed.text)
+                pendingSelection = TextRange(closed.selectionStart, closed.selectionEnd)
+            }
+            return
+        }
+
+        // Switching on, or switching straight to another colour: retire the old
+        // run first so two spans never nest.
+        var text = block.raw
+        var at = caret
+        activeFormat?.let { previous ->
+            val closed = MarkdownInlineEditing.close(text, at, previous)
+            text = closed.text
+            at = closed.selectionStart
+        }
+
+        val opened = MarkdownInlineEditing.open(text, at, tapped)
         activeBlock = index
-        setBlockText(index, result.text)
-        pendingSelection = TextRange(result.selectionStart, result.selectionEnd)
+        activeFormat = tapped
+        setBlockText(index, opened.text)
+        pendingSelection = TextRange(opened.selectionStart, opened.selectionEnd)
+    }
+
+    /** Wraps a non-empty selection in one format's markers. */
+    private fun wrapSelection(text: String, selection: TextRange, format: InlineFormat): InlineEdit {
+        val open = MarkdownInlineEditing.openingMarker(format)
+        val close = MarkdownInlineEditing.closingMarker(format)
+        val start = selection.min.coerceIn(0, text.length)
+        val end = selection.max.coerceIn(0, text.length)
+        return InlineEdit(
+            text = text.substring(0, start) + open + text.substring(start, end) + close +
+                text.substring(end),
+            selectionStart = start + open.length,
+            selectionEnd = end + open.length,
+        )
     }
 
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -155,12 +232,9 @@ fun MarkdownField(
             onImage = onPickImage,
             onTogglePreview = onPreviewToggle,
             showPreviewAction = showPreviewAction,
-            onBold = { applyInline(MarkdownInlineFormat::toggleBold) },
-            onColor = { hex ->
-                applyInline { text, start, end ->
-                    MarkdownInlineFormat.applyColor(text, start, end, hex)
-                }
-            },
+            onBold = { toggleFormat(InlineFormat.Bold) },
+            onColor = { hex -> toggleFormat(InlineFormat.Color(hex)) },
+            activeFormat = activeFormat,
         )
 
         if (previewing) {
@@ -277,8 +351,9 @@ private fun TextBlock(
     onSelectionRestored: () -> Unit,
 ) {
     // The field keeps its own value object so the selection is available to the
-    // formatting actions. Only [TextFieldValue.text] is ever read back, and no
-    // transformation is applied, so text and storage stay identical (ADR-021).
+    // formatting actions. [value] is always the *source* text — the stored
+    // Markdown — and every caret this composable reads or writes is a source
+    // offset, which is what the transformation maps between (ADR-051).
     var field by remember { mutableStateOf(TextFieldValue(value)) }
     // The last text this field itself echoed upward. Only a change that did not
     // come from here is an outside edit (an inserted image or link), and only an
@@ -330,6 +405,10 @@ private fun TextBlock(
             fontSize = 17.sp,
             lineHeight = 26.sp,
         ),
+        // Markers are hidden and the text they wrap is drawn styled. The source
+        // string keeps the markers, so storage is unchanged and the caret is
+        // mapped rather than guessed (ADR-051).
+        visualTransformation = remember { MarkdownStyledTransformation() },
         placeholder = placeholder,
         shape = RoundedCornerShape(0.dp),
         colors = OutlinedTextFieldDefaults.colors(
