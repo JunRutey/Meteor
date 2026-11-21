@@ -52,6 +52,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.util.UUID
@@ -613,11 +614,7 @@ private fun ChatMessage(
                             verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             SelectionContainer {
-                                Text(
-                                    text = bubble.text,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
+                                AiReplyText(text = bubble.text)
                             }
                             if (bubble.citations.isNotEmpty()) {
                                 CitationList(bubble.citations)
@@ -831,11 +828,9 @@ private fun LiveTurn(
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 ) {
                     SelectionContainer {
-                        Text(
+                        AiReplyText(
                             text = content + if (streaming) "▍" else "",
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface,
                         )
                     }
                 }
@@ -844,6 +839,46 @@ private fun LiveTurn(
             }
         }
     }
+}
+
+/**
+ * One AI reply, rendered from Markdown (ADR-050).
+ *
+ * `bubble.text` grows token by token while the reply streams, so the parser is
+ * called on a half-finished string: an incomplete marker is shown literally
+ * instead of swallowing the text that follows it.
+ */
+@Composable
+private fun AiReplyText(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    val typography = MaterialTheme.typography
+    val colors = MaterialTheme.colorScheme
+    val replyStyle = remember(typography, colors) {
+        // Headings scale off the body size instead of borrowing headlineSmall:
+        // the reply is drawn with bodyLarge's line height, and a 24sp run inside
+        // a 24sp line would collide with its neighbour. Deriving an sp value
+        // this way keeps the unit and follows the system font scale.
+        val body = typography.bodyLarge.fontSize.value
+        val headingFontSizes = if (body.isFinite() && body > 0f) {
+            listOf(1.25f, 1.12f, 1f).map { (body * it).sp }
+        } else {
+            emptyList()
+        }
+        AiReplyStyle(
+            headingFontSizes = headingFontSizes,
+            codeBackground = colors.surfaceContainerHighest,
+            linkColor = colors.primary,
+            mutedColor = colors.onSurfaceVariant,
+        )
+    }
+    Text(
+        text = remember(text, replyStyle) { AiReplyMarkdown.render(text, replyStyle) },
+        modifier = modifier,
+        style = typography.bodyLarge,
+        color = colors.onSurface,
+    )
 }
 
 @Composable
