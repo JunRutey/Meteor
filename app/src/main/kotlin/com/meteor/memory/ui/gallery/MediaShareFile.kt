@@ -1,20 +1,24 @@
 package com.meteor.memory.ui.gallery
 
-import com.meteor.memory.core.storage.MediaKind
+import com.meteor.memory.core.storage.AlbumKind
 
 /**
  * Naming and MIME rules for the temporary file handed to the system share
- * sheet from the media viewer (ADR-054). Extends the `ImageShareFile` idea to
- * videos and audio: the viewer already knows the stored MIME type from the
- * album entry, so it uses that instead of sniffing bytes.
+ * sheet from the album viewer (ADR-054). Extends the `ImageShareFile` idea to
+ * videos, audio and (ADR-065) imported files: the viewer already knows the
+ * stored MIME type from the album entry, so it uses that instead of sniffing
+ * bytes.
  */
 object MediaShareFile {
 
     /** Fallback MIME when the stored entry carried none. */
-    fun mimeTypeForKind(kind: MediaKind): String = when (kind) {
-        MediaKind.IMAGE -> ImageShareFile.MIME_UNKNOWN
-        MediaKind.VIDEO -> MIME_VIDEO
-        MediaKind.AUDIO -> MIME_AUDIO
+    fun mimeTypeForKind(kind: AlbumKind): String = when (kind) {
+        AlbumKind.IMAGE -> ImageShareFile.MIME_UNKNOWN
+        AlbumKind.VIDEO -> MIME_VIDEO
+        AlbumKind.AUDIO -> MIME_AUDIO
+        // Sharing an imported file is how the user exports it, so keep the
+        // generic type: the receiver decides how to open the bytes.
+        AlbumKind.FILE -> MIME_OCTET_STREAM
     }
 
     /**
@@ -52,6 +56,7 @@ object MediaShareFile {
 
     const val MIME_VIDEO = "video/*"
     const val MIME_AUDIO = "audio/*"
+    const val MIME_OCTET_STREAM = "application/octet-stream"
 
     private const val MAX_STEM = 32
     private const val DEFAULT_STEM = "media"

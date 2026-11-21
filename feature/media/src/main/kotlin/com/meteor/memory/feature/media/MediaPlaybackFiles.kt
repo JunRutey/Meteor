@@ -90,6 +90,9 @@ internal object MediaPlaybackFiles {
         when (val parsed = MediaRef.parse(ref)) {
             is MediaRef.Media -> runCatching { host.mediaStore.find(parsed.id)?.mimeType }.getOrNull()
             is MediaRef.LegacyImage -> null
+            // An imported file is never handed to Media3: it has no player, so it
+            // never reaches this temporary-playback-copy path (ADR-065).
+            is MediaRef.File -> null
             null -> null
         }
 

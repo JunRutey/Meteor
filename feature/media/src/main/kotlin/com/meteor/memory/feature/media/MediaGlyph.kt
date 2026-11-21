@@ -31,6 +31,7 @@ internal enum class MediaGlyphKind {
     Video,
     Audio,
     Image,
+    File,
     Fullscreen,
     FullscreenExit,
 }
@@ -150,6 +151,29 @@ private fun DrawScope.drawMediaGlyph(kind: MediaGlyphKind, color: Color) {
             drawCircle(color, radius = 1.6f * unit, center = p(9f, 10.5f))
             line(6.5f, 16f, 11f, 11.5f)
             line(11f, 11.5f, 15.5f, 16f)
+        }
+
+        MediaGlyphKind.File -> {
+            // A document with a folded corner and two text lines.
+            path {
+                move(6.5f, 3.5f)
+                line(13.5f, 3.5f)
+                line(18f, 8f)
+                line(18f, 20.5f)
+                line(6.5f, 20.5f)
+                close()
+            }
+            path {
+                move(13.5f, 3.5f)
+                line(13.5f, 8f)
+                line(18f, 8f)
+            }
+            path {
+                move(9.5f, 12.5f)
+                line(15f, 12.5f)
+                move(9.5f, 16f)
+                line(15f, 16f)
+            }
         }
 
         // Landscape fullscreen is "grow into the four corners".

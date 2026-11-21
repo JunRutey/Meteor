@@ -1,8 +1,8 @@
 package com.meteor.memory.ui.gallery
 
 import com.meteor.memory.core.storage.AlbumEntry
+import com.meteor.memory.core.storage.AlbumKind
 import com.meteor.memory.core.storage.AlbumSortMode
-import com.meteor.memory.core.storage.MediaKind
 import com.meteor.memory.feature.gallery.GalleryDay
 import com.meteor.memory.feature.gallery.GalleryFilter
 import com.meteor.memory.feature.gallery.GalleryItem
@@ -21,10 +21,11 @@ import java.time.ZoneId
  */
 object AlbumMapping {
 
-    fun toUiKind(kind: MediaKind): GalleryKind = when (kind) {
-        MediaKind.IMAGE -> GalleryKind.IMAGE
-        MediaKind.VIDEO -> GalleryKind.VIDEO
-        MediaKind.AUDIO -> GalleryKind.AUDIO
+    fun toUiKind(kind: AlbumKind): GalleryKind = when (kind) {
+        AlbumKind.IMAGE -> GalleryKind.IMAGE
+        AlbumKind.VIDEO -> GalleryKind.VIDEO
+        AlbumKind.AUDIO -> GalleryKind.AUDIO
+        AlbumKind.FILE -> GalleryKind.FILE
     }
 
     fun toStorageSort(mode: GallerySortMode): AlbumSortMode = when (mode) {
@@ -37,11 +38,12 @@ object AlbumMapping {
         AlbumSortMode.IMPORT_DATE -> GallerySortMode.IMPORT_DATE
     }
 
-    fun toKinds(filter: GalleryFilter): Set<MediaKind>? = when (filter) {
+    fun toKinds(filter: GalleryFilter): Set<AlbumKind>? = when (filter) {
         GalleryFilter.ALL -> null
-        GalleryFilter.IMAGES -> setOf(MediaKind.IMAGE)
-        GalleryFilter.VIDEOS -> setOf(MediaKind.VIDEO)
-        GalleryFilter.AUDIO -> setOf(MediaKind.AUDIO)
+        GalleryFilter.IMAGES -> setOf(AlbumKind.IMAGE)
+        GalleryFilter.VIDEOS -> setOf(AlbumKind.VIDEO)
+        GalleryFilter.AUDIO -> setOf(AlbumKind.AUDIO)
+        GalleryFilter.FILES -> setOf(AlbumKind.FILE)
     }
 
     fun toItem(entry: AlbumEntry): GalleryItem = GalleryItem(
@@ -50,6 +52,7 @@ object AlbumMapping {
         durationMs = entry.durationMs,
         fileName = entry.fileName,
         hasThumbnail = entry.hasThumbnail,
+        sizeBytes = entry.sizeBytes,
     )
 
     /**

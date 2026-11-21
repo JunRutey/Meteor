@@ -206,6 +206,7 @@ private fun ViewerActionBar(
     sharing: Boolean,
     onShare: () -> Unit,
     onDelete: () -> Unit,
+    shareLabel: Int = R.string.gallery_share,
 ) {
     Surface(
         modifier = Modifier
@@ -255,7 +256,7 @@ private fun ViewerActionBar(
                 ) {
                     GalleryIcon(GalleryIconKind.Share, iconSize = 18.dp)
                     Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.gallery_share))
+                    Text(stringResource(shareLabel))
                 }
                 Button(
                     onClick = onDelete,
@@ -288,6 +289,10 @@ private fun ViewerActionBar(
  * delete behaviour, videos play full-screen through [VideoPlayerCard], and
  * audio renders [AudioPlayerCard] above the same share / delete bar.
  *
+ * [GalleryKind.FILE] is an imported document (ADR-065): the body shows [fileText],
+ * the plaintext extracted at import, and the share action is hidden because a
+ * file has no media payload a player or share sheet could present.
+ *
  * [bitmap], [share], [delete] and the state flags stay image-only; when [kind]
  * is VIDEO or AUDIO the bottom bar is enabled as soon as [hasContent] is true,
  * so a video can be shared or deleted without an in-memory bitmap.
@@ -309,6 +314,7 @@ fun MediaViewerScreen(
     dateLabel: String? = null,
     error: ImageViewerError = ImageViewerError.None,
     hasContent: Boolean = false,
+    fileText: String? = null,
     modifier: Modifier = Modifier,
 ) {
     var confirmingDelete by remember { mutableStateOf(false) }
@@ -361,6 +367,12 @@ fun MediaViewerScreen(
                         modifier = Modifier.fillMaxWidth(),
                         title = fileName,
                     )
+
+                    GalleryKind.FILE -> FileTextPane(
+                        fileName = fileName,
+                        text = fileText,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
             }
         }
@@ -376,6 +388,13 @@ fun MediaViewerScreen(
             sharing = sharing,
             onShare = onShare,
             onDelete = { confirmingDelete = true },
+            // Sharing an imported file *is* its export path: the chooser hands the
+            // decrypted original to any app the user picks (ADR-065).
+            shareLabel = if (kind == GalleryKind.FILE) {
+                R.string.gallery_export_file
+            } else {
+                R.string.gallery_share
+            },
         )
     }
 

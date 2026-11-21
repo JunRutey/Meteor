@@ -82,14 +82,11 @@ fun PersonDetailScreen(
     resolveImage: (String) -> ImageBitmap? = { null },
     onActivate: (String) -> Unit = {},
     onAddRecord: () -> Unit = {},
-    attachmentsError: Boolean = false,
     importingAttachments: Boolean = false,
     importedAttachmentCount: Int? = null,
     failedAttachmentCount: Int = 0,
     skippedAttachmentCount: Int = 0,
     attachmentIndexFailed: Boolean = false,
-    onExportAttachment: (String) -> Unit = {},
-    exportFailed: Boolean? = null,
     onDelete: () -> Unit = {},
     deleting: Boolean = false,
     deleteFailed: Boolean = false,
@@ -206,9 +203,6 @@ fun PersonDetailScreen(
                 )
             }
 
-            if (attachmentsError) {
-                item { StatusLine(stringResource(R.string.people_records_load_failed), error = true) }
-            }
             importedAttachmentCount?.let { imported ->
                 item {
                     StatusLine(
@@ -233,30 +227,13 @@ fun PersonDetailScreen(
             if (attachmentIndexFailed) {
                 item { StatusLine(stringResource(R.string.people_record_index_failed), error = true) }
             }
-            exportFailed?.let { failed ->
-                item {
-                    StatusLine(
-                        message = stringResource(
-                            if (failed) {
-                                R.string.people_record_export_failed
-                            } else {
-                                R.string.people_record_export_done
-                            },
-                        ),
-                        error = failed,
-                    )
-                }
-            }
 
-            if (records.isEmpty() && !attachmentsError) {
+            if (records.isEmpty()) {
                 item { EmptyCard(stringResource(R.string.people_records_empty)) }
             }
 
             items(records, key = { it.recordId }) { row ->
-                RecordCard(
-                    row = row,
-                    onExport = { onExportAttachment(row.recordId) },
-                )
+                RecordCard(row = row)
             }
         }
     }
@@ -515,10 +492,7 @@ internal fun SectionHeader(
 }
 
 @Composable
-private fun RecordCard(
-    row: PersonRecordRow,
-    onExport: () -> Unit,
-) {
+private fun RecordCard(row: PersonRecordRow) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
@@ -563,11 +537,6 @@ private fun RecordCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                }
-            }
-            if (row.title != null) {
-                TextButton(onClick = onExport) {
-                    Text(stringResource(R.string.people_record_export))
                 }
             }
         }
