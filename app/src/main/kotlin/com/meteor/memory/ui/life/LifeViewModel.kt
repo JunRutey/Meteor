@@ -31,17 +31,13 @@ sealed interface LifePageState {
 class LifeViewModel @Inject constructor(
     private val profileStore: BirthdayProfileStore,
     private val appLog: AppLog,
-    private val prewarm: LifeStartupPrewarm,
 ) : ViewModel() {
 
     private val lunarCalendar = ChineseLunarCalendar()
 
-    // The cold-start prewarm already resolved the profile and its next birthday
-    // (ADR-044), so the first frame can be `Ready` instead of a spinner. The
-    // snapshot is only trusted when it belongs to today and to this timezone;
-    // `refresh()` still re-reads the store to catch a birthday changed in
-    // Settings while the process was alive.
-    private val _state = MutableStateFlow(seededState())
+    // Table-backed lunar conversion is plain arithmetic (ADR-047), so the first
+    // refresh already lands within a frame; no cold-start snapshot is needed.
+    private val _state = MutableStateFlow<LifePageState>(LifePageState.Loading)
     val state = _state.asStateFlow()
     private var ticker: Job? = null
 
@@ -57,25 +53,16 @@ class LifeViewModel @Inject constructor(
                     _state.value = LifePageState.Missing
                     return@launch
                 }
-                // A snapshot seeded for the previous profile must not stay on
-                // screen while the new one is computed; the seed is only there
-                // to avoid a spinner when nothing changed.
+                // A Ready frame still showing the previous profile must not
+                // stay on screen while the new one is computed.
                 val current = _state.value
                 if (current is LifePageState.Ready && current.profile != profile) {
                     _state.value = LifePageState.Loading
                 }
 
                 var zone = ZoneId.systemDefault()
-                val initialNow = Instant.now()
-                val initialToday = initialNow.atZone(zone).toLocalDate()
-                val reusable = prewarm.snapshot?.takeIf { snapshot ->
-                    snapshot.profile == profile &&
-                        snapshot.nextBirthday != null &&
-                        snapshot.zone == zone &&
-                        snapshot.capturedAt.atZone(zone).toLocalDate() == initialToday
-                }
-                var cachedDate: LocalDate? = if (reusable != null) initialToday else null
-                var cachedBirthday: LocalDate? = reusable?.nextBirthday
+                var cachedDate: LocalDate? = null
+                var cachedBirthday: LocalDate? = null
 
                 while (isActive) {
                     val now = Instant.now()
@@ -121,33 +108,6 @@ class LifeViewModel @Inject constructor(
     fun stop() {
         ticker?.cancel()
         ticker = null
-    }
-
-    /** Initial page state from the prewarm snapshot, or a normal loading state. */
-    private fun seededState(): LifePageState {
-        val snapshot = prewarm.snapshot ?: return LifePageState.Loading
-        val zone = ZoneId.systemDefault()
-        // A "no profile yet" snapshot can be out of date for a moment (the user
-        // may have just finished onboarding or saved a date in Settings), so it
-        // is not worth seeding a possibly wrong Missing frame; the store read
-        // that follows is cheap. Seeding is for the expensive lunar result.
-        val profile = snapshot.profile ?: return LifePageState.Loading
-        val nextBirthday = snapshot.nextBirthday ?: return LifePageState.Loading
-        if (snapshot.zone != zone) return LifePageState.Loading
-        if (snapshot.capturedAt.atZone(zone).toLocalDate() != LocalDate.now(zone)) {
-            return LifePageState.Loading
-        }
-        return runCatching {
-            LifePageState.Ready(
-                profile = profile,
-                metrics = BirthdayAgeCalculator.calculate(
-                    profile = profile,
-                    now = Instant.now(),
-                    zone = zone,
-                    nextBirthday = nextBirthday,
-                ),
-            )
-        }.getOrDefault(LifePageState.Loading)
     }
 
     private companion object {

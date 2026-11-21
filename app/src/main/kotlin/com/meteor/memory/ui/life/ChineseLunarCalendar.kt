@@ -1,12 +1,8 @@
 package com.meteor.memory.ui.life
 
-import android.icu.util.Calendar
-import android.icu.util.ChineseCalendar
-import android.icu.util.TimeZone
-import android.icu.util.ULocale
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
-import java.util.concurrent.ConcurrentHashMap
 
 data class LunarMonth(
     val month: Int,
@@ -14,38 +10,111 @@ data class LunarMonth(
     val lastDay: Int,
 )
 
+data class LunarDate(
+    val year: Int,
+    val month: Int,
+    val day: Int,
+    val leapMonth: Boolean,
+)
+
+/**
+ * Lunar/Gregorian conversion backed by the published [LunarYearTable] data
+ * (ADR-047). Table lookups replace the former day-by-day enumeration through
+ * `android.icu.util.ChineseCalendar`, whose simplified ephemeris could put a
+ * month start one day away from the official calendar when the new moon falls
+ * minutes before a midnight (2027 正月 is the known case).
+ *
+ * All lookups are pure arithmetic, so every entry point is safe to call from
+ * the main thread and needs no cross-instance caching.
+ */
 class ChineseLunarCalendar {
 
-    fun monthsInYear(year: Int): List<LunarMonth> =
-        daysInYear(year)
-            .groupBy { it.month to it.leapMonth }
-            .map { (key, days) ->
-                LunarMonth(
-                    month = key.first,
-                    leapMonth = key.second,
-                    lastDay = days.maxOf { it.day },
+    /**
+     * Months of the lunar [year] in calendar order (正月, its leap month when
+     * present, 二月, …). Empty when the year is outside the table's range.
+     */
+    fun monthsInYear(year: Int): List<LunarMonth> {
+        if (!LunarYearTable.covers(year)) return emptyList()
+        val months = mutableListOf<LunarMonth>()
+        val leap = LunarYearTable.leapMonth(year)
+        for (month in 1..12) {
+            months += LunarMonth(
+                month = month,
+                leapMonth = false,
+                lastDay = LunarYearTable.monthDays(year, month),
+            )
+            if (month == leap) {
+                months += LunarMonth(
+                    month = month,
+                    leapMonth = true,
+                    lastDay = LunarYearTable.leapMonthDays(year),
                 )
             }
-
-    fun toGregorian(year: Int, month: Int, day: Int, leapMonth: Boolean): LocalDate? {
-        if (year !in BirthProfile.MIN_BIRTH_YEAR..MAX_LUNAR_YEAR) return null
-        if (month !in 1..12 || day !in 1..30) return null
-        val lunarMonth = monthsInYear(year).firstOrNull {
-            it.month == month && it.leapMonth == leapMonth
-        } ?: return null
-        if (day > lunarMonth.lastDay) return null
-        return daysInYear(year).firstOrNull {
-            it.month == month && it.leapMonth == leapMonth && it.day == day
-        }?.date
+        }
+        return months
     }
 
+    /**
+     * Gregorian date of the given lunar date, or null when the combination is
+     * invalid (outside the table, no such leap month, or day past month end).
+     */
+    fun toGregorian(year: Int, month: Int, day: Int, leapMonth: Boolean): LocalDate? {
+        if (!LunarYearTable.covers(year)) return null
+        if (month !in 1..12 || day !in 1..30) return null
+        val months = monthsInYear(year)
+        val target = months.firstOrNull { it.month == month && it.leapMonth == leapMonth } ?: return null
+        if (day > target.lastDay) return null
+        var offset = 0
+        for (earlier in LunarYearTable.MIN_YEAR until year) {
+            offset += LunarYearTable.yearDays(earlier)
+        }
+        for (entry in months) {
+            if (entry.month == month && entry.leapMonth == leapMonth) {
+                return LunarYearTable.BASE_DATE.plusDays((offset + day - 1).toLong())
+            }
+            offset += entry.lastDay
+        }
+        return null
+    }
+
+    /** Lunar date of the given Gregorian date, or null outside the table. */
+    fun toLunar(date: LocalDate): LunarDate? {
+        var offset = date.toEpochDay() - LunarYearTable.BASE_DATE.toEpochDay()
+        if (offset < 0) return null
+        var year = LunarYearTable.MIN_YEAR
+        while (year <= LunarYearTable.MAX_YEAR && offset >= LunarYearTable.yearDays(year)) {
+            offset -= LunarYearTable.yearDays(year)
+            year++
+        }
+        if (!LunarYearTable.covers(year)) return null
+        for (entry in monthsInYear(year)) {
+            if (offset < entry.lastDay) {
+                return LunarDate(
+                    year = year,
+                    month = entry.month,
+                    day = offset.toInt() + 1,
+                    leapMonth = entry.leapMonth,
+                )
+            }
+            offset -= entry.lastDay
+        }
+        return null
+    }
+
+    /**
+     * The first occurrence of [birth]'s lunar month/day that is not before
+     * [now]. A birth in a leap month falls back to the regular month in years
+     * that have no such leap month, and day 30 falls back to the last day of a
+     * 29-day month.
+     */
     fun nextBirthday(
         birth: BirthProfile.Lunar,
-        now: java.time.Instant,
+        now: Instant,
         zone: ZoneId,
     ): LocalDate? {
         val today = now.atZone(zone).toLocalDate()
         for (year in (today.year - 1)..(today.year + 2)) {
+            if (!LunarYearTable.covers(year)) continue
             val months = monthsInYear(year)
             val chosenMonth = if (birth.leapMonth) {
                 months.firstOrNull { it.month == birth.month && it.leapMonth }
@@ -60,81 +129,23 @@ class ChineseLunarCalendar {
         return null
     }
 
-    private fun daysInYear(year: Int): List<LunarDay> {
-        require(year in BirthProfile.MIN_BIRTH_YEAR..MAX_LUNAR_YEAR)
-        sharedYearCache[year]?.let { return it }
-        val computed = enumerateDays(year)
-        // Keep the bound but only evict under the lock: the cache is shared by
-        // every caller on every thread now, and a torn "size check then clear"
-        // could drop the year another thread is about to read.
-        synchronized(sharedYearCache) {
-            if (sharedYearCache.size >= MAX_CACHED_YEARS) sharedYearCache.clear()
-            return sharedYearCache[year] ?: computed.also { sharedYearCache[year] = it }
+    /**
+     * Repairs a stored profile whose Gregorian reference date disagrees with
+     * its lunar fields. Older builds computed that date through ICU and could
+     * store it one day off; the lunar fields are authoritative.
+     */
+    fun normalize(profile: BirthProfile): BirthProfile {
+        if (profile !is BirthProfile.Lunar) return profile
+        val correct = toGregorian(
+            year = profile.year,
+            month = profile.month,
+            day = profile.day,
+            leapMonth = profile.leapMonth,
+        ) ?: return profile
+        return if (correct == profile.gregorianDate) {
+            profile
+        } else {
+            profile.copy(gregorianDate = correct)
         }
-    }
-
-    private fun enumerateDays(year: Int): List<LunarDay> {
-        val calendar = ChineseCalendar(CHINA_TIME_ZONE, ULocale.CHINA)
-        val anchor = calendarFields(calendar, LocalDate.of(year, 6, 1))
-        val result = mutableListOf<LunarDay>()
-        var date = LocalDate.of(year, 1, 1)
-        val end = LocalDate.of(year + 1, 3, 1)
-        while (date.isBefore(end)) {
-            val fields = calendarFields(calendar, date)
-            if (fields.era == anchor.era && fields.year == anchor.year) {
-                result += LunarDay(
-                    date = date,
-                    month = fields.month + 1,
-                    day = fields.day,
-                    leapMonth = fields.leapMonth,
-                )
-            }
-            date = date.plusDays(1)
-        }
-        return result
-    }
-
-    private fun calendarFields(calendar: ChineseCalendar, date: LocalDate): ChineseFields {
-        calendar.timeInMillis = date.atTime(12, 0).atZone(CHINA_ZONE_ID).toInstant().toEpochMilli()
-        return ChineseFields(
-            // ERA / YEAR / MONTH / DAY_OF_MONTH are declared on the ICU Calendar
-            // base class; name them there so the reference cannot depend on how
-            // Kotlin treats inherited Java statics.
-            era = calendar.get(Calendar.ERA),
-            year = calendar.get(Calendar.YEAR),
-            month = calendar.get(Calendar.MONTH),
-            day = calendar.get(Calendar.DAY_OF_MONTH),
-            leapMonth = calendar.get(ChineseCalendar.IS_LEAP_MONTH) == 1,
-        )
-    }
-
-    private data class ChineseFields(
-        val era: Int,
-        val year: Int,
-        val month: Int,
-        val day: Int,
-        val leapMonth: Boolean,
-    )
-
-    private data class LunarDay(
-        val date: LocalDate,
-        val month: Int,
-        val day: Int,
-        val leapMonth: Boolean,
-    )
-
-    private companion object {
-        const val MAX_LUNAR_YEAR = 2200
-
-        // Enumerating a lunar year costs roughly one ICU field read per
-        // Gregorian day, and the prewarm, the life clock and the picker all ask
-        // for the same years. The cache is process-wide so one instance's work
-        // is visible to the others; the bound keeps memory constant if someone
-        // drags through the whole year list.
-        const val MAX_CACHED_YEARS = 8
-        val sharedYearCache = ConcurrentHashMap<Int, List<LunarDay>>()
-
-        val CHINA_ZONE_ID: ZoneId = ZoneId.of("Asia/Shanghai")
-        val CHINA_TIME_ZONE: TimeZone = TimeZone.getTimeZone("Asia/Shanghai")
     }
 }

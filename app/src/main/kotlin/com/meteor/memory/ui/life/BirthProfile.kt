@@ -28,8 +28,9 @@ sealed interface BirthProfile {
             require(day in 1..30)
             require(gregorianDate.year >= MIN_BIRTH_YEAR)
             // A lunar year starts in January/February, so its Gregorian
-            // counterpart is always inside `year` or `year + 1`. This catches a
-            // stored file whose two halves disagree without re-running ICU.
+            // counterpart is always inside `year` or `year + 1`. A cheap
+            // sanity bound on the stored pair; BirthdayProfileStore repairs
+            // exact disagreements on load (ADR-047).
             require(gregorianDate.year == year || gregorianDate.year == year + 1) {
                 "Lunar birth date does not match its Gregorian year"
             }

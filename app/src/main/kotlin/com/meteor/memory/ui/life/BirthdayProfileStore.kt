@@ -20,6 +20,7 @@ class BirthdayProfileStore(
     private val legacyFile: File? = null,
 ) {
     private val atomicFile = AtomicFile(file)
+    private val lunarCalendar = ChineseLunarCalendar()
 
     /** Never treat the new file itself as the legacy source. */
     private val legacyCopy: File? =
@@ -39,7 +40,7 @@ class BirthdayProfileStore(
             legacy != null && legacy.isFile -> legacy.readBytes()
             else -> return null
         }
-        return BirthProfileCodec.decode(crypto.decrypt(encrypted))
+        return lunarCalendar.normalize(BirthProfileCodec.decode(crypto.decrypt(encrypted)))
     }
 
     fun save(profile: BirthProfile) {

@@ -23,7 +23,6 @@ class OnboardingViewModel @Inject constructor(
     private val profileStore: BirthdayProfileStore,
     private val settingsRepository: SettingsRepository,
     private val appLog: AppLog,
-    private val prewarm: LifeStartupPrewarm,
 ) : ViewModel() {
 
     private val _saveState = MutableStateFlow(OnboardingSaveState())
@@ -35,10 +34,6 @@ class OnboardingViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 withContext(Dispatchers.IO) { profileStore.save(profile) }
-                // The process already ran the prewarm with "no profile"; make
-                // the new one available to the life tab without another cold
-                // start (ADR-044).
-                prewarm.updateAfterSave(profile)
                 settingsRepository.setOnboardingCompleted(true)
                 appLog.info(TAG, "onboarding completed with birth profile")
                 _saveState.value = OnboardingSaveState()
