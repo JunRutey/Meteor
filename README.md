@@ -6,7 +6,7 @@
 密钥由设备 Keystore 保管，不可导出、不上传、无云端同步。AI 是可选能力，默认关闭，
 仅接入官方 DeepSeek。
 
-> 当前版本 **v1.3.2**。功能与隐私的细节见 [AI 功能与隐私](docs/AI.md) 与
+> 当前版本 **v1.5.0**。功能与隐私的细节见 [AI 功能与隐私](docs/AI.md) 与
 > [加密与安全](docs/SECURITY.md)，设计取舍见 [ADR](docs/adr)，
 > 历次发布见 [发布说明](docs/releases)。
 
@@ -17,9 +17,9 @@
   [ADR-021](docs/adr/ADR-021-editor-is-plain-text.md)
 - **图片与相册**：图片按天分组浏览，单张查看器居中显示，支持分享与删除。详见
   [ADR-037](docs/adr/ADR-037-image-viewer-share-delete.md)
-- **冷启动**：专用高分辨率图标居中显示，农历生日在 Splash 阶段预热，再进入锁屏、
-  引导或首页。详见 [ADR-038](docs/adr/ADR-038-cold-start-splash.md)、
-  [ADR-044](docs/adr/ADR-044-startup-life-prewarm.md)
+- **冷启动**：专用高分辨率图标居中显示，再进入锁屏、引导或首页。详见
+  [ADR-038](docs/adr/ADR-038-cold-start-splash.md)；农历换算已改为权威数据表、
+  冷启动预热已移除，见 [ADR-047](docs/adr/ADR-047-lunar-table-over-icu.md)。
 - **全文搜索**：CJK 分词，支持单字与心情标签检索，FTS5 → FTS4 → LIKE 运行时降级。
   详见 [ADR-015](docs/adr/ADR-015-cjk-bigram-tokenizer.md)、
   [ADR-016](docs/adr/ADR-016-fts-runtime-backend-fallback.md)

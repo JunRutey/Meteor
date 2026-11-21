@@ -119,7 +119,7 @@ jobs:
       # docs/releases/<tag>.md 与 app/src/main/assets/changelog.md 是两份手写文档：
       # 前者进 GitHub Release 正文，后者是应用内「关于 → 更新日志」的数据源。
       # v1.5.0 发布时漏同步了 changelog.md，Release 正文正常但应用内看不到本版，
-      # 所以这里做一次交叉校验。见 docs/adr/ADR-065-in-app-changelog-sync-guard.md。
+      # 所以这里做一次交叉校验。见 docs/adr/ADR-066-in-app-changelog-sync-guard.md。
       - name: Verify in-app changelog has this version
         run: |
           set -euo pipefail

@@ -11,7 +11,7 @@
 3. **内容要与应用内 `app/src/main/assets/changelog.md` 对齐**，
    那份是「关于」页里用户能看到的历史。
 4. **这条同步现在由 CI 强制**：`Release` 工作流在发布前检查 `app/src/main/assets/changelog.md`
-   里是否存在 `## <tag>` 段落（见 [ADR-065](../adr/ADR-065-in-app-changelog-sync-guard.md)），
+   里是否存在 `## <tag>` 段落（见 [ADR-066](../adr/ADR-066-in-app-changelog-sync-guard.md)），
    缺失会让发布任务直接失败。
 
 ## 发布流程

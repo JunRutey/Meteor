@@ -1,4 +1,4 @@
-# ADR-065 · 应用内更新日志的同步校验
+# ADR-066 · 应用内更新日志的同步校验
 
 - 状态：已接受
 - 影响：`.github/workflows/release.yml`、`app/src/main/assets/changelog.md`、
