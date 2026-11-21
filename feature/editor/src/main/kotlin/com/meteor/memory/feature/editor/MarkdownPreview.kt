@@ -55,7 +55,7 @@ fun MarkdownPreview(
     }
 }
 
-private val IMAGE_LINE = Regex("""^!\[[^\]]*\]\(([^)]+)\)$""")
+private val IMAGE_LINE = Regex("""^!\[([^\]]*)\]\(([^)]+)\)$""")
 
 @Composable
 private fun PreviewLine(
@@ -81,26 +81,40 @@ private fun PreviewLine(
         trimmed == "---" -> HorizontalDivider()
 
         IMAGE_LINE.matches(trimmed) -> {
-            val target = IMAGE_LINE.find(trimmed)?.groupValues?.getOrNull(1).orEmpty()
+            val match = IMAGE_LINE.find(trimmed)
+            val caption = match?.groupValues?.getOrNull(1).orEmpty()
+            val target = match?.groupValues?.getOrNull(2).orEmpty()
             // resolveImage takes the bare path, exactly like ImageStore; the
             // `meteor://image/` prefix only exists inside a body.
             val bitmap = resolveImage(target.removePrefix(ImageStore.IMAGE_SCHEME))
-            if (bitmap != null) {
-                Image(
-                    bitmap = bitmap,
-                    contentDescription = imageLabel,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onActivate(target) },
-                    contentScale = ContentScale.FillWidth,
-                )
-            } else {
-                Text(
-                    text = imageLabel,
-                    style = typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.clickable { onActivate(target) },
-                )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (bitmap != null) {
+                    Image(
+                        bitmap = bitmap,
+                        contentDescription = caption.takeIf { it.isNotBlank() } ?: imageLabel,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onActivate(target) },
+                        contentScale = ContentScale.FillWidth,
+                    )
+                } else {
+                    Text(
+                        text = imageLabel,
+                        style = typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { onActivate(target) },
+                    )
+                }
+                // The alt text is the picture's description (ADR-049): worth
+                // showing, since it is what survives in every export.
+                if (caption.isNotBlank()) {
+                    Text(
+                        text = caption,
+                        style = typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 2.dp),
+                    )
+                }
             }
         }
 

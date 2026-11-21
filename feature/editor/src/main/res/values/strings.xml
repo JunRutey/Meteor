@@ -18,4 +18,9 @@
     <string name="editor_remove_image_body">正文里的引用和已加密的图片文件会一起删除，无法恢复。</string>
     <string name="editor_remove">删除</string>
     <string name="editor_cancel">取消</string>
+
+    <string name="editor_image_description_add">添加图片描述</string>
+    <string name="editor_image_description_title">图片描述</string>
+    <string name="editor_image_description_hint">写一句说明，例如「毕业那天的合影」</string>
+    <string name="editor_image_description_confirm">保存</string>
 </resources>

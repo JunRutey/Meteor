@@ -521,6 +521,7 @@ fun MeteorNavHost(
                 onBack = { navController.popBackStack() },
                 missingImages = state.missingImages,
                 resolveImage = viewModel::imageFor,
+                onImageCaptionChanged = viewModel::setImageCaption,
             )
         }
 
@@ -1048,6 +1049,7 @@ fun MeteorNavHost(
                 onSave = viewModel::save,
                 onBack = { navController.popBackStack() },
                 resolveImage = viewModel::imageFor,
+                onImageCaptionChanged = viewModel::setImageCaption,
                 onActivate = { target ->
                     when {
                         target.startsWith("meteor://image/") ->

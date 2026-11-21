@@ -102,4 +102,56 @@ class MarkdownEditingTest {
     fun `removing an image from plain text changes nothing`() {
         assertEquals("普通文字", MarkdownEditing.removeImage("普通文字", "t/a.enc"))
     }
+
+    // ---- image descriptions -------------------------------------------------
+
+    @Test
+    fun `adds a description to an image that had none`() {
+        val body = "![](meteor://image/t/a.enc)\n"
+        assertEquals(
+            "![毕业那天](meteor://image/t/a.enc)\n",
+            MarkdownEditing.setImageCaption(body, "t/a.enc", "毕业那天"),
+        )
+    }
+
+    @Test
+    fun `replaces an existing description`() {
+        val body = "![旧的](meteor://image/t/a.enc)"
+        assertEquals(
+            "![新的](meteor://image/t/a.enc)",
+            MarkdownEditing.setImageCaption(body, "t/a.enc", "新的"),
+        )
+    }
+
+    @Test
+    fun `an empty description removes the alt text`() {
+        val body = "![旧的](meteor://image/t/a.enc)"
+        assertEquals(
+            "![](meteor://image/t/a.enc)",
+            MarkdownEditing.setImageCaption(body, "t/a.enc", "   "),
+        )
+    }
+
+    @Test
+    fun `a description cannot break the surrounding markdown`() {
+        val body = "![](meteor://image/t/a.enc)"
+        assertEquals(
+            "![甲（乙）丙 丁](meteor://image/t/a.enc)",
+            MarkdownEditing.setImageCaption(body, "t/a.enc", "甲[乙]丙\n丁"),
+        )
+    }
+
+    @Test
+    fun `only the targeted image gets the description`() {
+        val body = "![](meteor://image/t/a.enc)\n\n![](meteor://image/t/b.enc)"
+        val result = MarkdownEditing.setImageCaption(body, "t/b.enc", "第二张")
+        assertTrue(result.endsWith("![第二张](meteor://image/t/b.enc)"))
+        assertTrue(result.startsWith("![](meteor://image/t/a.enc)"))
+    }
+
+    @Test
+    fun `describing an unknown image changes nothing`() {
+        val body = "![](meteor://image/t/a.enc)"
+        assertEquals(body, MarkdownEditing.setImageCaption(body, "t/gone.enc", "无"))
+    }
 }
