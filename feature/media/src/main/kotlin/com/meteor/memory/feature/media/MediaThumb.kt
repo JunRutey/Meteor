@@ -81,6 +81,12 @@ fun MediaThumb(
                 tint = iconTint,
                 modifier = Modifier.fillMaxSize(FRACTION_PLACEHOLDER_ICON),
             )
+
+            ThumbState.Document -> MediaGlyph(
+                kind = MediaGlyphKind.File,
+                tint = iconTint,
+                modifier = Modifier.fillMaxSize(FRACTION_PLACEHOLDER_ICON),
+            )
         }
     }
 }
@@ -93,6 +99,12 @@ internal sealed interface ThumbState {
     data class Unavailable(val kind: MediaKind) : ThumbState
 
     data class Ready(val bitmap: ImageBitmap) : ThumbState
+
+    /**
+     * An imported document (`meteor://file/<id>`, ADR-065). It has no pixels at
+     * all, so it draws the file glyph rather than the "missing media" one.
+     */
+    data object Document : ThumbState
 }
 
 /**
@@ -140,6 +152,8 @@ internal fun loadThumbnail(host: MediaHost, ref: String): ThumbState {
                 ThumbState.Unavailable(MediaKind.IMAGE)
             }
         }
+
+        is MediaRef.File -> ThumbState.Document
     }
 }
 

@@ -10,8 +10,8 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meteor.memory.core.log.AppLog
+import com.meteor.memory.core.storage.AlbumKind
 import com.meteor.memory.core.storage.AlbumRepository
-import com.meteor.memory.core.storage.MediaKind
 import com.meteor.memory.feature.gallery.GalleryKind
 import com.meteor.memory.feature.gallery.ImageViewerError
 import com.meteor.memory.ui.common.sampledImageOptions
@@ -41,6 +41,8 @@ data class MediaViewerState(
     val hasContent: Boolean = false,
     val loading: Boolean = true,
     val dateLabel: String? = null,
+    /** Plaintext extracted at import, for `GalleryKind.FILE` only (ADR-065). */
+    val fileText: String? = null,
     val deleting: Boolean = false,
     val deleted: Boolean = false,
     val sharing: Boolean = false,
@@ -85,6 +87,7 @@ class MediaViewerViewModel @Inject constructor(
                         bitmap = loaded.bitmap,
                         hasContent = loaded.hasContent,
                         dateLabel = loaded.dateLabel,
+                        fileText = loaded.fileText,
                     )
                 }
                 if (!loaded.hasContent) appLog.warn(TAG, "media missing or undecodable")
@@ -174,6 +177,7 @@ class MediaViewerViewModel @Inject constructor(
         val bitmap: ImageBitmap?,
         val hasContent: Boolean,
         val dateLabel: String?,
+        val fileText: String? = null,
     )
 
     private fun load(): Loaded {
@@ -187,7 +191,14 @@ class MediaViewerViewModel @Inject constructor(
             .withZone(ZoneId.systemDefault())
             .format(entry.importedAt)
 
-        if (entry.kind != MediaKind.IMAGE) {
+        // An imported document has no pixels to decode: its body is the text the
+        // importer extracted, and "no text" is a normal outcome (PDF, images).
+        if (entry.kind == AlbumKind.FILE) {
+            val text = albumRepository.readFileText(ref)
+            return Loaded(kind, entry.fileName, null, hasContent = true, dateLabel, text)
+        }
+
+        if (entry.kind != AlbumKind.IMAGE) {
             return Loaded(kind, entry.fileName, null, hasContent = true, dateLabel = dateLabel)
         }
 

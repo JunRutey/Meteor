@@ -4,6 +4,8 @@
     <string name="gallery_back">返回</string>
     <string name="gallery_loading">正在解密媒体…</string>
     <string name="gallery_empty">还没有媒体。在日记里插入图片、视频或音频后会出现在这里。</string>
+    <string name="gallery_files_empty">还没有导入文件。点右上角「导入文件」把 txt、聊天记录或压缩包加密归档，AI 和搜索都能读到。</string>
+    <string name="gallery_dismiss">知道了</string>
     <string name="gallery_missing">这条媒体已不存在或无法解密。</string>
     <string name="gallery_hint">长按媒体可选择，再点删除</string>
     <string name="gallery_selected">已选 %1$d 项</string>
@@ -16,6 +18,7 @@
     <string name="gallery_delete_confirm_title">删除这条媒体？</string>
     <string name="gallery_delete_confirm_body">加密文件会被永久删除。引用过这条媒体的日记或档案不会跟着改，对应位置会显示为媒体无法显示。</string>
     <string name="gallery_share">分享</string>
+    <string name="gallery_export_file">导出</string>
     <string name="gallery_share_failed">分享失败，请稍后重试。</string>
     <string name="gallery_share_chooser">分享媒体</string>
     <string name="gallery_share_clip_label">Meteor 媒体</string>
@@ -25,6 +28,7 @@
     <string name="gallery_filter_images">图片</string>
     <string name="gallery_filter_videos">视频</string>
     <string name="gallery_filter_audio">音频</string>
+    <string name="gallery_filter_files">文件</string>
 
     <!-- 排序开关 -->
     <string name="gallery_sort_title">排序方式</string>
@@ -34,4 +38,15 @@
     <!-- 媒体角标 -->
     <string name="gallery_kind_video">视频</string>
     <string name="gallery_kind_audio">音频</string>
+    <string name="gallery_kind_file">文件</string>
+
+    <!-- 导入文件（ADR-065：原「记录」页并入相册） -->
+    <string name="gallery_file_no_text">这个文件没有可阅读的正文：它可能是图片、PDF 或压缩包，Meteor 只保存了文件本身。</string>
+    <string name="gallery_import_file">导入文件</string>
+    <string name="gallery_importing_file">导入中…</string>
+    <string name="gallery_import_progress">正在导入 %1$d/%2$d</string>
+    <string name="gallery_import_summary">成功导入 %1$d 个，失败 %2$d 个</string>
+    <string name="gallery_import_failed">文件导入失败，请检查文件后重试</string>
+    <string name="gallery_import_skipped">%1$d 个文件超过 256 MB，已跳过</string>
+    <string name="gallery_index_failed">文件已保存，但文本索引更新失败</string>
 </resources>

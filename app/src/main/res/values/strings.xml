@@ -172,6 +172,7 @@
     <string name="search_filter_diary">日记</string>
     <string name="search_filter_mood">心情</string>
     <string name="search_filter_profile">档案</string>
+    <string name="search_filter_file">文件</string>
     <string name="search_failed">搜索失败：%1$s</string>
 
     <string name="type_diary">日记</string>
@@ -204,35 +205,6 @@
     <string name="about_changelog_version_title">更新日志 · %1$s</string>
     <string name="about_changelog_version_empty">这个版本没有可显示的更新内容。</string>
     <string name="about_link_unavailable">没有找到可以打开该链接的应用。</string>
-
-    <string name="chats_title">记录</string>
-    <string name="chats_back">返回</string>
-    <string name="chats_empty">还没有导入文件记录</string>
-    <string name="records_empty_for_person">这个人还没有记录</string>
-    <string name="records_import">导入文件</string>
-    <string name="records_importing">导入中…</string>
-    <string name="records_import_progress">正在导入 %1$d/%2$d</string>
-    <string name="records_export">导出</string>
-    <string name="records_delete">删除</string>
-    <string name="records_delete_confirm_title">删除这条记录？</string>
-    <string name="records_delete_confirm_body">文件已加密存储，删除后无法恢复。</string>
-    <string name="records_delete_confirm_ok">删除</string>
-    <string name="records_delete_confirm_cancel">取消</string>
-    <string name="records_export_done">已导出</string>
-    <string name="records_export_failed">导出失败</string>
-    <string name="records_owner_label">新文件归属：%1$s</string>
-    <string name="records_choose_person">选择人物</string>
-    <string name="records_unassigned">未关联人物</string>
-    <string name="records_attachment_details">%1$s · %2$s · %3$s</string>
-    <string name="records_attachment_owner">人物：%1$s</string>
-    <string name="records_load_failed">文件记录加载失败，请稍后重试</string>
-    <string name="records_import_summary">成功导入 %1$d 个，失败 %2$d 个</string>
-    <string name="records_import_skipped">%1$d 个文件超过 256 MB，已跳过</string>
-    <string name="records_import_failed">文件导入失败，请检查文件后重试</string>
-    <string name="records_index_failed">文件已保存，但文本索引更新失败</string>
-
-    <string name="album_hub_tab_media">相册</string>
-    <string name="album_hub_tab_records">记录</string>
 
     <string name="diary_preview_edit">修改日记</string>
     <string name="diary_preview_back">返回</string>

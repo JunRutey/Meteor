@@ -1,5 +1,6 @@
 package com.meteor.memory.ui.gallery
 
+import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -10,6 +11,8 @@ import com.meteor.memory.feature.gallery.GalleryDay
 import com.meteor.memory.feature.gallery.GalleryFilter
 import com.meteor.memory.feature.gallery.GallerySortMode
 import com.meteor.memory.feature.settings.SettingsRepository
+import com.meteor.memory.ui.attachments.AttachmentImportCoordinator
+import com.meteor.memory.ui.attachments.AttachmentImportSummary
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +34,7 @@ class GalleryViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val albumRepository: AlbumRepository,
     private val settingsRepository: SettingsRepository,
+    private val importCoordinator: AttachmentImportCoordinator,
     private val appLog: AppLog,
 ) : ViewModel() {
 
@@ -51,6 +55,16 @@ class GalleryViewModel @Inject constructor(
 
     private val _sortMode = MutableStateFlow(GallerySortMode.IMPORT_DATE)
     val sortMode: StateFlow<GallerySortMode> = _sortMode.asStateFlow()
+
+    /** True while a batch of imported files is being encrypted into the archive. */
+    private val _importingFile = MutableStateFlow(false)
+    val importingFile: StateFlow<Boolean> = _importingFile.asStateFlow()
+
+    private val _importProgress = MutableStateFlow<Pair<Int, Int>?>(null)
+    val importProgress: StateFlow<Pair<Int, Int>?> = _importProgress.asStateFlow()
+
+    private val _importSummary = MutableStateFlow<AttachmentImportSummary?>(null)
+    val importSummary: StateFlow<AttachmentImportSummary?> = _importSummary.asStateFlow()
 
     private var refreshInProgress = false
     private var refreshPending = false
@@ -97,6 +111,38 @@ class GalleryViewModel @Inject constructor(
             appLog.info(TAG, "deleted $removed/${refs.size} media")
             refresh()
         }
+    }
+
+    /**
+     * Imports picked documents into the archive (ADR-065).
+     *
+     * This is the former 记录 page's import path, now reached from the album.
+     * Files land unowned (`personId = null`); the person detail page imports
+     * under its own person instead. The text index is refreshed by the
+     * coordinator so search sees the new content immediately.
+     */
+    fun importFiles(uris: List<Uri>) {
+        if (uris.isEmpty() || _importingFile.value) return
+        viewModelScope.launch {
+            _importingFile.value = true
+            _importProgress.value = 0 to uris.size
+            _importSummary.value = null
+            val summary = importCoordinator.importAll(
+                uris = uris,
+                personId = null,
+            ) { done, total ->
+                _importProgress.value = done to total
+            }
+            _importingFile.value = false
+            _importProgress.value = null
+            _importSummary.value = summary
+            refresh()
+        }
+    }
+
+    /** Clears the last import result once the banner was shown. */
+    fun clearImportSummary() {
+        _importSummary.value = null
     }
 
     fun refresh() {

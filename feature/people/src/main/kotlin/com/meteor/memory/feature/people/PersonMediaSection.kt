@@ -31,21 +31,22 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.meteor.memory.core.storage.MediaKind
+import com.meteor.memory.core.storage.AlbumKind
 import com.meteor.memory.feature.media.MediaThumb
 import java.util.Locale
 
 /**
- * One media file owned by a person, as the detail page renders it (ADR-052 §5 E).
+ * One item owned by a person, as the detail page renders it (ADR-052 §5 E).
  *
  * [ref] is the **complete** Markdown URL stored in the album entry
  * (`meteor://media/<id>` for new media, `meteor://image/<token>` for a picture
- * imported before ADR-052). The page never parses it: the host turns it into a
- * route, and `:feature-media`'s thumbnail resolves it.
+ * imported before ADR-052, `meteor://file/<id>` for an imported document added by
+ * ADR-065). The page never parses it: the host turns it into a route, and
+ * `:feature-media`'s thumbnail resolves it.
  */
 data class PersonMediaRow(
     val ref: String,
-    val kind: MediaKind,
+    val kind: AlbumKind,
     /** Original file name; null for legacy images, which never stored one. */
     val title: String? = null,
     /** Video/audio length in milliseconds; null when unknown. */
@@ -190,7 +191,7 @@ private fun PersonMediaTile(
             )
         }
 
-        if (duration != null && item.kind != MediaKind.IMAGE) {
+        if (duration != null && item.kind != AlbumKind.IMAGE) {
             val durationLabel = stringResource(R.string.people_media_duration_description, duration)
             Surface(
                 modifier = Modifier
@@ -260,11 +261,12 @@ private fun MediaDeleteDialog(
 }
 
 @Composable
-private fun mediaKindLabel(kind: MediaKind): String = stringResource(
+private fun mediaKindLabel(kind: AlbumKind): String = stringResource(
     when (kind) {
-        MediaKind.IMAGE -> R.string.people_media_kind_image
-        MediaKind.VIDEO -> R.string.people_media_kind_video
-        MediaKind.AUDIO -> R.string.people_media_kind_audio
+        AlbumKind.IMAGE -> R.string.people_media_kind_image
+        AlbumKind.VIDEO -> R.string.people_media_kind_video
+        AlbumKind.AUDIO -> R.string.people_media_kind_audio
+        AlbumKind.FILE -> R.string.people_media_kind_file
     },
 )
 

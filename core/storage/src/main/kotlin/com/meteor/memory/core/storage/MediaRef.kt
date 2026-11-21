@@ -15,10 +15,20 @@ sealed interface MediaRef {
     /** Legacy image token, i.e. the path-shaped string [ImageStore.save] returned. */
     data class LegacyImage(val token: String) : MediaRef
 
+    /**
+     * An imported document in [AttachmentStore] (ADR-065); [id] is 32 lowercase
+     * hex characters, the same opaque shape the store writes.
+     */
+    data class File(val id: String) : MediaRef
+
     companion object {
+        /** Scheme for an imported file reference, e.g. `meteor://file/<id>`. */
+        const val FILE_SCHEME = "meteor://file/"
+
         /**
-         * Parses `meteor://media/<id>`, `meteor://image/<token>` or a bare legacy
-         * token; returns null for anything else (external URLs, records, links).
+         * Parses `meteor://media/<id>`, `meteor://file/<id>`,
+         * `meteor://image/<token>` or a bare legacy token; returns null for
+         * anything else (external URLs, records, links).
          */
         fun parse(urlOrToken: String): MediaRef? {
             val raw = urlOrToken.trim()
@@ -27,6 +37,10 @@ sealed interface MediaRef {
                 raw.startsWith(MediaStore.MEDIA_SCHEME) -> {
                     val id = raw.removePrefix(MediaStore.MEDIA_SCHEME)
                     id.takeIf(MediaStore.MEDIA_ID_PATTERN::matches)?.let(::Media)
+                }
+                raw.startsWith(FILE_SCHEME) -> {
+                    val id = raw.removePrefix(FILE_SCHEME)
+                    id.takeIf(MediaStore.MEDIA_ID_PATTERN::matches)?.let(::File)
                 }
                 raw.startsWith(ImageStore.IMAGE_SCHEME) -> {
                     val token = raw.removePrefix(ImageStore.IMAGE_SCHEME)

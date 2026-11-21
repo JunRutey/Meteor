@@ -47,7 +47,8 @@ class AlbumRepositoryTest {
     // Lazy so the rule's TemporaryFolder exists before the stores are built.
     private val media by lazy { EncryptedMediaStore(tmp.root, TestCrypto()) }
     private val images by lazy { EncryptedImageStore(tmp.root, TestCrypto()) }
-    private val repository by lazy { AlbumRepository(media, images) }
+    private val attachments by lazy { EncryptedAttachmentStore(tmp.root, TestCrypto()) }
+    private val repository by lazy { AlbumRepository(media, images, attachments) }
 
     private fun saveMedia(
         kind: MediaKind = MediaKind.IMAGE,
@@ -96,12 +97,12 @@ class AlbumRepositoryTest {
 
         assertEquals(2, entries.size)
         val newEntry = entries.single { it.ref == mediaRef(saved) }
-        assertEquals(MediaKind.IMAGE, newEntry.kind)
+        assertEquals(AlbumKind.IMAGE, newEntry.kind)
         assertEquals("new.jpg", newEntry.fileName)
         assertNull(newEntry.personId)
 
         val legacyEntry = entries.single { it.ref == imageRef(token) }
-        assertEquals(MediaKind.IMAGE, legacyEntry.kind)
+        assertEquals(AlbumKind.IMAGE, legacyEntry.kind)
         assertNull(legacyEntry.personId)
         assertNull(legacyEntry.fileName)
         assertNull(legacyEntry.mimeType)
@@ -137,10 +138,10 @@ class AlbumRepositoryTest {
         saveLegacyImage()
 
         assertEquals(
-            setOf(MediaKind.IMAGE),
-            repository.entries(kinds = setOf(MediaKind.IMAGE)).map { it.kind }.toSet(),
+            setOf(AlbumKind.IMAGE),
+            repository.entries(kinds = setOf(AlbumKind.IMAGE)).map { it.kind }.toSet(),
         )
-        assertEquals(2, repository.entries(kinds = setOf(MediaKind.VIDEO, MediaKind.AUDIO)).size)
+        assertEquals(2, repository.entries(kinds = setOf(AlbumKind.VIDEO, AlbumKind.AUDIO)).size)
         assertEquals(4, repository.entries(kinds = null).size)
         assertTrue(repository.entries(kinds = emptySet()).isEmpty())
     }
@@ -324,5 +325,97 @@ class AlbumRepositoryTest {
         val entries = repository.entries()
         assertTrue(entries.single { it.ref == mediaRef(withThumb) }.hasThumbnail)
         assertFalse(entries.single { it.ref.startsWith(ImageStore.IMAGE_SCHEME) }.hasThumbnail)
+    }
+
+    // --- imported files (ADR-065) ------------------------------------------
+
+    private fun saveFile(
+        owner: String? = null,
+        fileName: String = "chat.txt",
+        text: String? = "hello",
+    ): StoredAttachment = attachments.save(
+        ByteArrayInputStream(byteArrayOf(1, 2, 3)),
+        fileName = fileName,
+        mimeType = "text/plain",
+        personId = owner,
+        indexedText = text,
+    )
+
+    private fun fileRef(saved: StoredAttachment): String = "${MediaRef.FILE_SCHEME}${saved.id}"
+
+    @Test
+    fun `imported files join the album as a fourth kind`() {
+        saveMedia(fileName = "a.jpg")
+        val file = saveFile(fileName = "chat.txt")
+
+        val entries = repository.entries()
+
+        assertEquals(2, entries.size)
+        val entry = entries.single { it.ref == fileRef(file) }
+        assertEquals(AlbumKind.FILE, entry.kind)
+        assertEquals("chat.txt", entry.fileName)
+        assertEquals("text/plain", entry.mimeType)
+        assertEquals(3L, entry.sizeBytes)
+        // A file has no picture and no source date, so it sorts by import date.
+        assertNull(entry.sourceDate)
+        assertFalse(entry.hasThumbnail)
+    }
+
+    @Test
+    fun `a file kind filter hides media and legacy images`() {
+        saveMedia(fileName = "a.jpg")
+        saveLegacyImage()
+        val file = saveFile()
+
+        assertEquals(
+            listOf(fileRef(file)),
+            repository.entries(kinds = setOf(AlbumKind.FILE)).map { it.ref },
+        )
+        // Asking for the media kinds must not leak the file back in.
+        assertEquals(2, repository.entries(kinds = setOf(AlbumKind.IMAGE)).size)
+    }
+
+    @Test
+    fun `files respect the owner filter`() {
+        val self = saveFile(owner = null, fileName = "self.txt")
+        val person = saveFile(owner = personId, fileName = "person.txt")
+
+        assertEquals(
+            listOf(fileRef(self)),
+            repository.entries(MediaOwner.Self).map { it.ref },
+        )
+        assertEquals(
+            listOf(fileRef(person)),
+            repository.entries(MediaOwner.Person(personId)).map { it.ref },
+        )
+    }
+
+    @Test
+    fun `file entries expose their extracted text and delete through the ref`() {
+        val file = saveFile(text = "导出前的聊天记录")
+        val ref = fileRef(file)
+
+        assertEquals("导出前的聊天记录", repository.readFileText(ref))
+        assertNull(repository.loadBytes(ref))
+        assertTrue(repository.delete(ref))
+        assertTrue(repository.entries().isEmpty())
+    }
+
+    @Test
+    fun `a repository without an attachment store stays media only`() {
+        saveMedia(fileName = "a.jpg")
+        saveFile()
+
+        val mediaOnly = AlbumRepository(media, images)
+
+        assertEquals(1, mediaOnly.entries().size)
+        assertNull(mediaOnly.readFileText("${MediaRef.FILE_SCHEME}${"a".repeat(32)}"))
+    }
+
+    @Test
+    fun `file refs parse and reject malformed ids`() {
+        assertTrue(MediaRef.parse("${MediaRef.FILE_SCHEME}${"b".repeat(32)}") is MediaRef.File)
+        assertNull(MediaRef.parse("${MediaRef.FILE_SCHEME}../outside"))
+        assertNull(MediaRef.parse("${MediaRef.FILE_SCHEME}"))
     }
 }

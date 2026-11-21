@@ -29,6 +29,7 @@ internal enum class GalleryIconKind {
     Video,
     Audio,
     Sort,
+    File,
 }
 
 @Composable
@@ -145,6 +146,29 @@ private fun DrawScope.drawGalleryIcon(kind: GalleryIconKind, color: Color) {
                 line(15f, 12f)
                 move(5f, 16f)
                 line(11f, 16f)
+            }
+        }
+
+        GalleryIconKind.File -> {
+            // A document: folded top-right corner plus two text lines.
+            path {
+                move(6.5f, 3.5f)
+                line(13.5f, 3.5f)
+                line(18f, 8f)
+                line(18f, 20.5f)
+                line(6.5f, 20.5f)
+                close()
+            }
+            path {
+                move(13.5f, 3.5f)
+                line(13.5f, 8f)
+                line(18f, 8f)
+            }
+            path {
+                move(9.5f, 12.5f)
+                line(15f, 12.5f)
+                move(9.5f, 16f)
+                line(15f, 16f)
             }
         }
     }
