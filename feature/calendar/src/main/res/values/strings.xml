@@ -20,8 +20,9 @@
     <string name="calendar_save_image">存张记忆</string>
     <string name="calendar_open_search">搜索</string>
     <string name="calendar_open_ai">AI 对话</string>
-    <string name="calendar_open_gallery">图片总览</string>
-    <string name="calendar_open_chats">记录</string>
+    <string name="calendar_open_gallery">相册</string>
+    <string name="calendar_quick_album_hint">图片 · 视频 · 记录</string>
+    <string name="calendar_quick_people_hint">人物档案</string>
     <string name="calendar_open_people">人际关系</string>
 
     <string-array name="calendar_future_encouragements">

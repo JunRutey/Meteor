@@ -29,6 +29,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -44,6 +45,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meteor.memory.core.storage.Mood
@@ -95,8 +97,12 @@ fun CalendarScreen(
     onPickImage: (LocalDate) -> Unit,
     onOpenSearch: () -> Unit,
     onOpenAi: (() -> Unit)?,
-    onOpenGallery: () -> Unit,
-    onOpenChats: () -> Unit,
+    /**
+     * The album hub: photos, video, audio and the imported-record list all live
+     * in one place, so the old separate gallery and notes entries are merged
+     * into this single callback (ADR-060).
+     */
+    onOpenAlbum: () -> Unit,
     onOpenPeople: () -> Unit,
     onToday: () -> Unit = { onSelectDate(today) },
     showHeader: Boolean = true,
@@ -159,8 +165,7 @@ fun CalendarScreen(
             }
 
             QuickActions(
-                onOpenGallery = onOpenGallery,
-                onOpenChats = onOpenChats,
+                onOpenAlbum = onOpenAlbum,
                 onOpenPeople = onOpenPeople,
             )
 
@@ -639,30 +644,31 @@ private fun DayCard(
     }
 }
 
+/**
+ * Bottom quick entries (ADR-060). The album hub now owns photos, video, audio
+ * and the imported-record list, so the old "gallery" and "notes" tiles collapse
+ * into one entry: two balanced cards with the icon in a tinted square.
+ */
 @Composable
 private fun QuickActions(
-    onOpenGallery: () -> Unit,
-    onOpenChats: () -> Unit,
+    onOpenAlbum: () -> Unit,
     onOpenPeople: () -> Unit,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 16.dp, top = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         QuickActionTile(
             label = stringResource(R.string.calendar_open_gallery),
-            onClick = onOpenGallery,
+            hint = stringResource(R.string.calendar_quick_album_hint),
+            onClick = onOpenAlbum,
             modifier = Modifier.weight(1f),
-        ) { GalleryGlyph() }
-        QuickActionTile(
-            label = stringResource(R.string.calendar_open_chats),
-            onClick = onOpenChats,
-            modifier = Modifier.weight(1f),
-        ) { NotesGlyph() }
+        ) { AlbumGlyph() }
         QuickActionTile(
             label = stringResource(R.string.calendar_open_people),
+            hint = stringResource(R.string.calendar_quick_people_hint),
             onClick = onOpenPeople,
             modifier = Modifier.weight(1f),
         ) { PeopleGlyph() }
@@ -672,27 +678,47 @@ private fun QuickActions(
 @Composable
 private fun QuickActionTile(
     label: String,
+    hint: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     icon: @Composable () -> Unit,
 ) {
-    val shape = RoundedCornerShape(16.dp)
-    Column(
+    val shape = RoundedCornerShape(18.dp)
+    Row(
         modifier = modifier
-            .height(60.dp)
+            .height(72.dp)
+            .clip(shape)
             .background(MaterialTheme.colorScheme.surface, shape)
             .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), shape)
-            .clickable(onClick = onClick),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Box(Modifier.size(22.dp)) { icon() }
-        Text(
-            text = label,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.secondary,
-        )
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(13.dp))
+                .background(MaterialTheme.colorScheme.primaryContainer),
+            contentAlignment = Alignment.Center,
+        ) {
+            Box(Modifier.size(22.dp)) { icon() }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = label,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            Text(
+                text = hint,
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -792,62 +818,51 @@ private fun ChevronIcon(previous: Boolean) {
     }
 }
 
+/**
+ * Combined album glyph (ADR-060): two stacked cards, the front one carrying a
+ * photo mark. The back card is the imported-record half of the hub, so one icon
+ * covers "photos / video / audio + records" without a second entry.
+ */
 @Composable
-private fun GalleryGlyph() {
+private fun AlbumGlyph() {
     val tint = MaterialTheme.colorScheme.primary
     Canvas(Modifier.size(22.dp)) {
         val stroke = 1.8.dp.toPx()
         val unit = size.width / 24f
+        // Back card: the records half, peeking out behind the front one.
         drawRoundRect(
             color = tint,
-            topLeft = Offset(3f * unit, 4f * unit),
-            size = Size(18f * unit, 16f * unit),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(3f * unit),
+            topLeft = Offset(7.5f * unit, 3f * unit),
+            size = Size(13f * unit, 12.5f * unit),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.5f * unit),
+            style = Stroke(width = stroke),
+        )
+        // Front card: photos and video.
+        drawRoundRect(
+            color = tint,
+            topLeft = Offset(3.5f * unit, 8f * unit),
+            size = Size(13f * unit, 12.5f * unit),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(2.5f * unit),
             style = Stroke(width = stroke),
         )
         drawCircle(
             color = tint,
-            radius = 1.6f * unit,
-            center = Offset(9f * unit, 10f * unit),
+            radius = 1.3f * unit,
+            center = Offset(7.8f * unit, 12.6f * unit),
             style = Stroke(width = stroke),
         )
-        val path = Path().apply {
-            moveTo(4f * unit, 18f * unit)
-            lineTo(9f * unit, 13f * unit)
-            lineTo(13f * unit, 17f * unit)
-            lineTo(16f * unit, 14f * unit)
-            lineTo(20f * unit, 18f * unit)
+        val hills = Path().apply {
+            moveTo(5f * unit, 18.6f * unit)
+            lineTo(8.4f * unit, 15.4f * unit)
+            lineTo(10.6f * unit, 17.6f * unit)
+            lineTo(12.4f * unit, 15.8f * unit)
+            lineTo(15f * unit, 18.6f * unit)
         }
         drawPath(
-            path = path,
+            path = hills,
             color = tint,
             style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round),
         )
-    }
-}
-
-@Composable
-private fun NotesGlyph() {
-    val tint = MaterialTheme.colorScheme.primary
-    Canvas(Modifier.size(22.dp)) {
-        val stroke = 1.8.dp.toPx()
-        val unit = size.width / 24f
-        drawRoundRect(
-            color = tint,
-            topLeft = Offset(5f * unit, 3f * unit),
-            size = Size(14f * unit, 18f * unit),
-            cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f * unit),
-            style = Stroke(width = stroke),
-        )
-        listOf(8f, 12f, 16f).forEachIndexed { index, y ->
-            drawLine(
-                color = tint,
-                start = Offset(9f * unit, y * unit),
-                end = Offset((if (index == 2) 13f else 15f) * unit, y * unit),
-                strokeWidth = stroke,
-                cap = StrokeCap.Round,
-            )
-        }
     }
 }
 

@@ -399,8 +399,7 @@ fun MeteorNavHost(
                         } else {
                             null
                         },
-                        onOpenGallery = { navController.navigate("album") },
-                        onOpenChats = { navController.navigate("album") },
+                        onOpenAlbum = { navController.navigate("album") },
                         onOpenPeople = { navController.navigate(ROUTE_PEOPLE) },
                         showHeader = false,
                     )
