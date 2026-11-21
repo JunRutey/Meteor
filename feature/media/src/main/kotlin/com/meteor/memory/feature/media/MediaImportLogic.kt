@@ -40,8 +40,8 @@ internal object MediaImportLogic {
         DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT)
 
     /**
-     * `image/*`, `video/*`, `audio/*` decide the kind; anything else is not
-     * media Meteor can store, so the import is rejected with `null`.
+     * The `image`, `video` and `audio` MIME families decide the kind; anything
+     * else is not media Meteor can store, so the import is rejected with `null`.
      */
     fun kindForMimeType(mimeType: String?): MediaKind? {
         val normalized = mimeType
