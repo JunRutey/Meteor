@@ -5,6 +5,8 @@ import android.util.Log
 import java.io.File
 import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
+import java.util.concurrent.Executors
 
 /**
  * Writes one file per day under `filesDir/logs/`, keeps [retentionDays] days and
@@ -27,6 +29,20 @@ class FileAppLogger(
 
     private val logDir = File(context.filesDir, DIR_NAME)
     private val lock = Any()
+
+    /**
+     * Writes are handed to this single-thread executor instead of running inline.
+     *
+     * The logger is called from the main thread on every cold start and on every
+     * foreground transition (MeteorApp.onCreate, MainActivity). Appending a line
+     * is cheap, but `prune()` lists the directory twice per write, so the inline
+     * version did up to six directory scans on the main thread during startup.
+     * Logcat is still written synchronously above, so nothing is lost when the
+     * process dies before the executor drains.
+     */
+    private val writer = Executors.newSingleThreadExecutor { runnable ->
+        Thread(runnable, "meteor-log-writer").apply { isDaemon = true }
+    }
 
     @Volatile
     private var verbose: Boolean = false
@@ -58,29 +74,38 @@ class FileAppLogger(
         val at = clock()
         val line = LogFormatter.line(level, tag, message, throwable, at)
 
-        synchronized(lock) {
-            runCatching {
-                if (!logDir.exists() && !logDir.mkdirs()) {
-                    error("could not create $logDir")
+        // The caller's thread must not wait for the disk. A rejected task (the
+        // executor was shut down) is dropped: the line is already in Logcat.
+        runCatching {
+            writer.execute {
+                synchronized(lock) {
+                    runCatching {
+                        if (!logDir.exists() && !logDir.mkdirs()) {
+                            error("could not create $logDir")
+                        }
+                        val today = at.atZone(ZoneId.systemDefault()).toLocalDate()
+                        val current = File(logDir, LogFiles.fileNameFor(today))
+                        current.appendText(line + "\n", Charsets.UTF_8)
+                        prune(today, current)
+                    }.onFailure { failure ->
+                        // Never let a disk problem erase the only evidence of a crash.
+                        Log.e(LOGCAT_TAG, "could not persist diagnostic log", failure)
+                    }
                 }
-                val today = at.atZone(java.time.ZoneId.systemDefault()).toLocalDate()
-                val current = File(logDir, LogFiles.fileNameFor(today))
-                current.appendText(line + "\n", Charsets.UTF_8)
-                prune(today, current)
-            }.onFailure { failure ->
-                // Never let a disk problem erase the only evidence of a crash.
-                Log.e(LOGCAT_TAG, "could not persist diagnostic log", failure)
             }
         }
     }
 
     private fun prune(today: LocalDate, current: File) {
-        val files = logDir.listFiles() ?: return
-        LogFiles.expired(files.toList(), today, retentionDays)
-            .forEach { runCatching { it.delete() } }
+        // One listing serves both passes: the second scan was pure overhead on a
+        // path that already runs once per written line.
+        val files = logDir.listFiles()?.toList() ?: return
+
+        val expired = LogFiles.expired(files, today, retentionDays)
+        expired.forEach { runCatching { it.delete() } }
 
         // Size pruning runs after date pruning; keep the file still being written.
-        val remaining = logDir.listFiles()?.toList() ?: return
+        val remaining = files - expired.toSet()
         LogFiles.overBudget(remaining, maxTotalBytes, keep = current)
             .forEach { runCatching { it.delete() } }
     }

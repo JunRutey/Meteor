@@ -56,7 +56,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.meteor.memory.feature.media.MediaImportLogic
 import com.meteor.memory.feature.media.MediaThumb
 
 /**
@@ -654,7 +653,7 @@ private fun DurationBadge(durationMs: Long, modifier: Modifier = Modifier) {
         color = Color(0x88000000),
     ) {
         Text(
-            text = MediaImportLogic.formatDuration(durationMs),
+            text = formatDuration(durationMs),
             style = MaterialTheme.typography.labelSmall,
             color = Color.White,
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
@@ -715,6 +714,19 @@ private fun SelectionBar(count: Int, onCancel: () -> Unit, onDelete: () -> Unit)
 
 private fun Set<String>.toggle(ref: String): Set<String> =
     if (ref in this) this - ref else this + ref
+
+/** `m:ss`, or `h:mm:ss` for anything an hour or longer. */
+private fun formatDuration(durationMs: Long): String {
+    val totalSeconds = durationMs / 1000
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return if (hours > 0) {
+        "%d:%02d:%02d".format(hours, minutes, seconds)
+    } else {
+        "%d:%02d".format(minutes, seconds)
+    }
+}
 
 private const val COLUMNS = 3
 private val TILE_GAP = 8.dp

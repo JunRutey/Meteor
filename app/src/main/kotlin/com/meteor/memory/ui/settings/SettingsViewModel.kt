@@ -69,7 +69,11 @@ class SettingsViewModel @Inject constructor(
     private val _logSizeBytes = MutableStateFlow(0L)
     val logSizeBytes: StateFlow<Long> = _logSizeBytes.asStateFlow()
 
-    private val _apiKeyPresent = MutableStateFlow(reader.hasApiKey())
+    // Starts false and is filled in on IO: hasApiKey() opens the Keystore-backed
+    // secret store, which is a binder round trip. Doing it inline in the
+    // constructor put a Keystore decrypt on the main thread every time the
+    // settings screen was opened (three separate ViewModel instances do this).
+    private val _apiKeyPresent = MutableStateFlow(false)
     val apiKeyPresent: StateFlow<Boolean> = _apiKeyPresent.asStateFlow()
 
     private val _aiTest = MutableStateFlow(AiTestState())
@@ -86,6 +90,10 @@ class SettingsViewModel @Inject constructor(
 
     init {
         refreshLogSize()
+        viewModelScope.launch {
+            val present = withContext(Dispatchers.IO) { runCatching { reader.hasApiKey() }.getOrDefault(false) }
+            _apiKeyPresent.value = present
+        }
     }
 
     fun setDarkMode(mode: DarkMode) {
