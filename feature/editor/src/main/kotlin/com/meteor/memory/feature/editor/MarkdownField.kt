@@ -49,7 +49,7 @@ import com.meteor.memory.core.storage.ImageStore
 /**
  * The whole Markdown editing surface: toolbar, the body, and the preview.
  *
- * **An image reference is shown as the picture, not as its Markdown** (ADR-047).
+ * **An image reference is shown as the picture, not as its Markdown** (ADR-049).
  * The body is split into blocks by [MarkdownBlocks]: text runs become text
  * fields, and a line that held only `![描述](meteor://image/<token>)` becomes an
  * image card with an editable description. The file on disk still holds the

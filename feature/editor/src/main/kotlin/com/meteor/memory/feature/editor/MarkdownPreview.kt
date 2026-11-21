@@ -105,7 +105,7 @@ private fun PreviewLine(
                         modifier = Modifier.clickable { onActivate(target) },
                     )
                 }
-                // The alt text is the picture's description (ADR-047): worth
+                // The alt text is the picture's description (ADR-049): worth
                 // showing, since it is what survives in every export.
                 if (caption.isNotBlank()) {
                     Text(

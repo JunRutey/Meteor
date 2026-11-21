@@ -82,7 +82,7 @@ object MarkdownEditing {
     /**
      * Rewrites the alt text of the reference pointing at [token].
      *
-     * Alt text doubles as the picture's description (ADR-047): it is already a
+     * Alt text doubles as the picture's description (ADR-049): it is already a
      * Markdown field, so a description costs no new syntax and stays readable in
      * exports, the search index and anything else that parses the file.
      *

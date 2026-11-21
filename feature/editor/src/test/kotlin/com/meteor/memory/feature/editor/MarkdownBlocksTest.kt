@@ -7,7 +7,7 @@ import org.junit.Test
 /**
  * [MarkdownBlocks] is the guarantee that an image reference is **shown as a
  * picture without being rewritten**: the body must survive parse → serialize
- * untouched (ADR-047).
+ * untouched (ADR-049).
  */
 class MarkdownBlocksTest {
 

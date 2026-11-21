@@ -145,7 +145,7 @@ class DiaryEditViewModel @Inject constructor(
         _state.update { it.copy(text = document.body, saved = false) }
     }
 
-    /** Writes the description (alt text) of one image reference (ADR-047). */
+    /** Writes the description (alt text) of one image reference (ADR-049). */
     fun setImageCaption(token: String, caption: String) {
         val current = _state.value
         val body = MarkdownEditing.setImageCaption(current.text, token, caption)

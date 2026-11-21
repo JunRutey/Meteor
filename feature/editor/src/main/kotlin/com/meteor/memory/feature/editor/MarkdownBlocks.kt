@@ -7,7 +7,7 @@ import com.meteor.memory.core.storage.ImageStore
  *
  * Splitting the body into blocks is what lets an image reference be **shown as
  * the picture itself** while the file keeps the plain Markdown reference
- * (ADR-047). The split is line-exact and [MarkdownBlocks.serialize] rebuilds the
+ * (ADR-049). The split is line-exact and [MarkdownBlocks.serialize] rebuilds the
  * body byte for byte, so simply opening a record never rewrites it.
  */
 internal sealed interface BodyBlock {
