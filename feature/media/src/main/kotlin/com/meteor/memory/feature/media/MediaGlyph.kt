@@ -31,6 +31,8 @@ internal enum class MediaGlyphKind {
     Video,
     Audio,
     Image,
+    Fullscreen,
+    FullscreenExit,
 }
 
 @Composable
@@ -148,6 +150,54 @@ private fun DrawScope.drawMediaGlyph(kind: MediaGlyphKind, color: Color) {
             drawCircle(color, radius = 1.6f * unit, center = p(9f, 10.5f))
             line(6.5f, 16f, 11f, 11.5f)
             line(11f, 11.5f, 15.5f, 16f)
+        }
+
+        // Landscape fullscreen is "grow into the four corners".
+        MediaGlyphKind.Fullscreen -> {
+            path {
+                move(9f, 4f)
+                line(4f, 4f)
+                line(4f, 9f)
+            }
+            path {
+                move(15f, 4f)
+                line(20f, 4f)
+                line(20f, 9f)
+            }
+            path {
+                move(9f, 20f)
+                line(4f, 20f)
+                line(4f, 15f)
+            }
+            path {
+                move(15f, 20f)
+                line(20f, 20f)
+                line(20f, 15f)
+            }
+        }
+
+        // Exiting fullscreen pulls the corners back in.
+        MediaGlyphKind.FullscreenExit -> {
+            path {
+                move(4f, 9f)
+                line(9f, 9f)
+                line(9f, 4f)
+            }
+            path {
+                move(20f, 9f)
+                line(15f, 9f)
+                line(15f, 4f)
+            }
+            path {
+                move(4f, 15f)
+                line(9f, 15f)
+                line(9f, 20f)
+            }
+            path {
+                move(20f, 15f)
+                line(15f, 15f)
+                line(15f, 20f)
+            }
         }
     }
 }

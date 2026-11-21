@@ -30,12 +30,16 @@ internal suspend fun decodeMediaBlocks(
 
     val states = LinkedHashMap<String, MediaBlockState>(ids.size)
     for (id in ids) {
-        val kind = runCatching { mediaStore.find(id)?.kind }.getOrNull()
-        states[id] = when (kind) {
-            null -> MediaBlockState.Missing
-            MediaKind.IMAGE -> MediaBlockState.Image(decodeImage(mediaStore, id))
-            MediaKind.VIDEO -> MediaBlockState.Video
-            MediaKind.AUDIO -> MediaBlockState.Audio
+        val stored = runCatching { mediaStore.find(id) }.getOrNull()
+        states[id] = if (stored == null) {
+            MediaBlockState.Missing
+        } else {
+            when (stored.kind) {
+                MediaKind.IMAGE -> MediaBlockState.Image(decodeImage(mediaStore, id))
+                MediaKind.VIDEO -> MediaBlockState.Video
+                // The card names the recording by its original file name (ADR-064).
+                MediaKind.AUDIO -> MediaBlockState.Audio(stored.fileName)
+            }
         }
     }
     states

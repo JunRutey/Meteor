@@ -1145,6 +1145,9 @@ fun MeteorNavHost(
                 state = state,
                 onEdit = { navController.navigate("$ROUTE_DIARY_EDIT/$date") },
                 onBack = { navController.popBackStack() },
+                // Without this the preview fell back to "pending" for every
+                // `meteor://media/` card (ADR-064).
+                resolveMedia = viewModel::mediaState,
                 onActivate = { target ->
                     when {
                         target.startsWith("meteor://image/") ||

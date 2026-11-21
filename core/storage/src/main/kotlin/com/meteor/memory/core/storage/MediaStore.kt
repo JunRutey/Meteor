@@ -29,6 +29,16 @@ data class MediaMetaInput(
     val durationMs: Long? = null,
     val width: Int? = null,
     val height: Int? = null,
+    /**
+     * SHA-256 of the source bytes as 64 lowercase hex characters (ADR-064).
+     *
+     * The importer fills this in so that the *same file* imported from another
+     * section reuses the existing entry instead of being encrypted twice. Null
+     * means "unknown": entries written before this field existed, and media
+     * restored from a backup whose manifest has no hash, simply never match a
+     * de-duplication lookup.
+     */
+    val contentHash: String? = null,
 )
 
 /** One encrypted media file after it was written, as read back from its sidecar. */
@@ -45,6 +55,12 @@ data class StoredMedia(
     val width: Int?,
     val height: Int?,
     val hasThumbnail: Boolean,
+    /**
+     * SHA-256 of the stored payload, 64 lowercase hex characters (ADR-064), or
+     * null for media written before the hash existed. Kept out of the visible
+     * album projection: it exists so [MediaStore.findByHash] can de-duplicate.
+     */
+    val contentHash: String? = null,
 )
 
 /**
@@ -59,6 +75,19 @@ interface MediaStore {
     fun save(input: InputStream, meta: MediaMetaInput, thumbnailPng: ByteArray? = null): StoredMedia
 
     fun find(id: String): StoredMedia?
+
+    /**
+     * Returns the first entry whose payload SHA-256 equals [hash] (ADR-064).
+     *
+     * The importer uses this to de-duplicate identical files: the hit keeps the
+     * owner and location of its **first** import and the caller only references
+     * its id, so the same file is never encrypted twice. A miss (or null) means
+     * "not stored yet".
+     *
+     * Added under R2 as an additive, defaulted method: an implementation that
+     * cannot enumerate its metadata keeps the default and simply never dedupes.
+     */
+    fun findByHash(hash: String): StoredMedia? = null
 
     /** Lists media, newest first by `importedAt`; [personId] null means every owner. */
     fun list(personId: String? = null): List<StoredMedia>
@@ -221,6 +250,7 @@ class EncryptedMediaStore(
                 width = meta.width,
                 height = meta.height,
                 hasThumbnail = thumbnailPng != null,
+                contentHash = meta.contentHash,
             )
             metadataTemp.writeBytes(crypto.encrypt(encodeMetadata(media, payload.chunkCount)))
 
@@ -248,6 +278,13 @@ class EncryptedMediaStore(
         requireMediaId(id)
         val metadataFile = findMetadata(id) ?: return null
         return runCatching { decodeMetadata(metadataFile).media }.getOrNull()
+    }
+
+    override fun findByHash(hash: String): StoredMedia? {
+        if (hash.isBlank()) return null
+        // Reuses the album walk: every metadata sidecar is decoded anyway, and
+        // one unreadable sidecar must not hide the rest (ADR-064).
+        return list().firstOrNull { it.contentHash == hash }
     }
 
     override fun list(personId: String?): List<StoredMedia> {
@@ -340,7 +377,7 @@ class EncryptedMediaStore(
     private fun encodeMetadata(media: StoredMedia, chunkCount: Int): ByteArray =
         ByteArrayOutputStream().use { bytes ->
             DataOutputStream(bytes).use { output ->
-                output.writeMetadataHeader(METADATA_MAGIC, FORMAT_VERSION)
+                output.writeMetadataHeader(METADATA_MAGIC, METADATA_FORMAT_VERSION)
                 output.writeString(media.id)
                 output.writeString(media.kind.name)
                 output.writeString(media.fileName)
@@ -353,6 +390,9 @@ class EncryptedMediaStore(
                 output.writeNullableInt(media.width)
                 output.writeNullableInt(media.height)
                 output.writeBoolean(media.hasThumbnail)
+                // v2 adds the content hash; v1 sidecars end after hasThumbnail and
+                // are still decoded by [decodeMetadata] (ADR-064).
+                output.writeNullableString(media.contentHash)
                 output.writeInt(chunkCount)
             }
             bytes.toByteArray()
@@ -363,7 +403,14 @@ class EncryptedMediaStore(
             val id = file.name.removeSuffix(METADATA_SUFFIX)
             check(MediaStore.MEDIA_ID_PATTERN.matches(id)) { "invalid media id" }
             val decoded = DataInputStream(ByteArrayInputStream(crypto.decrypt(file.readBytes()))).use { input ->
-                input.readMetadataHeader(METADATA_MAGIC, FORMAT_VERSION)
+                // The strict header helper rejects any version but the current
+                // one; the metadata sidecar has to keep reading v1 files, so the
+                // magic/version pair is validated explicitly (ADR-064).
+                check(input.readInt() == METADATA_MAGIC) { "invalid encrypted media metadata" }
+                val formatVersion = input.readInt()
+                check(
+                    formatVersion in METADATA_FORMAT_VERSION_LEGACY..METADATA_FORMAT_VERSION,
+                ) { "unsupported encrypted media metadata format" }
                 val mediaId = input.readString()
                 check(mediaId == id) { "invalid media id" }
                 val kind = runCatching { MediaKind.valueOf(input.readString()) }.getOrNull()
@@ -381,6 +428,13 @@ class EncryptedMediaStore(
                 val width = input.readNullableInt()
                 val height = input.readNullableInt()
                 val hasThumbnail = input.readBoolean()
+                val contentHash = if (formatVersion >= METADATA_FORMAT_VERSION_HASH) {
+                    input.readNullableString()
+                } else {
+                    // v1 sidecars predate de-duplication: readable, but they can
+                    // never match a findByHash lookup.
+                    null
+                }
                 val chunkCount = input.readInt()
                 check(
                     sizeBytes >= 0 && chunkCount >= 0 &&
@@ -403,6 +457,7 @@ class EncryptedMediaStore(
                         width = width,
                         height = height,
                         hasThumbnail = hasThumbnail,
+                        contentHash = contentHash,
                     ),
                     chunkCount = chunkCount,
                 )
@@ -472,8 +527,18 @@ class EncryptedMediaStore(
          */
         private const val PARALLELISM = 2
         private const val DATA_MAGIC = 0x4D454449
-        private const val METADATA_MAGIC = 0x4D4D4554
-        private const val FORMAT_VERSION = ChunkedEncryptedFile.FORMAT_VERSION
+
+        /** Metadata sidecar magic; `internal` so the v1-compatibility test can craft one. */
+        internal const val METADATA_MAGIC = 0x4D4D4554
+
+        /**
+         * Metadata sidecar schema written by this build (ADR-064): v2 appends the
+         * SHA-256 content hash right after `hasThumbnail`. v1 files written before
+         * de-duplication existed still decode (hash = null).
+         */
+        internal const val METADATA_FORMAT_VERSION = 2
+        internal const val METADATA_FORMAT_VERSION_LEGACY = 1
+        internal const val METADATA_FORMAT_VERSION_HASH = 2
         private const val DATA_TEMP_SUFFIX = ".data.part"
         private const val METADATA_TEMP_SUFFIX = ".meta.part"
         private const val THUMBNAIL_TEMP_SUFFIX = ".thumb.part"

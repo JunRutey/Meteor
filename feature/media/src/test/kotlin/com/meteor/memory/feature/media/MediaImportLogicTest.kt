@@ -4,6 +4,8 @@ import com.meteor.memory.core.storage.MediaKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import java.io.ByteArrayInputStream
+import java.security.MessageDigest
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.YearMonth
@@ -240,6 +242,35 @@ class MediaImportLogicTest {
             ),
             MediaPermissions.required(emptySet(), sdkInt = 34),
         )
+    }
+
+    @Test
+    fun `sha256 uses the standard lowercase hex form`() {
+        // Standard NIST test vectors, so the de-duplication key (ADR-064) can be
+        // matched against any external tool.
+        assertEquals(
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            MediaImportLogic.sha256Hex(ByteArrayInputStream("abc".toByteArray(Charsets.UTF_8))),
+        )
+        assertEquals(
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            MediaImportLogic.sha256Hex(ByteArrayInputStream(byteArrayOf())),
+        )
+    }
+
+    @Test
+    fun `sha256 streams across read buffer boundaries`() {
+        // 200 KB crosses the internal 64 KiB buffer several times; the digest
+        // must still match a one-shot digest of the same bytes.
+        val bytes = ByteArray(200_000) { ((it * 31) % 251).toByte() }
+        val expected = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { byte ->
+            (byte.toInt() and 0xFF).toString(16).padStart(2, '0')
+        }
+
+        val actual = MediaImportLogic.sha256Hex(ByteArrayInputStream(bytes))
+
+        assertEquals(expected, actual)
+        assertEquals(64, actual.length)
     }
 
     @Test

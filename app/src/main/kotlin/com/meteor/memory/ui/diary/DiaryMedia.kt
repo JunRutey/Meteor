@@ -38,7 +38,8 @@ internal suspend fun decodeMediaStates(
         }
         states[id] = when (stored.kind) {
             MediaKind.VIDEO -> MediaBlockState.Video
-            MediaKind.AUDIO -> MediaBlockState.Audio
+            // The card names the recording by its original file name (ADR-064).
+            MediaKind.AUDIO -> MediaBlockState.Audio(stored.fileName)
             MediaKind.IMAGE -> MediaBlockState.Image(decodeImage(store, id))
         }
     }

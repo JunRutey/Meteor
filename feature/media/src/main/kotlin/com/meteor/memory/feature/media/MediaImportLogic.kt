@@ -1,6 +1,8 @@
 package com.meteor.memory.feature.media
 
 import com.meteor.memory.core.storage.MediaKind
+import java.io.InputStream
+import java.security.MessageDigest
 import java.time.Instant
 import java.time.LocalDateTime
 import java.time.YearMonth
@@ -196,6 +198,35 @@ internal object MediaImportLogic {
         }
     }
 
+    /**
+     * SHA-256 of everything [input] yields, as 64 lowercase hex characters
+     * (ADR-064).
+     *
+     * Streams instead of buffering: de-duplication hashes a potentially
+     * multi-gigabyte video *before* probing it, so the source is read once in
+     * fixed-size blocks and never held in the heap. The caller owns (and closes)
+     * the stream.
+     */
+    fun sha256Hex(input: InputStream): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val buffer = ByteArray(HASH_BUFFER_SIZE)
+        while (true) {
+            val read = input.read(buffer)
+            if (read < 0) break
+            if (read > 0) digest.update(buffer, 0, read)
+        }
+        val bytes = digest.digest()
+        val hex = CharArray(bytes.size * 2)
+        for (index in bytes.indices) {
+            val value = bytes[index].toInt() and 0xFF
+            hex[index * 2] = HEX_DIGITS[value ushr 4]
+            hex[index * 2 + 1] = HEX_DIGITS[value and 0x0F]
+        }
+        return String(hex)
+    }
+
     private const val EXIF_DATE_TIME_PATTERN_LENGTH = 19
     private const val RETRIEVER_DATE_PATTERN_LENGTH = 15
+    private const val HASH_BUFFER_SIZE = 64 * 1024
+    private const val HEX_DIGITS = "0123456789abcdef"
 }

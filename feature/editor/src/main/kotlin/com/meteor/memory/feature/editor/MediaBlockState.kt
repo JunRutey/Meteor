@@ -37,8 +37,16 @@ sealed interface MediaBlockState {
     /** A stored video: an inline, playable [com.meteor.memory.feature.media.VideoPlayerCard]. */
     data object Video : MediaBlockState
 
-    /** A stored audio file: a [com.meteor.memory.feature.media.AudioPlayerCard]. */
-    data object Audio : MediaBlockState
+    /**
+     * A stored audio file: a [com.meteor.memory.feature.media.AudioPlayerCard].
+     *
+     * [title] is the **original file name** from the encrypted metadata sidecar
+     * (`StoredMedia.fileName`, e.g. `voice memo.m4a`), not the Markdown caption:
+     * the caption is optional user text and the player must still say *which*
+     * recording it is when the description is empty (ADR-064). Null means the
+     * host could not read a name and the player keeps its generic label.
+     */
+    data class Audio(val title: String?) : MediaBlockState
 
     /**
      * The user picked this file and it is still being encrypted in the background
@@ -62,10 +70,14 @@ sealed interface MediaBlockState {
 
     companion object {
         /** Convenience for hosts: map a stored kind plus an already decoded bitmap. */
-        fun of(kind: MediaKind, bitmap: ImageBitmap? = null): MediaBlockState = when (kind) {
+        fun of(
+            kind: MediaKind,
+            bitmap: ImageBitmap? = null,
+            audioTitle: String? = null,
+        ): MediaBlockState = when (kind) {
             MediaKind.IMAGE -> Image(bitmap)
             MediaKind.VIDEO -> Video
-            MediaKind.AUDIO -> Audio
+            MediaKind.AUDIO -> Audio(audioTitle)
         }
     }
 }

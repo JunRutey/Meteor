@@ -43,10 +43,16 @@
             when the keyboard opens (ADR-024). Edge-to-edge means the window is not
             literally resized; the IME inset is delivered to Compose instead, and
             the tree pads once at the root.
+
+            configChanges keeps an orientation change from recreating the activity.
+            Compose already recomposes on a configuration change, and landscape
+            fullscreen video (ADR-064) must keep its ExoPlayer instance alive while
+            the activity rotates; a recreation would dispose the player mid-playback.
         -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden"
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.Meteor.Splash">
             <intent-filter>

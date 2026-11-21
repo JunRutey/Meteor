@@ -13,6 +13,7 @@ import org.junit.rules.TemporaryFolder
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.DataInputStream
+import java.io.DataOutputStream
 import java.io.File
 import java.time.Instant
 
@@ -426,6 +427,81 @@ class EncryptedMediaStoreTest {
         assertThrows(IllegalArgumentException::class.java) {
             store.openDecrypted(saved.id, 2048L)
         }
+    }
+
+    @Test
+    fun `a content hash round trips and drives findByHash`() {
+        val store = store()
+        val hash = "0123456789abcdef".repeat(4)
+        val otherHash = "fedcba9876543210".repeat(4)
+
+        val first = store.save(ByteArrayInputStream(byteArrayOf(1, 2)), meta().copy(contentHash = hash))
+        // Two entries may share a hash when the second one was written before
+        // de-duplication existed; findByHash just has to surface one of them.
+        val second = store.save(
+            ByteArrayInputStream(byteArrayOf(1, 2)),
+            meta(fileName = "copy.jpg").copy(contentHash = hash),
+        )
+        val other = store.save(
+            ByteArrayInputStream(byteArrayOf(3)),
+            meta(fileName = "other.jpg").copy(contentHash = otherHash),
+        )
+
+        assertEquals(hash, store.find(first.id)?.contentHash)
+        assertEquals(hash, store.find(second.id)?.contentHash)
+        assertEquals(otherHash, store.find(other.id)?.contentHash)
+
+        // A fresh instance re-reads the v2 sidecars from disk, so the lookup does
+        // not depend on any in-memory cache.
+        val reread = store()
+        assertEquals(hash, reread.findByHash(hash)?.contentHash)
+        assertTrue(requireNotNull(reread.findByHash(hash)).id in setOf(first.id, second.id))
+        assertEquals(other.id, reread.findByHash(otherHash)?.id)
+        assertNull(reread.findByHash("0".repeat(64)))
+        assertNull(reread.findByHash(""))
+    }
+
+    @Test
+    fun `metadata written before version 2 stays readable without a hash`() {
+        val store = store()
+        val id = "0123456789abcdef0123456789abcdef"
+        val ownerDir = File(tmp.root, "${StorageLayout.LEGACY}/${StorageLayout.MEDIA}/_self")
+        assertTrue(ownerDir.mkdirs() || ownerDir.isDirectory)
+
+        // Exactly the pre-ADR-064 v1 layout: every field up to hasThumbnail and
+        // the chunk count, but no content hash before the count.
+        val plaintext = ByteArrayOutputStream().use { bytes ->
+            DataOutputStream(bytes).use { output ->
+                output.writeMetadataHeader(
+                    EncryptedMediaStore.METADATA_MAGIC,
+                    EncryptedMediaStore.METADATA_FORMAT_VERSION_LEGACY,
+                )
+                output.writeString(id)
+                output.writeString(MediaKind.AUDIO.name)
+                output.writeString("voice.mp3")
+                output.writeString("audio/mpeg")
+                output.writeNullableString(null)
+                output.writeLong(7L)
+                output.writeLong(Instant.parse("2020-05-01T10:00:00Z").toEpochMilli())
+                output.writeNullableLong(null)
+                output.writeNullableLong(1_500L)
+                output.writeNullableInt(null)
+                output.writeNullableInt(null)
+                output.writeBoolean(false)
+                output.writeInt(1)
+            }
+            bytes.toByteArray()
+        }
+        File(ownerDir, "$id${EncryptedMediaStore.METADATA_SUFFIX}")
+            .writeBytes(TestCrypto().encrypt(plaintext))
+
+        val found = requireNotNull(store.find(id))
+        assertEquals(MediaKind.AUDIO, found.kind)
+        assertEquals("voice.mp3", found.fileName)
+        assertEquals(1_500L, found.durationMs)
+        assertNull(found.contentHash)
+        assertNull(store.findByHash("0".repeat(64)))
+        assertEquals(listOf(found), store.list())
     }
 
     /** Plain `contains` does not exist for [ByteArray], so the search is explicit. */

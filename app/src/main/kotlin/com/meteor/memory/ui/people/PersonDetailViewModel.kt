@@ -194,6 +194,10 @@ class PersonDetailViewModel @Inject constructor(
                 )
             }
             loadNoteImages(_state.value.notes)
+            // Same resolver wiring as the editors: the body's media references
+            // have to be resolved once, or their cards stay on the pending frame
+            // forever (ADR-055, ADR-064).
+            loadMediaBlocks(_state.value.notes)
         }
     }
 

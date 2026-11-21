@@ -17,8 +17,9 @@ import java.time.Instant
  * Imports one device file into the encrypted archive (ADR-052 §4).
  *
  * The pipeline is: resolve display name/MIME/size → decide the [MediaKind] (an
- * unknown MIME is refused, never guessed) → read the source date from EXIF or
- * `MediaMetadataRetriever` → derive a PNG thumbnail → hand everything to
+ * unknown MIME is refused, never guessed) → hash the source and reuse an entry
+ * with the same SHA-256 if one exists (ADR-064) → read the source date from EXIF
+ * or `MediaMetadataRetriever` → derive a PNG thumbnail → hand everything to
  * [MediaStore.save].
  *
  * **Synchronous and UI-free**: the caller runs [import] on `Dispatchers.IO`.
@@ -43,14 +44,35 @@ class MediaImporter(
             ?: MediaImportLogic.mimeTypeForFileName(displayName)
             ?: return null
         val kind = MediaImportLogic.kindForMimeType(mimeType) ?: return null
-        val storeDate = queryStoreDate(uri)
 
+        // De-duplication first (ADR-064): hashing the source before probing means
+        // an identical file is recognised without reading it a second time and
+        // without encrypting a second copy. A hashing failure only disables the
+        // lookup — the import itself continues.
+        val contentHash = sourceHash(uri)
+        if (contentHash != null) {
+            val existing = runCatching { mediaStore.findByHash(contentHash) }.getOrNull()
+            if (existing != null) return existing
+        }
+
+        val storeDate = queryStoreDate(uri)
         return when (kind) {
-            MediaKind.IMAGE -> importImage(uri, displayName, mimeType, personId, storeDate)
+            MediaKind.IMAGE -> importImage(uri, displayName, mimeType, personId, storeDate, contentHash)
             MediaKind.VIDEO, MediaKind.AUDIO ->
-                importTimedMedia(uri, displayName, mimeType, kind, personId, storeDate)
+                importTimedMedia(uri, displayName, mimeType, kind, personId, storeDate, contentHash)
         }
     }
+
+    /**
+     * SHA-256 of the source URI, or null when the provider cannot be read.
+     *
+     * The stream is fully consumed exactly once, in fixed-size blocks, so even a
+     * multi-gigabyte video never lands in the heap. Closed here because the hash
+     * pass is a complete read of its own (ADR-064).
+     */
+    private fun sourceHash(uri: Uri): String? = runCatching {
+        contentResolver.openInputStream(uri)?.use { stream -> MediaImportLogic.sha256Hex(stream) }
+    }.getOrNull()
 
     private fun importImage(
         uri: Uri,
@@ -58,6 +80,7 @@ class MediaImporter(
         mimeType: String,
         personId: String?,
         storeDate: StoreDate,
+        contentHash: String?,
     ): StoredMedia? {
         // Images are the one case where a whole in-memory read is right: both the
         // EXIF pass and the thumbnail need the pixels, and photos are small
@@ -77,6 +100,7 @@ class MediaImporter(
             durationMs = null,
             width = dimensions?.first,
             height = dimensions?.second,
+            contentHash = contentHash,
         )
         return runCatching {
             ByteArrayInputStream(bytes).use { input -> mediaStore.save(input, meta, thumbnail) }
@@ -90,6 +114,7 @@ class MediaImporter(
         kind: MediaKind,
         personId: String?,
         storeDate: StoreDate,
+        contentHash: String?,
     ): StoredMedia? {
         val probed = probeWithRetriever(uri, kind)
         val sourceDate = probed?.sourceDate ?: storeDate.sourceDate
@@ -104,6 +129,7 @@ class MediaImporter(
             durationMs = probed?.durationMs,
             width = if (kind == MediaKind.VIDEO) probed?.width else null,
             height = if (kind == MediaKind.VIDEO) probed?.height else null,
+            contentHash = contentHash,
         )
         // Streamed straight from the provider into the encrypted store: a 2 GB
         // video never lands in the heap.

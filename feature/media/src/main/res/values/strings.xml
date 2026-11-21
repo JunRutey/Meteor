@@ -9,6 +9,8 @@
     <string name="media_video_stop">停止播放</string>
     <string name="media_video_preparing">正在准备视频…</string>
     <string name="media_video_failed">视频无法播放，文件可能已损坏或已被删除。</string>
+    <string name="media_video_fullscreen">全屏</string>
+    <string name="media_video_exit_fullscreen">退出全屏</string>
 
     <!-- Audio player -->
     <string name="media_audio_title">音频</string>

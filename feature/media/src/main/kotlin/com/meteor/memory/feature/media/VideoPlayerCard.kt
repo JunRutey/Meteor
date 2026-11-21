@@ -1,11 +1,16 @@
 package com.meteor.memory.feature.media
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.pm.ActivityInfo
 import android.view.ViewGroup
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -32,6 +37,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -53,6 +60,11 @@ import kotlinx.coroutines.withContext
  * a large video is never fully decrypted into a temporary plaintext copy
  * (ADR-058). Playback stops and the decoder is released when the lifecycle
  * drops below STARTED.
+ *
+ * The top-right corner also offers landscape fullscreen (ADR-064). The dialog
+ * reuses the **same** [ExoPlayer]: Media3 binds a player to one `PlayerView`'s
+ * surface at a time, so the inline view is unbound before the fullscreen view
+ * attaches and unbound again before the inline view is restored.
  */
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
@@ -68,6 +80,19 @@ fun VideoPlayerCard(
     var preparing by remember(ref) { mutableStateOf(false) }
     var failed by remember(ref) { mutableStateOf(false) }
     var player by remember(ref) { mutableStateOf<ExoPlayer?>(null) }
+
+    // One player, two possible surfaces (ADR-064). Keeping the views around lets
+    // the buttons explicitly unbind the surface before the other one attaches.
+    var fullscreen by remember(ref) { mutableStateOf(false) }
+    var inlineView by remember(ref) { mutableStateOf<PlayerView?>(null) }
+    var fullscreenView by remember(ref) { mutableStateOf<PlayerView?>(null) }
+
+    // Serialises the surface hand-over in both directions: dismiss the dialog
+    // only after its view let go of the player.
+    fun leaveFullscreen() {
+        fullscreenView?.player = null
+        fullscreen = false
+    }
 
     // The encrypted payload is streamed, not materialised: the first frame needs
     // only the opening chunks, and seeking reopens at the requested offset.
@@ -111,6 +136,28 @@ fun VideoPlayerCard(
         preparing = false
     }
 
+    // A released player cannot back a fullscreen dialog; leaving it open would
+    // also keep the activity locked in landscape.
+    LaunchedEffect(player) {
+        if (player == null) leaveFullscreen()
+    }
+
+    // The dialog is a second window, but the activity itself is what has to
+    // rotate. onDispose covers every way out — the exit button, the system back
+    // gesture, a released player, and leaving the page while fullscreen — so a
+    // video can never strand another screen in landscape.
+    DisposableEffect(fullscreen) {
+        val activity = context.findActivity()
+        if (fullscreen) {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        }
+        onDispose {
+            if (fullscreen) {
+                activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            }
+        }
+    }
+
     // Backgrounding the screen must not keep playing (or holding a decoder).
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -129,6 +176,8 @@ fun VideoPlayerCard(
 
     val description = stringResource(R.string.media_video_description)
     val stopLabel = stringResource(R.string.media_video_stop)
+    val fullscreenLabel = stringResource(R.string.media_video_fullscreen)
+    val exitFullscreenLabel = stringResource(R.string.media_video_exit_fullscreen)
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(16.dp))
@@ -157,20 +206,27 @@ fun VideoPlayerCard(
                 )
             }
 
-            player != null -> AndroidView(
-                factory = { viewContext ->
-                    PlayerView(viewContext).apply {
-                        useController = true
-                        layoutParams = ViewGroup.LayoutParams(
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                            ViewGroup.LayoutParams.MATCH_PARENT,
-                        )
-                    }
-                },
-                update = { view -> view.player = player },
-                modifier = Modifier.fillMaxSize(),
-                onRelease = { view -> view.player = null },
-            )
+            // While the dialog is up the player lives in the dialog's PlayerView;
+            // composing an inline view for the same player would crash Media3.
+            player != null -> if (!fullscreen) {
+                AndroidView(
+                    factory = { viewContext ->
+                        PlayerView(viewContext).apply {
+                            useController = true
+                            layoutParams = ViewGroup.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                            )
+                        }.also { view -> inlineView = view }
+                    },
+                    update = { view -> if (view.player !== player) view.player = player },
+                    modifier = Modifier.fillMaxSize(),
+                    onRelease = { view ->
+                        view.player = null
+                        if (inlineView === view) inlineView = null
+                    },
+                )
+            }
 
             else -> {
                 MediaThumb(ref = ref, modifier = Modifier.fillMaxSize())
@@ -184,23 +240,98 @@ fun VideoPlayerCard(
             }
         }
 
-        if (player != null) {
+        if (player != null && !fullscreen) {
             // Top-end corner, not the center: the Media3 controller's own
             // play/pause sits in the middle and must stay reachable.
-            Box(
+            Row(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(8.dp)
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(SCRIM)
-                    .clickable { playing = false }
-                    .semantics { contentDescription = stopLabel },
-                contentAlignment = Alignment.Center,
+                    .padding(8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                MediaGlyph(MediaGlyphKind.Pause, tint = Color.White, iconSize = 18.dp)
+                CornerButton(
+                    label = fullscreenLabel,
+                    onClick = {
+                        // Hand the surface over explicitly, before the dialog
+                        // composes its own PlayerView (ADR-064).
+                        inlineView?.player = null
+                        fullscreen = true
+                    },
+                ) {
+                    MediaGlyph(MediaGlyphKind.Fullscreen, tint = Color.White, iconSize = 18.dp)
+                }
+                CornerButton(label = stopLabel, onClick = { playing = false }) {
+                    MediaGlyph(MediaGlyphKind.Pause, tint = Color.White, iconSize = 18.dp)
+                }
             }
         }
+    }
+
+    if (fullscreen && player != null) {
+        Dialog(
+            onDismissRequest = { leaveFullscreen() },
+            properties = DialogProperties(
+                // The dialog has to fill the landscape window, not be a card.
+                usePlatformDefaultWidth = false,
+                dismissOnClickOutside = false,
+            ),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black),
+            ) {
+                AndroidView(
+                    factory = { viewContext ->
+                        PlayerView(viewContext).apply {
+                            useController = true
+                            layoutParams = ViewGroup.LayoutParams(
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                                ViewGroup.LayoutParams.MATCH_PARENT,
+                            )
+                        }.also { view -> fullscreenView = view }
+                    },
+                    update = { view -> if (view.player !== player) view.player = player },
+                    modifier = Modifier.fillMaxSize(),
+                    onRelease = { view ->
+                        view.player = null
+                        if (fullscreenView === view) fullscreenView = null
+                    },
+                )
+
+                // Top-start, away from the Media3 controller bar at the bottom.
+                CornerButton(
+                    label = exitFullscreenLabel,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(16.dp),
+                    onClick = { leaveFullscreen() },
+                ) {
+                    MediaGlyph(MediaGlyphKind.FullscreenExit, tint = Color.White, iconSize = 18.dp)
+                }
+            }
+        }
+    }
+}
+
+/** Small circular action sitting on top of the video, with a scrim for contrast. */
+@Composable
+private fun CornerButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        modifier = modifier
+            .size(CORNER_BUTTON_SIZE)
+            .clip(CircleShape)
+            .background(SCRIM)
+            .clickable(onClick = onClick)
+            .semantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) {
+        content()
     }
 }
 
@@ -219,5 +350,16 @@ private fun CoverPlayBadge(label: String, onClick: () -> Unit) {
     }
 }
 
+/**
+ * `LocalContext` is not always the `Activity` itself (a theme can wrap it), so
+ * the orientation request walks the wrapper chain instead of assuming a cast.
+ */
+private fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
 private val VIDEO_ASPECT = 16f / 9f
 private val SCRIM = Color(0x80000000)
+private val CORNER_BUTTON_SIZE = 36.dp

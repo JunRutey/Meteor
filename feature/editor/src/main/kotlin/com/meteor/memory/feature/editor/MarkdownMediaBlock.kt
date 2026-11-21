@@ -127,8 +127,10 @@ internal fun StoredMediaSurface(
             )
         }
 
-        MediaBlockState.Audio -> if (mediaHost != null) {
-            AudioPlayerCard(ref = ref, modifier = modifier.fillMaxWidth())
+        is MediaBlockState.Audio -> if (mediaHost != null) {
+            // The original file name, so an audio card names the recording even
+            // when the Markdown description is blank (ADR-064).
+            AudioPlayerCard(ref = ref, modifier = modifier.fillMaxWidth(), title = state.title)
         } else {
             MediaFrame(
                 label = stringResource(R.string.editor_media_audio),
