@@ -211,20 +211,6 @@ fun MarkdownField(
         pendingSelection = TextRange(opened.selectionStart, opened.selectionEnd)
     }
 
-    /** Wraps a non-empty selection in one format's markers. */
-    private fun wrapSelection(text: String, selection: TextRange, format: InlineFormat): InlineEdit {
-        val open = MarkdownInlineEditing.openingMarker(format)
-        val close = MarkdownInlineEditing.closingMarker(format)
-        val start = selection.min.coerceIn(0, text.length)
-        val end = selection.max.coerceIn(0, text.length)
-        return InlineEdit(
-            text = text.substring(0, start) + open + text.substring(start, end) + close +
-                text.substring(end),
-            selectionStart = start + open.length,
-            selectionEnd = end + open.length,
-        )
-    }
-
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         EditorToolbar(
             isPreviewing = previewing,
@@ -336,6 +322,20 @@ fun MarkdownField(
             },
         )
     }
+}
+
+/** Wraps a non-empty selection in one format's markers (ADR-051). */
+private fun wrapSelection(text: String, selection: TextRange, format: InlineFormat): InlineEdit {
+    val open = MarkdownInlineEditing.openingMarker(format)
+    val close = MarkdownInlineEditing.closingMarker(format)
+    val start = selection.min.coerceIn(0, text.length)
+    val end = selection.max.coerceIn(0, text.length)
+    return InlineEdit(
+        text = text.substring(0, start) + open + text.substring(start, end) + close +
+            text.substring(end),
+        selectionStart = start + open.length,
+        selectionEnd = end + open.length,
+    )
 }
 
 /** A run of ordinary lines. Borderless: the surrounding box draws the frame. */

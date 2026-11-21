@@ -85,15 +85,15 @@ private class Builder(private val source: String) {
             hide(marker.start, marker.contentStart)
 
             val close = marker.closeWithin(source, marker.contentStart, to)
-            val contentEnd = close?.start ?: to
+            val contentEnd = close?.from ?: to
 
             val styledFrom = out.length
             walk(marker.contentStart, contentEnd)
             spans += Triple(styledFrom, out.length, marker.style)
 
             if (close != null) {
-                hide(close.start, close.end)
-                cursor = close.end
+                hide(close.from, close.to)
+                cursor = close.to
             } else {
                 // Unclosed: the marker styles the rest of the range.
                 cursor = to
@@ -158,6 +158,9 @@ private class Builder(private val source: String) {
         }
     }
 
+    /** A closing tag's extent in the source: `[from, to)`. */
+    private class ClosingTag(val from: Int, val to: Int)
+
     private inner class Marker(
         val start: Int,
         val contentStart: Int,
@@ -172,16 +175,15 @@ private class Builder(private val source: String) {
          * `<span` has been closed first; otherwise the outer span would end at
          * the inner one and the remaining text would lose its colour.
          */
-        fun closeWithin(text: String, from: Int, to: Int): IntRange? {
+        fun closeWithin(text: String, from: Int, to: Int): ClosingTag? {
             if (!closesNested) {
                 val index = text.indexOf(closeTag, from)
                 return if (index >= 0 && index + closeTag.length <= to) {
-                    index until (index + closeTag.length)
+                    ClosingTag(index, index + closeTag.length)
                 } else {
                     null
                 }
             }
-
             var depth = 0
             var cursor = from
             while (cursor < to) {
@@ -196,7 +198,7 @@ private class Builder(private val source: String) {
                     depth++
                     cursor = open!!.range.last + 1
                 } else {
-                    if (depth == 0) return close until (close + SPAN_CLOSE.length)
+                    if (depth == 0) return ClosingTag(close, close + SPAN_CLOSE.length)
                     depth--
                     cursor = close + SPAN_CLOSE.length
                 }
