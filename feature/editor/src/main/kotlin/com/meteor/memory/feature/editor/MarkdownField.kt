@@ -5,6 +5,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,12 +34,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -62,6 +68,7 @@ import com.meteor.memory.core.storage.ImageStore
  * exactly what used to crash and jump the caret. Images escape it because a
  * whole line is lifted out of the text field, not a span of characters.
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun MarkdownField(
     text: String,
@@ -120,6 +127,14 @@ fun MarkdownField(
      * eventually disagree.
      */
     var activeFormat by remember { mutableStateOf<InlineFormat?>(null) }
+
+    // 点编辑区任意空白处都应聚焦正文并唤起键盘：正文字段只有文字那么高，
+    // 不能要求用户正好点在那一小条上。目标是上次的活动块，还没有活动块时
+    // 是最后一个文本块——接着往下写是最常见的意图。
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focusTarget = activeBlock.takeIf { blocks.getOrNull(it) is BodyBlock.Text }
+        ?: blocks.indexOfLast { it is BodyBlock.Text }
+    val focusRequester = remember { FocusRequester() }
 
     // Preview removes the body, so nothing can keep focus. Report the blur
     // explicitly instead of leaving a stale "focused" flag in the host screen.
@@ -238,7 +253,17 @@ fun MarkdownField(
                     .weight(1f)
                     .clip(EDITOR_SHAPE)
                     .background(MaterialTheme.colorScheme.surface)
-                    .border(BorderStroke(2.dp, MaterialTheme.colorScheme.primary), EDITOR_SHAPE),
+                    .border(BorderStroke(2.dp, MaterialTheme.colorScheme.primary), EDITOR_SHAPE)
+                    .pointerInput(focusTarget, enabled) {
+                        detectTapGestures {
+                            if (enabled && focusTarget >= 0) {
+                                // 重新聚焦一个已聚焦的字段不会自己把键盘带回来，
+                                // 所以显式补一句 show()。
+                                runCatching { focusRequester.requestFocus() }
+                                keyboard?.show()
+                            }
+                        }
+                    },
             ) {
                 Column(
                     modifier = Modifier
@@ -253,6 +278,7 @@ fun MarkdownField(
                                 is BodyBlock.Text -> TextBlock(
                                     value = block.raw,
                                     enabled = enabled,
+                                    focusRequester = focusRequester.takeIf { index == focusTarget },
                                     // The hint belongs to the first *text* block,
                                     // which may not be the first block at all.
                                     placeholder = placeholder.takeIf {
@@ -349,12 +375,17 @@ private fun TextBlock(
     onSelectionChanged: (TextRange) -> Unit,
     restoredSelection: TextRange?,
     onSelectionRestored: () -> Unit,
+    /** Attached to the one block an empty-area tap should put the caret into. */
+    focusRequester: FocusRequester? = null,
 ) {
     // The field keeps its own value object so the selection is available to the
     // formatting actions. [value] is always the *source* text — the stored
     // Markdown — and every caret this composable reads or writes is a source
     // offset, which is what the transformation maps between (ADR-051).
-    var field by remember { mutableStateOf(TextFieldValue(value)) }
+    //
+    // The caret starts at the end so a tap on the empty surface — which focuses
+    // without placing a caret — continues writing where the text stops.
+    var field by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
     // The last text this field itself echoed upward. Only a change that did not
     // come from here is an outside edit — an inserted image or link, or a
     // formatting toggle that rewrote the block — and only an outside edit may
@@ -389,6 +420,13 @@ private fun TextBlock(
         },
         modifier = Modifier
             .fillMaxWidth()
+            .then(
+                if (focusRequester != null) {
+                    Modifier.focusRequester(focusRequester)
+                } else {
+                    Modifier
+                },
+            )
             .onFocusChanged { onFocusChanged(it.isFocused) },
         enabled = enabled,
         textStyle = MaterialTheme.typography.bodyLarge.copy(
