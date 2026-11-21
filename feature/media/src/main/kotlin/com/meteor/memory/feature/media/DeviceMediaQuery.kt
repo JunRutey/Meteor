@@ -86,6 +86,7 @@ internal class DeviceMediaQuery(private val contentResolver: ContentResolver) {
                     sizeBytes = sizeBytes,
                     kind = kind,
                     sourceDate = MediaImportLogic.sourceDateFromMediaStore(dateTaken, dateAddedSeconds),
+                    durationMs = cursor.getLongOrNull(COLUMN_DURATION),
                 )
             }
         }
@@ -112,8 +113,8 @@ internal class DeviceMediaQuery(private val contentResolver: ContentResolver) {
         }
     }
 
-    private fun projectionFor(kind: MediaKind): Array<String> = if (kind == MediaKind.IMAGE) {
-        arrayOf(
+    private fun projectionFor(kind: MediaKind): Array<String> = when (kind) {
+        MediaKind.IMAGE -> arrayOf(
             COLUMN_ID,
             COLUMN_DISPLAY_NAME,
             COLUMN_MIME_TYPE,
@@ -121,13 +122,14 @@ internal class DeviceMediaQuery(private val contentResolver: ContentResolver) {
             COLUMN_DATE_TAKEN,
             COLUMN_DATE_ADDED,
         )
-    } else {
-        arrayOf(
+
+        MediaKind.VIDEO, MediaKind.AUDIO -> arrayOf(
             COLUMN_ID,
             COLUMN_DISPLAY_NAME,
             COLUMN_MIME_TYPE,
             COLUMN_SIZE,
             COLUMN_DATE_ADDED,
+            COLUMN_DURATION,
         )
     }
 
@@ -144,6 +146,8 @@ internal class DeviceMediaQuery(private val contentResolver: ContentResolver) {
         const val COLUMN_SIZE = "_size"
         const val COLUMN_DATE_ADDED = "date_added"
         const val COLUMN_DATE_TAKEN = "datetaken"
+        /** Only Video/Audio collections expose `duration`; the image query omits it. */
+        const val COLUMN_DURATION = "duration"
     }
 }
 

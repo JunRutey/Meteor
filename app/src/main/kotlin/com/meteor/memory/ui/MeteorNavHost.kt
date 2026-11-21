@@ -39,12 +39,14 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavType
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.meteor.memory.BuildConfig
 import com.meteor.memory.R
+import com.meteor.memory.core.storage.MediaKind
 import com.meteor.memory.core.storage.RecordType
 import com.meteor.memory.feature.ai.AiPersonChip
 import com.meteor.memory.feature.ai.AiScreen
@@ -64,6 +66,9 @@ import com.meteor.memory.feature.people.PeopleRow
 import com.meteor.memory.feature.people.PersonDetailScreen
 import com.meteor.memory.feature.people.PersonEditScreen
 import com.meteor.memory.feature.people.PersonRecordRow
+import com.meteor.memory.feature.media.MediaPickerScreen
+import com.meteor.memory.feature.media.PickedMedia
+import com.meteor.memory.feature.settings.MediaPickerMode
 import com.meteor.memory.feature.settings.SettingsScreen
 import com.meteor.memory.feature.settings.R as SettingsR
 import com.meteor.memory.ui.about.AboutScreen
@@ -92,6 +97,7 @@ import com.meteor.memory.ui.diary.DiaryPreviewScreen
 import com.meteor.memory.ui.diary.DiaryPreviewViewModel
 import com.meteor.memory.ui.gallery.GalleryViewModel
 import com.meteor.memory.ui.gallery.MediaViewerViewModel
+import com.meteor.memory.ui.media.MediaPickerViewModel
 import com.meteor.memory.ui.home.AlbumHubScreen
 import com.meteor.memory.ui.home.HomeTabsScreen
 import com.meteor.memory.ui.life.BirthDateSettingsScreen
@@ -149,6 +155,11 @@ private const val ROUTE_PERSON_EDIT = "people/{personId}/edit"
 private const val ROUTE_ALBUM = "album?date={date}"
 // 统一媒体查看器；ref 是完整 meteor://media/<id> 或旧 meteor://image/<token>，Uri.encode 传输。
 private const val ROUTE_MEDIA = "media/{ref}"
+// 独立的内置媒体选择器（ADR-059）：不在编辑页上叠加，选完把媒体 id 回传给上一个页面。
+private const val ROUTE_MEDIA_PICKER = "media-picker?person={person}&kinds={kinds}"
+private const val ARG_MEDIA_PICKER_PERSON = "person"
+private const val ARG_MEDIA_PICKER_KINDS = "kinds"
+private const val MEDIA_PICKER_RESULT = "media_picker_result"
 // 旧深链，保留兼容：gallery?date= 与 gallery/{token} 内部重定向到新路由。
 private const val ROUTE_GALLERY = "gallery?date={date}"
 private const val ROUTE_IMAGE = "gallery/{token}"
@@ -245,6 +256,8 @@ fun MeteorNavHost(
     versionName: String,
     animationsEnabled: Boolean = true,
     aiEnabled: Boolean = false,
+    /** Which picker the media insertion flows open (ADR-059). */
+    mediaPickerMode: MediaPickerMode = MediaPickerMode.IN_APP,
     onSystemScreenOpened: () -> Unit = {},
 ) {
     val navController = rememberNavController()
@@ -437,6 +450,9 @@ fun MeteorNavHost(
             val personId = entry.arguments?.getString(PersonDetailViewModel.ARG_PERSON_ID).orEmpty()
             val pickAttachments = rememberAttachmentPicker(viewModel::importAttachments)
             val pickPersonMedia = rememberMediaUriPicker(viewModel::importMedia)
+            // The standalone picker already imported the files; the detail page
+            // only has to reload the media section (ADR-059).
+            HandleMediaPickerResult(navController) { viewModel.load() }
             var pendingExportId by remember { mutableStateOf<String?>(null) }
             var pendingExportName by remember { mutableStateOf("attachment") }
             val exporter = rememberLauncherForActivityResult(
@@ -479,7 +495,15 @@ fun MeteorNavHost(
                 },
                 media = state.media,
                 onOpenMedia = { ref -> navController.navigate("media/${Uri.encode(ref)}") },
-                onAddMedia = { pickPersonMedia() },
+                onAddMedia = {
+                    if (mediaPickerMode == MediaPickerMode.IN_APP) {
+                        navController.navigate(
+                            mediaPickerRoute(personId = personId, kinds = MediaKind.entries.toSet()),
+                        )
+                    } else {
+                        pickPersonMedia()
+                    }
+                },
                 onDeleteMedia = viewModel::deleteMedia,
                 mediaImporting = state.importingMedia,
                 mediaImportSummary = state.mediaImport,
@@ -511,11 +535,15 @@ fun MeteorNavHost(
         composable(
             route = ROUTE_PERSON_EDIT,
             arguments = listOf(navArgument(PersonEditViewModel.ARG_PERSON_ID) { type = NavType.StringType }),
-        ) {
+        ) { entry ->
             val viewModel: PersonEditViewModel = hiltViewModel()
             val state by viewModel.state.collectAsStateWithLifecycle()
+            val personId = entry.arguments
+                ?.getString(PersonEditViewModel.ARG_PERSON_ID)
+                .orEmpty()
             val pickImage = rememberImagePicker(viewModel::insertImage)
             val pickMedia = rememberMediaUriPicker(viewModel::insertMedia)
+            HandleMediaPickerResult(navController) { ids -> viewModel.appendMediaIds(ids) }
 
             PersonEditScreen(
                 displayName = state.displayName,
@@ -543,7 +571,13 @@ fun MeteorNavHost(
                 missingImages = state.missingImages,
                 resolveImage = viewModel::imageFor,
                 onImageCaptionChanged = viewModel::setImageCaption,
-                onPickMedia = { _ -> pickMedia() },
+                onPickMedia = { kinds ->
+                    if (mediaPickerMode == MediaPickerMode.IN_APP) {
+                        navController.navigate(mediaPickerRoute(personId = personId, kinds = kinds))
+                    } else {
+                        pickMedia()
+                    }
+                },
                 insertingMedia = state.insertingMedia,
                 resolveMedia = viewModel::mediaBlockFor,
             )
@@ -708,6 +742,47 @@ fun MeteorNavHost(
                 sharing = state.sharing,
                 error = state.error,
                 hasContent = state.hasContent,
+            )
+        }
+
+        // 独立的内置媒体选择器（ADR-059）：全屏页面，不在编辑页上叠加。
+        composable(
+            route = ROUTE_MEDIA_PICKER,
+            arguments = listOf(
+                navArgument(ARG_MEDIA_PICKER_PERSON) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument(ARG_MEDIA_PICKER_KINDS) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) { entry ->
+            val personId = entry.arguments
+                ?.getString(ARG_MEDIA_PICKER_PERSON)
+                ?.takeIf { it.isNotBlank() }
+            val requestedKinds = entry.arguments
+                ?.getString(ARG_MEDIA_PICKER_KINDS)
+                .orEmpty()
+                .split(',')
+                .mapNotNull { name -> runCatching { MediaKind.valueOf(name.trim()) }.getOrNull() }
+                .toSet()
+                .ifEmpty { MediaKind.entries.toSet() }
+            val pickerViewModel: MediaPickerViewModel = hiltViewModel()
+            MediaPickerScreen(
+                kinds = requestedKinds,
+                onConfirm = { picked ->
+                    pickerViewModel.importPicked(picked, personId) { ids ->
+                        navController.previousBackStackEntry
+                            ?.savedStateHandle
+                            ?.set(MEDIA_PICKER_RESULT, ArrayList(ids))
+                        navController.popBackStack()
+                    }
+                },
+                onBack = { navController.popBackStack() },
             )
         }
 
@@ -890,6 +965,7 @@ fun MeteorNavHost(
                 onDismissAppLockUnavailable = viewModel::dismissAppLockUnavailable,
                 onOpenSecuritySettings = { openSecuritySettings(context) },
                 onScreenshotProtectionChanged = viewModel::setScreenshotProtectionEnabled,
+                onMediaPickerModeChanged = viewModel::setMediaPickerMode,
                 onVerboseLoggingChanged = viewModel::setVerboseLogging,
                 onOpenAbout = { navController.navigate(ROUTE_ABOUT) },
                 onOpenDonate = { navController.navigate(ROUTE_ABOUT_DONATE) },
@@ -1100,6 +1176,8 @@ fun MeteorNavHost(
 
             val context = LocalContext.current
             val pickImage = rememberImagePicker(viewModel::insertImage)
+            val systemMediaPicker = rememberMediaUriPicker(viewModel::importMediaUris)
+            HandleMediaPickerResult(navController) { ids -> viewModel.appendMediaIds(ids) }
 
             DiaryEditScreen(
                 state = state,
@@ -1107,9 +1185,15 @@ fun MeteorNavHost(
                 onInsertLink = viewModel::insertLink,
                 onPickImage = pickImage,
                 onRemoveImage = viewModel::removeImage,
-                // Non-null here enables the toolbar's "插入 → 图片/视频/音频";
-                // the screen renders the in-app picker itself (ADR-052 §5 D).
-                onImportMedia = viewModel::importMedia,
+                // The host owns the picker choice (ADR-059): the in-app picker is
+                // its own destination, the system mode opens the document picker.
+                onRequestMediaPicker = { kinds ->
+                    if (mediaPickerMode == MediaPickerMode.IN_APP) {
+                        navController.navigate(mediaPickerRoute(personId = null, kinds = kinds))
+                    } else {
+                        systemMediaPicker()
+                    }
+                },
                 onSave = viewModel::save,
                 onBack = { navController.popBackStack() },
                 resolveImage = viewModel::imageFor,
@@ -1246,6 +1330,35 @@ private fun rememberAttachmentPicker(onUris: (List<Uri>) -> Unit): () -> Unit {
  * view model through [MediaImporter], so this only has to hand the system picker
  * the right MIME filters.
  */
+/**
+ * Path to the standalone media picker (ADR-059). The result comes back through
+ * the previous entry's `savedStateHandle`, so the editor never has to know how
+ * the picker was drawn.
+ */
+private fun mediaPickerRoute(personId: String?, kinds: Set<MediaKind>): String {
+    val person = personId?.takeIf { it.isNotBlank() }?.let { Uri.encode(it) }.orEmpty()
+    val kindList = kinds.joinToString(",") { it.name }
+    return "media-picker?person=${Uri.encode(person)}&kinds=${Uri.encode(kindList)}"
+}
+
+/**
+ * Delivers the media ids returned by the standalone picker and clears the
+ * result, so a configuration change cannot replay the insertion twice.
+ */
+@Composable
+private fun HandleMediaPickerResult(
+    navController: NavHostController,
+    onIds: (List<String>) -> Unit,
+) {
+    val handle = navController.currentBackStackEntry?.savedStateHandle ?: return
+    val result = handle.get<ArrayList<String>>(MEDIA_PICKER_RESULT)
+    LaunchedEffect(result) {
+        if (result.isNullOrEmpty()) return@LaunchedEffect
+        onIds(result)
+        handle.remove<ArrayList<String>>(MEDIA_PICKER_RESULT)
+    }
+}
+
 @Composable
 private fun rememberMediaUriPicker(onUris: (List<Uri>) -> Unit): () -> Unit {
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->

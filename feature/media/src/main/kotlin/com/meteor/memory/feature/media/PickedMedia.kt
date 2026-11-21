@@ -17,4 +17,6 @@ data class PickedMedia(
     val sizeBytes: Long,
     val kind: MediaKind,
     val sourceDate: Instant?,
+    /** Duration for audio/video, so the picker can list tracks without opening them. */
+    val durationMs: Long? = null,
 )

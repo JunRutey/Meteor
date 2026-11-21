@@ -64,6 +64,7 @@ fun SettingsScreen(
     onAnimationsChanged: (Boolean) -> Unit,
     onAppLockChanged: (Boolean) -> Unit,
     onScreenshotProtectionChanged: (Boolean) -> Unit,
+    onMediaPickerModeChanged: (MediaPickerMode) -> Unit,
     onVerboseLoggingChanged: (Boolean) -> Unit,
     onOpenAbout: () -> Unit,
     onOpenDonate: () -> Unit,
@@ -144,6 +145,32 @@ fun SettingsScreen(
                     subtitle = stringResource(R.string.settings_birth_date_desc),
                     onClick = onOpenBirthDate,
                 )
+            }
+
+            // Which picker the editors open (ADR-059). The in-app picker keeps
+            // source metadata, which the album's "by source date" ordering needs.
+            SettingsSection(title = stringResource(R.string.settings_section_media)) {
+                SettingsRow {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        RowLabel(text = stringResource(R.string.settings_media_picker))
+                        SegmentedChoice(
+                            options = listOf(
+                                MediaPickerMode.IN_APP to
+                                    stringResource(R.string.settings_media_picker_in_app),
+                                MediaPickerMode.SYSTEM to
+                                    stringResource(R.string.settings_media_picker_system),
+                            ),
+                            selected = settings.mediaPickerMode,
+                            onSelect = onMediaPickerModeChanged,
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_media_picker_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
+                }
             }
 
             SettingsSection(title = stringResource(R.string.settings_section_security)) {

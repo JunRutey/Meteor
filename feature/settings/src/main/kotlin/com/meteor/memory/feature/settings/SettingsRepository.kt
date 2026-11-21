@@ -69,6 +69,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             albumSortMode = prefs[KEY_ALBUM_SORT_MODE]
                 ?.takeIf { it == "SOURCE_DATE" || it == "IMPORT_DATE" }
                 ?: AppSettings.DEFAULT_ALBUM_SORT_MODE,
+            mediaPickerMode = prefs[KEY_MEDIA_PICKER_MODE]
+                ?.let { runCatching { MediaPickerMode.valueOf(it) }.getOrNull() }
+                ?: MediaPickerMode.IN_APP,
         )
     }
 
@@ -164,6 +167,10 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             prefs[KEY_ALBUM_SORT_MODE] = mode
         }
     }
+
+    /** Chooses between the in-app picker and the platform document picker (ADR-059). */
+    suspend fun setMediaPickerMode(mode: MediaPickerMode) =
+        store.edit { it[KEY_MEDIA_PICKER_MODE] = mode.name }
 
     /** Adds one custom people tag to the remembered chip list; idempotent. */
     suspend fun addPeopleTag(tag: String) = store.edit { prefs ->
@@ -292,6 +299,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         prefs[KEY_ALBUM_SORT_MODE] = snapshot.albumSortMode
             .takeIf { it == "SOURCE_DATE" || it == "IMPORT_DATE" }
             ?: AppSettings.DEFAULT_ALBUM_SORT_MODE
+        prefs[KEY_MEDIA_PICKER_MODE] = snapshot.mediaPickerMode.name
     }
 
     private companion object {
@@ -329,6 +337,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val KEY_AI_TOTAL_REQUESTS = intPreferencesKey("ai_total_requests")
         val KEY_ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
         val KEY_ALBUM_SORT_MODE = stringPreferencesKey("album_sort_mode")
+    val KEY_MEDIA_PICKER_MODE = stringPreferencesKey("media_picker_mode")
         const val MAX_PEOPLE_TAGS = 32
     }
 }

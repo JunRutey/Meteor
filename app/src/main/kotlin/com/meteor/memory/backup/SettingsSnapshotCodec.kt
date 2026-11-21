@@ -43,6 +43,8 @@ object SettingsSnapshotCodec {
         put(KEY_AI_TOTAL_ELAPSED_MS, settings.aiTotalElapsedMs)
         put(KEY_AI_TOTAL_REQUESTS, settings.aiTotalRequests)
         put(KEY_ONBOARDING_COMPLETED, settings.onboardingCompleted)
+        put(KEY_ALBUM_SORT_MODE, settings.albumSortMode)
+        put(KEY_MEDIA_PICKER_MODE, settings.mediaPickerMode.name)
     }.toString()
 
     fun decode(json: String): AppSettings {
@@ -77,6 +79,11 @@ object SettingsSnapshotCodec {
             aiTotalElapsedMs = root.optLong(KEY_AI_TOTAL_ELAPSED_MS, defaults.aiTotalElapsedMs),
             aiTotalRequests = root.optInt(KEY_AI_TOTAL_REQUESTS, defaults.aiTotalRequests),
             onboardingCompleted = root.optBoolean(KEY_ONBOARDING_COMPLETED, defaults.onboardingCompleted),
+            albumSortMode = root.optString(KEY_ALBUM_SORT_MODE, defaults.albumSortMode),
+            mediaPickerMode = enumOrDefault(
+                root.optString(KEY_MEDIA_PICKER_MODE, defaults.mediaPickerMode.name),
+                defaults.mediaPickerMode,
+            ),
         )
     }
 
@@ -119,4 +126,6 @@ object SettingsSnapshotCodec {
     private const val KEY_AI_TOTAL_ELAPSED_MS = "aiTotalElapsedMs"
     private const val KEY_AI_TOTAL_REQUESTS = "aiTotalRequests"
     private const val KEY_ONBOARDING_COMPLETED = "onboardingCompleted"
+    private const val KEY_ALBUM_SORT_MODE = "albumSortMode"
+    private const val KEY_MEDIA_PICKER_MODE = "mediaPickerMode"
 }

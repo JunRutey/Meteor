@@ -73,6 +73,12 @@ fun DiaryEditScreen(
      * （由 ViewModel 的 `personId = null` 决定）。
      */
     onImportMedia: ((List<PickedMedia>) -> Unit)? = null,
+    /**
+     * Host-owned picker entry (ADR-059). When set, the toolbar opens the host's
+     * picker (standalone in-app route or the platform document picker) instead
+     * of the in-editor overlay.
+     */
+    onRequestMediaPicker: ((Set<MediaKind>) -> Unit)? = null,
     resolveMedia: (String) -> MediaBlockState = { MediaBlockState.Pending },
     onRemoveMedia: (String) -> Unit = {},
     onMediaCaptionChanged: (String, String) -> Unit = { _, _ -> },
@@ -136,7 +142,13 @@ fun DiaryEditScreen(
                 onActivate = onActivate,
                 showPreviewAction = false,
                 onImageCaptionChanged = onImageCaptionChanged,
-                onPickMedia = if (onImportMedia != null) mediaPicker::open else null,
+                onPickMedia = when {
+                    // The host owns the picker choice (ADR-059): it may open the
+                    // standalone route or the platform document picker.
+                    onRequestMediaPicker != null -> onRequestMediaPicker
+                    onImportMedia != null -> mediaPicker::open
+                    else -> null
+                },
                 mediaInserting = state.isInserting,
                 resolveMedia = resolveMedia,
                 onRemoveMedia = onRemoveMedia,
@@ -206,10 +218,10 @@ fun DiaryEditScreen(
             }
         }
 
-        // The picker is a full-screen surface drawn above the editor: it replaces
-        // the page while open, so the editing surface keeps its state (blocks and
-        // caret) and the diary stays one navigation destination.
-        if (onImportMedia != null) {
+        // The in-editor overlay is only used by hosts that still import in place.
+        // When the host installs [onRequestMediaPicker] the picker is a standalone
+        // destination instead, so the editor is never covered (ADR-059).
+        if (onImportMedia != null && onRequestMediaPicker == null) {
             DiaryMediaPicker(state = mediaPicker, onPicked = onImportMedia)
         }
     }

@@ -229,6 +229,45 @@ class DiaryEditViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Appends references that were already imported by the standalone picker
+     * route (ADR-059), keeping the editor free of import responsibilities.
+     */
+    fun appendMediaIds(ids: List<String>) {
+        if (ids.isEmpty()) return
+        var body = _state.value.text
+        ids.forEach { id -> body = MarkdownEditing.appendMedia(body, id) }
+        document = document.copy(body = body)
+        _state.update { it.copy(text = body, saved = false) }
+        refreshMedia(body)
+    }
+
+    /**
+     * Imports URIs from the platform document picker (ADR-059, "system" mode).
+     *
+     * The importer reads the real name/MIME/source date itself, so wrapping the
+     * URIs in a minimal [PickedMedia] is enough to reuse the existing batch path.
+     */
+    fun importMediaUris(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        val picked = uris.map { uri ->
+            val mime = context.contentResolver.getType(uri).orEmpty()
+            PickedMedia(
+                uri = uri,
+                displayName = uri.lastPathSegment ?: "media",
+                mimeType = mime,
+                sizeBytes = 0L,
+                kind = when (mime.substringBefore('/')) {
+                    "image" -> MediaKind.IMAGE
+                    "video" -> MediaKind.VIDEO
+                    else -> MediaKind.AUDIO
+                },
+                sourceDate = null,
+            )
+        }
+        importMedia(picked)
+    }
+
     fun insertImage(bytes: ByteArray) {
         val base = document.copy(body = _state.value.text)
         pendingImageInsertions++

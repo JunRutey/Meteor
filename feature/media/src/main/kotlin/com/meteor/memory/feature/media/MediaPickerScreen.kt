@@ -47,6 +47,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -160,6 +161,15 @@ fun MediaPickerScreen(
             }
 
             else -> {
+                // Audio has no thumbnail worth showing, so it is listed as
+                // name + duration + size instead of a grid tile (ADR-059).
+                val toggle: (PickedMedia) -> Unit = { item ->
+                    selection = if (selection.any { it.uri == item.uri }) {
+                        selection.filterNot { it.uri == item.uri }
+                    } else {
+                        selection + item
+                    }
+                }
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(GRID_COLUMNS),
                     modifier = Modifier.weight(1f).padding(horizontal = 16.dp),
@@ -174,18 +184,33 @@ fun MediaPickerScreen(
                         ) {
                             MonthHeader(month.yearMonth)
                         }
-                        items(month.items, key = { it.uri.toString() }) { item ->
+                        val visual = month.items.filter { it.kind != MediaKind.AUDIO }
+                        val audio = month.items.filter { it.kind == MediaKind.AUDIO }
+                        items(visual, key = { it.uri.toString() }) { item ->
                             PickerTile(
                                 item = item,
                                 selected = selection.any { it.uri == item.uri },
-                                onClick = {
-                                    selection = if (selection.any { it.uri == item.uri }) {
-                                        selection.filterNot { it.uri == item.uri }
-                                    } else {
-                                        selection + item
-                                    }
-                                },
+                                onClick = { toggle(item) },
                             )
+                        }
+                        if (audio.isNotEmpty()) {
+                            item(
+                                key = "audio-${month.yearMonth}",
+                                span = { GridItemSpan(maxLineSpan) },
+                            ) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(AUDIO_ROW_GAP),
+                                ) {
+                                    audio.forEach { track ->
+                                        AudioPickerRow(
+                                            item = track,
+                                            selected = selection.any { it.uri == track.uri },
+                                            onClick = { toggle(track) },
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -321,6 +346,82 @@ private fun PickerTile(item: PickedMedia, selected: Boolean, onClick: () -> Unit
     }
 }
 
+/**
+ * One audio track as a list row: the name is the only way to tell recordings
+ * apart, so the grid (a cover thumbnail) is the wrong shape here (ADR-059).
+ */
+@Composable
+private fun AudioPickerRow(
+    item: PickedMedia,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val context = LocalContext.current
+    val sizeLabel = remember(item.sizeBytes) {
+        android.text.format.Formatter.formatShortFileSize(context, item.sizeBytes)
+    }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                if (selected) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                },
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            MediaGlyph(
+                kind = MediaGlyphKind.Audio,
+                iconSize = 20.dp,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = item.displayName,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                item.durationMs?.takeIf { it > 0L }?.let { duration ->
+                    Text(
+                        text = MediaImportLogic.formatDuration(duration),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    text = sizeLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (selected) {
+            MediaGlyph(
+                kind = MediaGlyphKind.Check,
+                iconSize = 20.dp,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+}
+
 @Composable
 private fun KindGlyph(kind: MediaGlyphKind, modifier: Modifier = Modifier) {
     Box(
@@ -438,5 +539,6 @@ private fun openAppSettings(context: android.content.Context) {
 
 private const val GRID_COLUMNS = 3
 private val TILE_GAP = 6.dp
+private val AUDIO_ROW_GAP = 6.dp
 private val SELECTED_SCRIM = Color(0x66000000)
 private val KIND_SCRIM = Color(0x99000000)

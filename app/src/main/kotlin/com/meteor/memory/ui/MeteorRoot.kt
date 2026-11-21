@@ -150,6 +150,7 @@ fun MeteorRoot(versionName: String, onContentReady: () -> Unit = {}) {
                                 versionName = versionName,
                                 animationsEnabled = settings.animationsEnabled,
                                 aiEnabled = settings.aiEnabled,
+                                mediaPickerMode = settings.mediaPickerMode,
                                 onSystemScreenOpened = viewModel::beginSystemTransition,
                             )
                         }

@@ -9,6 +9,7 @@ import com.meteor.memory.feature.ai.AiModule
 import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.DarkMode
 import com.meteor.memory.feature.settings.FontScale
+import com.meteor.memory.feature.settings.MediaPickerMode
 import com.meteor.memory.feature.settings.SettingsRepository
 import com.meteor.memory.system.NotificationFeature
 import com.meteor.memory.ui.ai.AiSettingsReader
@@ -146,6 +147,14 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             repository.setScreenshotProtectionEnabled(enabled)
             appLog.info(TAG, "screenshot protection=$enabled")
+        }
+    }
+
+    /** Chooses the media picker for the editors (ADR-059). */
+    fun setMediaPickerMode(mode: MediaPickerMode) {
+        viewModelScope.launch {
+            repository.setMediaPickerMode(mode)
+            appLog.info(TAG, "media picker mode=${mode.name}")
         }
     }
 

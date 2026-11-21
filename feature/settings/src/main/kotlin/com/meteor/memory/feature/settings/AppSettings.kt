@@ -85,6 +85,15 @@ data class AppSettings(
      * `IMPORT_DATE` so an upgrade keeps the exact ordering it always had.
      */
     val albumSortMode: String = DEFAULT_ALBUM_SORT_MODE,
+    /**
+     * Which file picker the diary/person editors open (ADR-059).
+     *
+     * [MediaPickerMode.IN_APP] is the default because the in-app picker keeps
+     * source metadata (EXIF capture time, MediaStore durations), which the
+     * album's "by source date" ordering depends on. [MediaPickerMode.SYSTEM]
+     * hands the choice to the platform document picker.
+     */
+    val mediaPickerMode: MediaPickerMode = MediaPickerMode.IN_APP,
 ) {
     companion object {
         const val DEFAULT_BACKUP_RETENTION = 7
@@ -98,6 +107,9 @@ data class AppSettings(
 enum class DarkMode { FOLLOW_SYSTEM, DARK, LIGHT }
 
 enum class FontScale { SYSTEM, SMALL, NORMAL, LARGE }
+
+/** File picker used by the media insertion flows (ADR-059). */
+enum class MediaPickerMode { IN_APP, SYSTEM }
 
 /**
  * Feature switches resolved at composition time. `aiEnabled` gates the AI entry

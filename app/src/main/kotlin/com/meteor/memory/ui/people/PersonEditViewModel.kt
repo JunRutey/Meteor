@@ -273,6 +273,19 @@ class PersonEditViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Appends references that were already imported by the standalone picker
+     * route (ADR-059). The person edit screen owns the body, so only the
+     * Markdown append happens here.
+     */
+    fun appendMediaIds(ids: List<String>) {
+        if (ids.isEmpty()) return
+        var body = _state.value.notes
+        ids.forEach { id -> body = MarkdownEditing.appendMedia(body, id) }
+        _state.update { it.copy(notes = body, saved = false) }
+        refreshMediaBlocks(body)
+    }
+
     fun insertLink(target: String, label: String?) {
         if (target.isBlank()) return
         val updated = editorModule.insertLink(document(), target, label)
