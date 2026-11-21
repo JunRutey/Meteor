@@ -106,6 +106,19 @@
     <string name="diary_day_label">%1$d 月 %2$d 日 · %3$s</string>
     <string name="diary_back">返回</string>
 
+    <!-- T10：返回确认与删除当天日记。返回确认文案与 feature/people 的 people_unsaved_* 保持一致。 -->
+    <string name="editor_unsaved_title">确认返回吗？</string>
+    <string name="editor_unsaved_body">返回后，未保存的内容将丢失。</string>
+    <string name="editor_unsaved_confirm">确认返回</string>
+    <string name="editor_unsaved_save">保存并返回</string>
+    <string name="diary_delete">删除日记</string>
+    <string name="diary_deleting">删除中…</string>
+    <string name="diary_delete_confirm_title">删除当天的日记？</string>
+    <string name="diary_delete_confirm_body">删除后不可恢复。这条日记里的图片、视频、音频不会被删除。</string>
+    <string name="diary_delete_confirm_action">删除</string>
+    <string name="diary_delete_cancel">取消</string>
+    <string name="diary_delete_failed">删除日记失败，请重试。</string>
+
     <string name="lock_title">已锁定</string>
     <string name="lock_subtitle">Meteor 已开启应用锁，请验证身份后继续。</string>
     <string name="lock_unlock">解锁</string>

@@ -568,8 +568,18 @@ fun MeteorNavHost(
                 onInsertLink = viewModel::insertLink,
                 onPickImage = pickImage,
                 onRemoveImage = viewModel::removeImage,
-                onSave = viewModel::save,
+                onSave = { viewModel.save() },
                 onBack = { navController.popBackStack() },
+                // T10: the page asks before dropping unsaved edits; 保存并返回
+                // pops only after the write succeeded, and only while this page
+                // is still the current destination (a discard during the write
+                // must not pop one screen too many).
+                hasUnsavedChanges = state.hasUnsavedChanges,
+                onSaveAndReturn = { onSaved ->
+                    viewModel.save {
+                        if (navController.currentBackStackEntry?.id == entry.id) onSaved()
+                    }
+                },
                 missingImages = state.missingImages,
                 resolveImage = viewModel::imageFor,
                 onImageCaptionChanged = viewModel::setImageCaption,
@@ -1173,7 +1183,7 @@ fun MeteorNavHost(
         composable(
             route = "$ROUTE_DIARY_EDIT/{${DiaryEditViewModel.ARG_DATE}}",
             arguments = listOf(navArgument(DiaryEditViewModel.ARG_DATE) { type = NavType.StringType }),
-        ) {
+        ) { entry ->
             val viewModel: DiaryEditViewModel = hiltViewModel()
             val state by viewModel.state.collectAsStateWithLifecycle()
 
@@ -1199,8 +1209,23 @@ fun MeteorNavHost(
                         systemMediaPicker()
                     }
                 },
-                onSave = viewModel::save,
+                onSave = { viewModel.save() },
                 onBack = { navController.popBackStack() },
+                // T10: 删除日记 confirms first, then deletes the archive record,
+                // drops its search-index entry and pops the editor. The pop is
+                // skipped when the user already left this page while it ran, so
+                // a late callback cannot pop one screen too many.
+                onDeleteDiary = { onDeleted ->
+                    viewModel.deleteDiary {
+                        if (navController.currentBackStackEntry?.id == entry.id) onDeleted()
+                    }
+                },
+                // T10: 保存并返回 only pops once the save really landed.
+                onSaveAndReturn = { onSaved ->
+                    viewModel.save {
+                        if (navController.currentBackStackEntry?.id == entry.id) onSaved()
+                    }
+                },
                 resolveImage = viewModel::imageFor,
                 onImageCaptionChanged = viewModel::setImageCaption,
                 resolveMedia = viewModel::mediaState,

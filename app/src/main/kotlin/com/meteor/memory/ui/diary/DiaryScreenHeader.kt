@@ -26,6 +26,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meteor.memory.R
@@ -68,6 +69,10 @@ internal fun DiaryScreenHeader(
             Text(
                 text = dateLabel,
                 modifier = Modifier.weight(1f),
+                // The edit header can carry two actions (删除 + 预览); let the
+                // date ellipsize instead of wrapping inside the 56dp row.
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,

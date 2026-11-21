@@ -59,6 +59,12 @@
     <string name="people_adding_media">正在处理媒体…</string>
     <string name="people_saved">已保存并加密</string>
 
+    <!-- T10：返回确认。文案与 app 的 editor_unsaved_* 保持一致。 -->
+    <string name="people_unsaved_title">确认返回吗？</string>
+    <string name="people_unsaved_body">返回后，未保存的内容将丢失。</string>
+    <string name="people_unsaved_confirm">确认返回</string>
+    <string name="people_unsaved_save">保存并返回</string>
+
     <string name="people_relation_family">家人</string>
     <string name="people_relation_friend">朋友</string>
     <string name="people_relation_former">绝交的朋友</string>

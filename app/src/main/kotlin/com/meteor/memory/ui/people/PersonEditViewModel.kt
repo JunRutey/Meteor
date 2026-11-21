@@ -41,6 +41,21 @@ import java.time.LocalDate
 import java.util.UUID
 import javax.inject.Inject
 
+/**
+ * Snapshot of the editable profile fields as they were last loaded from — or
+ * written to — the archive.
+ *
+ * Equality with the live fields is exactly what 「有未保存修改」 means (T10), so
+ * the return confirmation never fires for a page the user only looked at.
+ */
+data class PersonEditBaseline(
+    val displayName: String = "",
+    val relation: Relation? = null,
+    val note: String = "",
+    val notes: String = "",
+    val tags: List<String> = emptyList(),
+)
+
 data class PersonEditState(
     val displayName: String = "",
     val relation: Relation? = null,
@@ -71,9 +86,25 @@ data class PersonEditState(
     val pendingMedia: Set<String> = emptySet(),
     val saved: Boolean = false,
     val error: String? = null,
+    /** Values from the archive, advanced after every successful save. */
+    val baseline: PersonEditBaseline = PersonEditBaseline(),
 ) {
     /** True while any picked media is still being encrypted in the background. */
     val insertingMedia: Boolean get() = pendingMedia.isNotEmpty()
+
+    /**
+     * True when 称呼 / 关系 / 标签 / 备注 / 正文 differs from the loaded profile.
+     *
+     * 备注 and 正文 are body text, so inserting images or media flips this too.
+     */
+    val hasUnsavedChanges: Boolean
+        get() = baseline != PersonEditBaseline(
+            displayName = displayName,
+            relation = relation,
+            note = note,
+            notes = notes,
+            tags = tags,
+        )
 }
 
 /**
@@ -100,6 +131,9 @@ class PersonEditViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(PersonEditState())
     val state: StateFlow<PersonEditState> = _state.asStateFlow()
+
+    /** True when the form differs from the loaded profile (T10). */
+    val hasUnsavedChanges: Boolean get() = _state.value.hasUnsavedChanges
 
     /** Images removed from the notes; their files go away only after a save. */
     private val pendingDeletes = mutableSetOf<String>()
@@ -130,14 +164,22 @@ class PersonEditViewModel @Inject constructor(
                 // people's tags stay out so a deleted chip cannot bounce back.
                 PeopleTagLibrary.available(stored, profile?.tags.orEmpty())
             }
+            val baseline = PersonEditBaseline(
+                displayName = profile?.displayName ?: personId.take(SHORT_ID),
+                relation = profile?.relation,
+                note = profile?.note.orEmpty(),
+                notes = profile?.notes.orEmpty(),
+                tags = profile?.tags.orEmpty(),
+            )
             _state.update {
                 it.copy(
-                    displayName = profile?.displayName ?: personId.take(SHORT_ID),
-                    relation = profile?.relation,
-                    note = profile?.note.orEmpty(),
-                    notes = profile?.notes.orEmpty(),
-                    tags = profile?.tags.orEmpty(),
+                    displayName = baseline.displayName,
+                    relation = baseline.relation,
+                    note = baseline.note,
+                    notes = baseline.notes,
+                    tags = baseline.tags,
                     customTags = customTags,
+                    baseline = baseline,
                 )
             }
             refreshImages(_state.value.notes)
@@ -357,7 +399,16 @@ class PersonEditViewModel @Inject constructor(
         appLog.debug(TAG, "image detached, will delete on save: $token")
     }
 
-    fun save() {
+    fun save() = save(onSaved = {})
+
+    /**
+     * Saves the profile, then invokes [onSaved] **only when the write succeeded** (T10).
+     *
+     * 「保存并返回」 needs this: popping after a failed write would throw the edit
+     * away, so the callback is the success signal. On failure the page stays up
+     * and [PersonEditState.error] explains why.
+     */
+    fun save(onSaved: () -> Unit) {
         val current = _state.value
         if (current.saving || current.insertingImage || current.insertingMedia) return
         val name = current.displayName.trim()
@@ -391,8 +442,24 @@ class PersonEditViewModel @Inject constructor(
                     saving = false,
                     saved = result.isSuccess,
                     error = result.exceptionOrNull()?.message,
+                    // The saved snapshot becomes the new baseline, so pressing
+                    // back right after a save no longer asks about written edits.
+                    // Using the snapshot (not the live fields) keeps anything
+                    // typed while the write ran correctly marked unsaved.
+                    baseline = if (result.isSuccess) {
+                        PersonEditBaseline(
+                            displayName = current.displayName,
+                            relation = current.relation,
+                            note = current.note,
+                            notes = current.notes,
+                            tags = current.tags,
+                        )
+                    } else {
+                        it.baseline
+                    },
                 )
             }
+            if (result.isSuccess) onSaved()
         }
     }
 

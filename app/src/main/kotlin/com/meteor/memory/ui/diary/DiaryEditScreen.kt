@@ -1,5 +1,6 @@
 package com.meteor.memory.ui.diary
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -14,9 +15,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -52,6 +55,10 @@ import com.meteor.memory.feature.editor.R as EditorR
  * 打开应用内选择器 [MediaPickerScreen]，选完交给 [onImportMedia]。导入（含归属
  * 决定 `_self`）在 ViewModel 里，所以导航宿主只需要接一个回调，不必知道选择器
  * 的存在。传 null 时退化为旧的单张图片入口（[onPickImage]）。
+ *
+ * 返回确认与删除（T10）：有未保存正文时，系统返回键和页头返回箭头都先弹同一个
+ * 对话框（确认返回 / 保存并返回）；已存到档案的日记可在页头删除，删除前二次确认。
+ * 这两处文案与人物编辑页保持一致。
  */
 @Composable
 fun DiaryEditScreen(
@@ -62,6 +69,16 @@ fun DiaryEditScreen(
     onRemoveImage: (String) -> Unit,
     onSave: () -> Unit,
     onBack: () -> Unit,
+    /**
+     * Deletes this day's diary; [onDeleted] is the host's cue to pop the page,
+     * and it only runs once the archive file is gone.
+     */
+    onDeleteDiary: (onDeleted: () -> Unit) -> Unit,
+    /**
+     * Saves and then hands the success signal back: the host pops only when the
+     * write really landed, so a failed save keeps the page and its error.
+     */
+    onSaveAndReturn: (onSaved: () -> Unit) -> Unit,
     modifier: Modifier = Modifier,
     resolveImage: (String) -> ImageBitmap? = { null },
     onActivate: (String) -> Unit = {},
@@ -86,13 +103,26 @@ fun DiaryEditScreen(
     // Purely a view concern: the record never stores whether it was last shown
     // as preview.
     var previewing by rememberSaveable { mutableStateOf(false) }
+    var confirmingExit by rememberSaveable { mutableStateOf(false) }
+    var confirmingDelete by rememberSaveable { mutableStateOf(false) }
     val mediaPicker = rememberDiaryMediaPicker()
+
+    // System back must not silently drop unsaved text: it goes through exactly
+    // the same dialog as the header arrow (T10). Not dirty -> let the system pop
+    // as usual, which is why the handler is only installed when there is work
+    // worth protecting.
+    BackHandler(enabled = state.hasUnsavedChanges) { confirmingExit = true }
+
+    /** Header back: ask first, then pop. */
+    val requestBack: () -> Unit = {
+        if (state.hasUnsavedChanges) confirmingExit = true else onBack()
+    }
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             DiaryScreenHeader(
                 dateLabel = diaryDayLabel(state.date),
-                onBack = onBack,
+                onBack = requestBack,
                 supportingContent = {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -117,9 +147,18 @@ fun DiaryEditScreen(
                     }
                 },
                 actions = {
+                    // Only a stored diary can be deleted; a brand-new day has no
+                    // record yet, so the entry stays hidden instead of offering
+                    // to delete something that does not exist.
+                    if (state.exists) {
+                        DeleteDiaryChip(
+                            enabled = !state.isSaving && !state.deleting && !state.isInserting,
+                            onClick = { confirmingDelete = true },
+                        )
+                    }
                     PreviewChip(
                         previewing = previewing,
-                        enabled = !state.isSaving,
+                        enabled = !state.isSaving && !state.deleting,
                         onToggle = { previewing = !previewing },
                     )
                 },
@@ -202,7 +241,7 @@ fun DiaryEditScreen(
 
             Button(
                 onClick = onSave,
-                enabled = !state.isSaving && !state.isInserting,
+                enabled = !state.isSaving && !state.isInserting && !state.deleting,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 20.dp)
@@ -226,6 +265,36 @@ fun DiaryEditScreen(
         // destination instead, so the editor is never covered (ADR-059).
         if (onImportMedia != null && onRequestMediaPicker == null) {
             DiaryMediaPicker(state = mediaPicker, onPicked = onImportMedia)
+        }
+
+        if (confirmingExit) {
+            UnsavedChangesDialog(
+                saving = state.isSaving,
+                canSave = !state.isSaving && !state.isInserting && !state.deleting,
+                onDismiss = { confirmingExit = false },
+                onDiscard = {
+                    confirmingExit = false
+                    onBack()
+                },
+                onSaveAndReturn = {
+                    confirmingExit = false
+                    // The host pops only after the write really landed; a failure
+                    // leaves this page up with state.error explaining why.
+                    onSaveAndReturn { onBack() }
+                },
+            )
+        }
+
+        if (confirmingDelete) {
+            DeleteDiaryDialog(
+                deleting = state.deleting,
+                onDismiss = { confirmingDelete = false },
+                onConfirm = {
+                    confirmingDelete = false
+                    // Deleting pops the page itself once the file is gone.
+                    onDeleteDiary { onBack() }
+                },
+            )
         }
     }
 }
@@ -268,6 +337,106 @@ private fun PreviewChip(
             color = MaterialTheme.colorScheme.secondary,
         )
     }
+}
+
+/**
+ * 「删除日记」胶囊：与 [PreviewChip] 同一形状，但用错误色表示不可恢复。
+ *
+ * The label is the destructive action itself; the confirmation dialog carries the
+ * consequences, so the header stays compact next to 预览.
+ */
+@Composable
+private fun DeleteDiaryChip(
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .height(36.dp)
+            .background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(18.dp))
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 12.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = stringResource(R.string.diary_delete),
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.error,
+        )
+    }
+}
+
+/**
+ * 返回确认（T10）：有未保存内容时统一拦截。
+ *
+ * 「保存并返回」是主操作：它只在保存成功后由宿主 pop；保存失败时对话框已经关掉，
+ * 页面留在原地并由错误通道提示。[onDismiss] 表示留在本页继续编辑。
+ */
+@Composable
+private fun UnsavedChangesDialog(
+    saving: Boolean,
+    canSave: Boolean,
+    onDismiss: () -> Unit,
+    onDiscard: () -> Unit,
+    onSaveAndReturn: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.editor_unsaved_title)) },
+        text = { Text(stringResource(R.string.editor_unsaved_body)) },
+        confirmButton = {
+            TextButton(
+                onClick = onSaveAndReturn,
+                enabled = canSave && !saving,
+            ) {
+                Text(stringResource(R.string.editor_unsaved_save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDiscard) {
+                Text(
+                    text = stringResource(R.string.editor_unsaved_confirm),
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        },
+    )
+}
+
+/**
+ * 删除当天日记的二次确认。
+ *
+ * The body spells out both consequences: the record is gone for good, and the
+ * pictures / videos / audio it referenced are **not** deleted, so the warning
+ * cannot make the user think the media goes away too.
+ */
+@Composable
+private fun DeleteDiaryDialog(
+    deleting: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.diary_delete_confirm_title)) },
+        text = { Text(stringResource(R.string.diary_delete_confirm_body)) },
+        confirmButton = {
+            TextButton(onClick = onConfirm, enabled = !deleting) {
+                Text(
+                    text = stringResource(
+                        if (deleting) R.string.diary_deleting else R.string.diary_delete_confirm_action,
+                    ),
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !deleting) {
+                Text(stringResource(R.string.diary_delete_cancel))
+            }
+        },
+    )
 }
 
 @Composable

@@ -8,6 +8,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meteor.memory.R
 import com.meteor.memory.core.log.AppLog
+import com.meteor.memory.core.storage.ArchiveDeleteResult
+import com.meteor.memory.core.storage.ArchiveRecordDeleter
 import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.storage.Document
 import com.meteor.memory.core.storage.ImageStore
@@ -15,6 +17,7 @@ import com.meteor.memory.core.storage.MediaKind
 import com.meteor.memory.core.storage.MediaStore
 import com.meteor.memory.core.storage.RecordSource
 import com.meteor.memory.core.storage.RecordType
+import com.meteor.memory.core.storage.StorageLayout
 import com.meteor.memory.core.storage.StorageRouter
 import com.meteor.memory.core.time.TimeModule
 import com.meteor.memory.feature.editor.EditorModule
@@ -36,6 +39,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.io.File
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -84,17 +88,43 @@ data class DiaryEditorState(
     val pendingMedia: Set<String> = emptySet(),
     val saved: Boolean = false,
     val error: String? = null,
+    /**
+     * True when a diary for [date] is already stored in the archive.
+     *
+     * Stays false for a brand-new day until the first successful save, which is
+     * what hides 「删除日记」 (there is nothing to delete yet).
+     */
+    val exists: Boolean = false,
+    /** True while the stored diary is being removed from the archive. */
+    val deleting: Boolean = false,
+    /**
+     * Body last loaded from — or written to — the archive.
+     *
+     * Kept apart from `document.body` on purpose: inserting media during this
+     * edit session also rewrites the shell document, so only the baseline tells
+     * unsaved edits apart from saved ones (T10 return confirmation).
+     */
+    val savedBody: String = "",
     /** 记录所属日期，用于页头「11 月 7 日 · 周六」标题。 */
     val date: LocalDate = LocalDate.now(),
 ) {
     /** True while any insert — the legacy image path or a background media import — is running. */
     val isInserting: Boolean get() = isInsertingImage || pendingMedia.isNotEmpty()
+
+    /**
+     * True when the editor holds content that is not in the archive yet.
+     *
+     * Pictures and media are referenced from the body text, so an insertion that
+     * changed nothing else still shows up here as a body difference.
+     */
+    val hasUnsavedChanges: Boolean get() = text != savedBody
 }
 
 @HiltViewModel
 class DiaryEditViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val diaryQueries: DiaryQueries,
+    private val archiveRecordDeleter: ArchiveRecordDeleter,
     private val timeModule: TimeModule,
     private val appLog: AppLog,
     private val searchService: SearchService,
@@ -109,6 +139,9 @@ class DiaryEditViewModel @Inject constructor(
 
     private val _state = MutableStateFlow(DiaryEditorState(text = "", date = date))
     val state: StateFlow<DiaryEditorState> = _state.asStateFlow()
+
+    /** True when the editor holds edits that are not in the archive yet (T10). */
+    val hasUnsavedChanges: Boolean get() = _state.value.hasUnsavedChanges
 
     /** The record being edited; created lazily for a brand-new day. */
     private var document: Document = newDocument()
@@ -138,6 +171,8 @@ class DiaryEditViewModel @Inject constructor(
             _state.update {
                 it.copy(
                     text = document.body,
+                    savedBody = document.body,
+                    exists = loaded != null,
                     recordedAtLabel = loaded?.let { doc -> formatSavedAt(DiaryDates.writtenAt(doc)) },
                 )
             }
@@ -360,7 +395,16 @@ class DiaryEditViewModel @Inject constructor(
         appLog.debug(TAG, "image detached, will delete on save: $token")
     }
 
-    fun save() {
+    fun save() = save(onSaved = {})
+
+    /**
+     * Saves the diary, then invokes [onSaved] **only when the write succeeded** (T10).
+     *
+     * 「保存并返回」 needs this: popping on a failed save would silently throw the
+     * edit away, so the callback is the success signal. On failure the page stays
+     * put and [DiaryEditorState.error] carries the message.
+     */
+    fun save(onSaved: () -> Unit) {
         val snapshot = _state.value
         if (snapshot.isSaving || snapshot.isInserting) return
         _state.update { it.copy(isSaving = true, error = null) }
@@ -392,10 +436,91 @@ class DiaryEditViewModel @Inject constructor(
                     isSaving = false,
                     saved = result.isSuccess,
                     error = result.exceptionOrNull()?.message,
+                    exists = it.exists || result.isSuccess,
+                    // The baseline advances only on a real write. Text typed while
+                    // this save was running stays "unsaved" and still triggers the
+                    // return confirmation.
+                    savedBody = if (result.isSuccess) {
+                        stored?.body ?: snapshot.text
+                    } else {
+                        it.savedBody
+                    },
                     recordedAtLabel = stored?.let { doc -> formatSavedAt(DiaryDates.writtenAt(doc)) }
                         ?: it.recordedAtLabel,
                 )
             }
+            if (result.isSuccess) onSaved()
+        }
+    }
+
+    /**
+     * Deletes this day's diary after the user confirmed the dialog (T10).
+     *
+     * Only the record file is removed; images, videos and audio that the body
+     * references stay in the archive so they remain reachable from the album.
+     * The search index entry is dropped as well — a failure there is logged but
+     * never turns a successful deletion into an error, because the next launch
+     * rebuild would fix it anyway.
+     *
+     * [onDeleted] runs only after the file is gone (or was already gone), which
+     * lets the host `popBackStack()` without leaving a stale page behind.
+     */
+    fun deleteDiary(onDeleted: () -> Unit) {
+        val snapshot = _state.value
+        if (snapshot.deleting) return
+        if (!snapshot.exists) {
+            // Nothing was ever written for this day; treat the intent as done
+            // instead of showing an error for a record that does not exist.
+            appLog.debug(TAG, "delete skipped, no stored diary for $date")
+            onDeleted()
+            return
+        }
+        _state.update { it.copy(deleting = true, error = null) }
+
+        viewModelScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching { archiveRecordDeleter.deleteDiary(date) }
+            }
+            when (val deleted = result.getOrNull()) {
+                ArchiveDeleteResult.DELETED, ArchiveDeleteResult.NOT_FOUND -> {
+                    removeFromIndex()
+                    appLog.info(TAG, "diary deleted: $date result=$deleted")
+                    _state.update { it.copy(deleting = false, exists = false, saved = false) }
+                    onDeleted()
+                }
+
+                else -> {
+                    appLog.error(TAG, "diary delete failed: $date result=$deleted", result.exceptionOrNull())
+                    _state.update {
+                        it.copy(
+                            deleting = false,
+                            error = context.getString(R.string.diary_delete_failed),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Drops the deleted diary from the search index.
+     *
+     * The address has to match what `MeteorIndex.upsert` stored: the record file
+     * relative to the archive root, with `/` separators. When the path cannot be
+     * derived the step is skipped with a log — a stale index entry is repaired by
+     * the next launch rebuild, while a delete must not fail over it.
+     */
+    private suspend fun removeFromIndex() {
+        val sourcePath = runCatching {
+            archiveRelativePath(File(context.filesDir, StorageLayout.ROOT_NAME), document.file)
+        }.onFailure { appLog.warn(TAG, "diary source path unavailable: $date", it) }.getOrNull()
+        if (sourcePath == null) {
+            appLog.warn(TAG, "diary index removal skipped: $date")
+            return
+        }
+        withContext(Dispatchers.IO) {
+            runCatching { searchService.removeRecord(sourcePath) }
+                .onFailure { appLog.warn(TAG, "diary index removal failed: $date", it) }
         }
     }
 
@@ -479,3 +604,17 @@ class DiaryEditViewModel @Inject constructor(
         private const val TAG = "DiaryEdit"
     }
 }
+
+/**
+ * Archive-relative path of [file], matching the `source_path` the search index
+ * stores (`MeteorIndex.upsert`): path under [archiveRoot] with `/` separators.
+ *
+ * Falls back to the bare file name when [file] is not under [archiveRoot], which
+ * is the same fallback the index uses, so a removal can never address a row that
+ * the insert would not have created.
+ */
+internal fun archiveRelativePath(archiveRoot: File, file: File): String =
+    runCatching { file.relativeTo(archiveRoot) }
+        .getOrNull()
+        ?.invariantSeparatorsPath
+        ?: file.name

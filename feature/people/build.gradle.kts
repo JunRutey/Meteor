@@ -41,6 +41,8 @@ dependencies {
     debugImplementation(libs.compose.ui.tooling)
 
     implementation(libs.androidx.core.ktx)
+    // BackHandler for the editor's unsaved-changes confirmation (T10).
+    implementation(libs.androidx.activity.compose)
 
     testImplementation(libs.junit)
 }

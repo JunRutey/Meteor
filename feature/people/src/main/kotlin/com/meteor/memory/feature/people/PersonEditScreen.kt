@@ -1,5 +1,6 @@
 package com.meteor.memory.feature.people
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -20,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
@@ -27,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,6 +71,10 @@ import com.meteor.memory.feature.editor.MediaBlockState
  *
  * 备注 and 正文 are separate fields because they answer different questions —
  * "怎么称呼、记着点什么" versus "关于这个人的正文".
+ *
+ * 返回确认（T10）：有未保存修改时，系统返回键和页头返回箭头都先弹同一个对话框
+ * （确认返回 / 保存并返回）。文案与日记编辑页一致；「保存并返回」只在保存成功后
+ * 由宿主 pop，失败时留在本页并显示错误。
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -94,6 +101,13 @@ fun PersonEditScreen(
     onRemoveImage: (String) -> Unit,
     onSave: () -> Unit,
     onBack: () -> Unit,
+    /** True when the live fields differ from the profile stored in the archive. */
+    hasUnsavedChanges: Boolean,
+    /**
+     * Saves and hands the success signal back: the host pops only when the write
+     * really landed, so a failed save keeps this page and its error visible.
+     */
+    onSaveAndReturn: (onSaved: () -> Unit) -> Unit,
     modifier: Modifier = Modifier,
     missingImages: Set<String> = emptySet(),
     resolveImage: (String) -> ImageBitmap? = { null },
@@ -121,6 +135,14 @@ fun PersonEditScreen(
     onMediaCaptionChanged: (String, String) -> Unit = { _, _ -> },
 ) {
     var previewing by rememberSaveable { mutableStateOf(false) }
+    var confirmingExit by rememberSaveable { mutableStateOf(false) }
+    // System back goes through the same confirmation as the header arrow, so a
+    // stray Back gesture cannot silently discard the edit (T10). With nothing
+    // unsaved the handler is not installed and the system pops normally.
+    BackHandler(enabled = hasUnsavedChanges) { confirmingExit = true }
+    val requestBack: () -> Unit = {
+        if (hasUnsavedChanges) confirmingExit = true else onBack()
+    }
     // Only body focus collapses the identity card: opening the keyboard for the
     // name or note field must keep the whole card usable. IME visibility is
     // combined so dismissing the keyboard also restores the card even if the
@@ -151,7 +173,7 @@ fun PersonEditScreen(
                 insertingMedia = insertingMedia,
                 canSave = displayName.isNotBlank(),
                 onSave = onSave,
-                onBack = onBack,
+                onBack = requestBack,
             )
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -258,6 +280,61 @@ fun PersonEditScreen(
             }
         }
     }
+
+    if (confirmingExit) {
+        UnsavedChangesDialog(
+            saving = saving,
+            canSave = !saving && !insertingImage && !insertingMedia && displayName.isNotBlank(),
+            onDismiss = { confirmingExit = false },
+            onDiscard = {
+                confirmingExit = false
+                onBack()
+            },
+            onSaveAndReturn = {
+                confirmingExit = false
+                // The host pops only after the write really landed; a failure
+                // keeps this page up with the error shown in the identity card.
+                onSaveAndReturn { onBack() }
+            },
+        )
+    }
+}
+
+/**
+ * 返回确认（T10）：与日记编辑页同一套文案与按钮顺序。
+ *
+ * 「保存并返回」是主操作，只在保存成功后才由宿主 pop；[onDismiss] 表示留在本页
+ * 继续编辑（点对话框外部或系统返回键）。
+ */
+@Composable
+private fun UnsavedChangesDialog(
+    saving: Boolean,
+    canSave: Boolean,
+    onDismiss: () -> Unit,
+    onDiscard: () -> Unit,
+    onSaveAndReturn: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.people_unsaved_title)) },
+        text = { Text(stringResource(R.string.people_unsaved_body)) },
+        confirmButton = {
+            TextButton(
+                onClick = onSaveAndReturn,
+                enabled = canSave && !saving,
+            ) {
+                Text(stringResource(R.string.people_unsaved_save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDiscard) {
+                Text(
+                    text = stringResource(R.string.people_unsaved_confirm),
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        },
+    )
 }
 
 @Composable
