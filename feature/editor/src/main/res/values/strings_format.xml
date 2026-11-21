@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copy for the inline-formatting actions (bold / colour), added by ADR-048.
+  Kept in its own file so the existing strings.xml stays untouched.
+-->
+<resources>
+    <string name="editor_fmt_bold">加粗</string>
+    <string name="editor_fmt_color">颜色</string>
+
+    <string name="editor_fmt_color_red">红色</string>
+    <string name="editor_fmt_color_orange">橙色</string>
+    <string name="editor_fmt_color_green">绿色</string>
+    <string name="editor_fmt_color_blue">蓝色</string>
+    <string name="editor_fmt_color_purple">紫色</string>
+
+    <!-- Fallback for a swatch added to COLORS without a name of its own.
+         %1$s is the hex colour, e.g. #E53935. -->
+    <string name="editor_fmt_color_swatch">颜色 %1$s</string>
+</resources>
