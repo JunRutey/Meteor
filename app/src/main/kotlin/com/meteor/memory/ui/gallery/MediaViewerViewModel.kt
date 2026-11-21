@@ -198,7 +198,7 @@ class MediaViewerViewModel @Inject constructor(
         return Loaded(kind, entry.fileName, bitmap, hasContent = bitmap != null, dateLabel = dateLabel)
     }
 
-    private fun buildShareRequest(): ShareRequest? {
+    private suspend fun buildShareRequest(): ShareRequest? {
         val entry = albumRepository.entry(ref) ?: return null
         val mimeType = entry.mimeType?.takeIf { it.isNotBlank() }
             ?: MediaShareFile.mimeTypeForKind(entry.kind)

@@ -45,7 +45,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.meteor.memory.BuildConfig
 import com.meteor.memory.R
-import com.meteor.memory.core.storage.MediaKind
 import com.meteor.memory.core.storage.RecordType
 import com.meteor.memory.feature.ai.AiPersonChip
 import com.meteor.memory.feature.ai.AiScreen
@@ -65,8 +64,6 @@ import com.meteor.memory.feature.people.PeopleRow
 import com.meteor.memory.feature.people.PersonDetailScreen
 import com.meteor.memory.feature.people.PersonEditScreen
 import com.meteor.memory.feature.people.PersonRecordRow
-import com.meteor.memory.feature.media.MediaPickerScreen
-import com.meteor.memory.feature.media.PickedMedia
 import com.meteor.memory.feature.settings.SettingsScreen
 import com.meteor.memory.feature.settings.R as SettingsR
 import com.meteor.memory.ui.about.AboutScreen
@@ -439,7 +436,7 @@ fun MeteorNavHost(
             val state by viewModel.state.collectAsStateWithLifecycle()
             val personId = entry.arguments?.getString(PersonDetailViewModel.ARG_PERSON_ID).orEmpty()
             val pickAttachments = rememberAttachmentPicker(viewModel::importAttachments)
-            val personMediaPicker = rememberPersonMediaPicker(viewModel::importMedia)
+            val pickPersonMedia = rememberMediaUriPicker(viewModel::importMedia)
             var pendingExportId by remember { mutableStateOf<String?>(null) }
             var pendingExportName by remember { mutableStateOf("attachment") }
             val exporter = rememberLauncherForActivityResult(
@@ -455,10 +452,6 @@ fun MeteorNavHost(
             LaunchedEffect(state.deleted) {
                 if (state.deleted) navController.popBackStack()
             }
-
-            // The picker renders over the detail screen while a request is pending,
-            // so a dismissed picker never leaves an orphaned back-stack entry.
-            personMediaPicker.Content()
 
             PersonDetailScreen(
                 displayName = state.displayName,
@@ -486,7 +479,7 @@ fun MeteorNavHost(
                 },
                 media = state.media,
                 onOpenMedia = { ref -> navController.navigate("media/${Uri.encode(ref)}") },
-                onAddMedia = { personMediaPicker.open(setOf(MediaKind.IMAGE, MediaKind.VIDEO, MediaKind.AUDIO)) },
+                onAddMedia = { pickPersonMedia() },
                 onDeleteMedia = viewModel::deleteMedia,
                 mediaImporting = state.importingMedia,
                 mediaImportSummary = state.mediaImport,
@@ -1260,44 +1253,6 @@ private fun rememberMediaUriPicker(onUris: (List<Uri>) -> Unit): () -> Unit {
     }
     return { launcher.launch(arrayOf("image/*", "video/*", "audio/*")) }
 }
-
-/**
- * Person-scoped half of ADR-052 §5 E: the detail screen asks for the in-app
- * picker, and the view model owns the import so the `person_id` ownership and
- * the source metadata both stay on the same path as the diary editor.
- */
-private class PersonMediaPickerState(
-    private val onPicked: (List<PickedMedia>) -> Unit,
-) {
-    var kinds: Set<MediaKind>? by mutableStateOf(null)
-        private set
-
-    fun open(requested: Set<MediaKind>) {
-        if (requested.isEmpty()) return
-        kinds = requested
-    }
-
-    fun close() {
-        kinds = null
-    }
-
-    @Composable
-    fun Content() {
-        val requested = kinds ?: return
-        MediaPickerScreen(
-            kinds = requested,
-            onConfirm = { picked ->
-                close()
-                onPicked(picked)
-            },
-            onBack = ::close,
-        )
-    }
-}
-
-@Composable
-private fun rememberPersonMediaPicker(onPicked: (List<PickedMedia>) -> Unit): PersonMediaPickerState =
-    remember { PersonMediaPickerState(onPicked) }
 
 @Composable
 private fun rememberAiFilePicker(onUris: (List<Uri>) -> Unit): () -> Unit {
