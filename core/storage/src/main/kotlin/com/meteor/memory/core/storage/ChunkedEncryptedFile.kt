@@ -103,6 +103,137 @@ internal object ChunkedEncryptedFile {
         }
     }
 
+    /**
+     * Opens a decrypted stream starting at [offsetBytes] inside the plaintext.
+     *
+     * Streaming playback (ADR-058) reads the payload front to back and seeks by
+     * reopening at a byte offset, so a large video never has to be decrypted
+     * into a full plaintext copy first. The chunk index is not stored on disk;
+     * a seek scans the length prefixes (a few bytes per chunk) without
+     * decrypting them, which keeps seeking into a large file cheap.
+     */
+    fun openDecrypted(
+        source: File,
+        magic: Int,
+        crypto: FileCrypto,
+        offsetBytes: Long,
+    ): InputStream {
+        require(offsetBytes >= 0) { "negative plaintext offset" }
+        val input = DataInputStream(source.inputStream().buffered())
+        try {
+            check(input.readInt() == magic) { "invalid encrypted chunk header" }
+            check(input.readInt() == FORMAT_VERSION) { "unsupported encrypted chunk format" }
+
+            var chunkIndex = 0
+            var remaining = offsetBytes
+            while (remaining >= CHUNK_SIZE) {
+                val encryptedSize = input.readInt()
+                check(encryptedSize != END_OF_DATA) { "offset beyond the encrypted payload" }
+                check(encryptedSize in MIN_ENCRYPTED_CHUNK_SIZE..MAX_ENCRYPTED_CHUNK_SIZE) {
+                    "invalid encrypted chunk size"
+                }
+                skipFully(input, encryptedSize.toLong())
+                remaining -= CHUNK_SIZE
+                chunkIndex++
+            }
+
+            // The first chunk handed out starts [remaining] bytes into it.
+            val first = readChunk(input, crypto, chunkIndex)
+                ?: return EmptyInputStream().also { input.close() }
+            val start = remaining.toInt()
+            // An offset exactly at the end of the last chunk is a valid empty read.
+            if (start >= first.size) return EmptyInputStream().also { input.close() }
+            return DecryptingInputStream(
+                input = input,
+                crypto = crypto,
+                buffer = if (start == 0) first else first.copyOfRange(start, first.size),
+                chunkIndex = chunkIndex + 1,
+            )
+        } catch (failure: Exception) {
+            runCatching { input.close() }
+            throw failure
+        }
+    }
+
+    private fun readChunk(input: DataInputStream, crypto: FileCrypto, expectedIndex: Int): ByteArray? {
+        val encryptedSize = input.readInt()
+        if (encryptedSize == END_OF_DATA) return null
+        check(encryptedSize in MIN_ENCRYPTED_CHUNK_SIZE..MAX_ENCRYPTED_CHUNK_SIZE) {
+            "invalid encrypted chunk size"
+        }
+        val encrypted = ByteArray(encryptedSize)
+        input.readFully(encrypted)
+        val chunk = crypto.decrypt(encrypted)
+        val chunkInput = DataInputStream(ByteArrayInputStream(chunk))
+        check(chunkInput.readInt() == expectedIndex) { "encrypted chunk order is invalid" }
+        val content = chunk.copyOfRange(Int.SIZE_BYTES, chunk.size)
+        check(content.isNotEmpty() && content.size <= CHUNK_SIZE) { "invalid encrypted chunk" }
+        return content
+    }
+
+    private fun skipFully(input: InputStream, count: Long) {
+        var remaining = count
+        while (remaining > 0) {
+            val skipped = input.skip(remaining)
+            if (skipped > 0) {
+                remaining -= skipped
+            } else {
+                check(input.read() >= 0) { "unexpected end of encrypted payload" }
+                remaining -= 1
+            }
+        }
+    }
+
+    private class EmptyInputStream : InputStream() {
+        override fun read(): Int = -1
+        override fun read(b: ByteArray, off: Int, len: Int): Int = -1
+    }
+
+    /**
+     * Decrypts chunks on demand; [buffer] already holds the first decrypted
+     * chunk, trimmed to the requested offset.
+     */
+    private class DecryptingInputStream(
+        private val input: DataInputStream,
+        private val crypto: FileCrypto,
+        private var buffer: ByteArray,
+        private var chunkIndex: Int,
+    ) : InputStream() {
+
+        private var position = 0
+        private var closed = false
+
+        override fun read(): Int {
+            if (!ensureBuffer()) return -1
+            return buffer[position++].toInt() and 0xFF
+        }
+
+        override fun read(b: ByteArray, off: Int, len: Int): Int {
+            if (len == 0) return 0
+            if (!ensureBuffer()) return -1
+            val count = minOf(len, buffer.size - position)
+            System.arraycopy(buffer, position, b, off, count)
+            position += count
+            return count
+        }
+
+        private fun ensureBuffer(): Boolean {
+            while (position >= buffer.size) {
+                val next = readChunk(input, crypto, chunkIndex) ?: return false
+                buffer = next
+                position = 0
+                chunkIndex++
+            }
+            return true
+        }
+
+        override fun close() {
+            if (closed) return
+            closed = true
+            input.close()
+        }
+    }
+
     private fun readChunk(input: InputStream, buffer: ByteArray): Int {
         var count = 0
         while (count < buffer.size) {

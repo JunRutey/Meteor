@@ -69,6 +69,16 @@ interface MediaStore {
     /** Streams authenticated plaintext to [output] and returns its byte count. */
     fun copyDecrypted(id: String, output: OutputStream): Long
 
+    /**
+     * Opens a decrypted stream starting at [offsetBytes] (a plaintext offset),
+     * so playback can begin without materialising the whole file first (ADR-058).
+     *
+     * Added under R2 as an additive, defaulted method: an implementation that
+     * cannot stream keeps compiling, and callers fall back to [copyDecrypted].
+     */
+    fun openDecrypted(id: String, offsetBytes: Long = 0L): InputStream =
+        throw UnsupportedOperationException("streaming decryption is not supported")
+
     /** Decrypted PNG thumbnail, or null when the entry has none. */
     fun loadThumbnail(id: String): ByteArray?
 
@@ -251,6 +261,16 @@ class EncryptedMediaStore(
         val dataFile = File(metadataFile.parentFile, "$id$DATA_SUFFIX")
         check(dataFile.isFile) { "encrypted media is missing" }
         return copyChunks(dataFile, metadata, output)
+    }
+
+    override fun openDecrypted(id: String, offsetBytes: Long): InputStream {
+        requireMediaId(id)
+        val metadataFile = findMetadata(id) ?: error("media not found")
+        val metadata = decodeMetadata(metadataFile)
+        require(offsetBytes in 0..metadata.media.sizeBytes) { "offset outside media" }
+        val dataFile = File(metadataFile.parentFile, "$id$DATA_SUFFIX")
+        check(dataFile.isFile) { "encrypted media is missing" }
+        return ChunkedEncryptedFile.openDecrypted(dataFile, DATA_MAGIC, crypto, offsetBytes)
     }
 
     override fun loadThumbnail(id: String): ByteArray? {

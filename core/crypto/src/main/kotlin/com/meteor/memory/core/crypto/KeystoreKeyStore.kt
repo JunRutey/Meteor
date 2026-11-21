@@ -3,6 +3,7 @@ package com.meteor.memory.core.crypto
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import java.security.KeyStore
+import java.util.concurrent.ConcurrentHashMap
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 
@@ -16,13 +17,32 @@ import javax.crypto.SecretKey
  */
 class KeystoreKeyStore {
 
+    /**
+     * Cached key handles (ADR-058).
+     *
+     * Opening the Android Keystore is a Binder round-trip to the keystore
+     * daemon, not a local lookup. Chunked media encryption asks for the key once
+     * per 1 MiB block, so a 600 MB video used to pay 600 Keystore round-trips
+     * before the first byte was even encrypted. A `SecretKey` handle is
+     * reusable across `Cipher` instances, so it is cached here and only dropped
+     * when the key is deleted.
+     */
+    private val cachedKeys = ConcurrentHashMap<String, SecretKey>()
+
     fun secretKey(alias: String = DEFAULT_ALIAS): SecretKey {
-        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
-        (keyStore.getEntry(alias, null) as? KeyStore.SecretKeyEntry)?.let { return it.secretKey }
-        return generate(alias)
+        cachedKeys[alias]?.let { return it }
+        synchronized(this) {
+            cachedKeys[alias]?.let { return it }
+            val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+            val key = (keyStore.getEntry(alias, null) as? KeyStore.SecretKeyEntry)?.secretKey
+                ?: generate(alias)
+            cachedKeys[alias] = key
+            return key
+        }
     }
 
     fun deleteKey(alias: String = DEFAULT_ALIAS) {
+        cachedKeys.remove(alias)
         val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
         if (keyStore.containsAlias(alias)) keyStore.deleteEntry(alias)
     }

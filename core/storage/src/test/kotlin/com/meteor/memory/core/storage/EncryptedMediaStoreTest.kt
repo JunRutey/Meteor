@@ -317,6 +317,48 @@ class EncryptedMediaStoreTest {
         assertEquals(2, store().list("person_123").size)
     }
 
+    @Test
+    fun `openDecrypted streams from an offset across chunk boundaries`() {
+        val store = store()
+        // 2.5 MiB spans three chunks, so offsets inside a chunk and across a
+        // chunk boundary are both covered.
+        val payload = ByteArray(2 * 1024 * 1024 + 512 * 1024) { (it % 251).toByte() }
+        val saved = store.save(ByteArrayInputStream(payload), meta())
+
+        assertArrayEquals(payload, store.openDecrypted(saved.id).use { it.readBytes() })
+        assertArrayEquals(
+            payload.copyOfRange(100, payload.size),
+            store.openDecrypted(saved.id, 100L).use { it.readBytes() },
+        )
+        assertArrayEquals(
+            payload.copyOfRange(1024 * 1024 - 10, payload.size),
+            store.openDecrypted(saved.id, (1024 * 1024 - 10).toLong()).use { it.readBytes() },
+        )
+        assertArrayEquals(
+            payload.copyOfRange(2 * 1024 * 1024 + 7, payload.size),
+            store.openDecrypted(saved.id, (2 * 1024 * 1024 + 7).toLong()).use { it.readBytes() },
+        )
+    }
+
+    @Test
+    fun `openDecrypted at the end yields no bytes`() {
+        val store = store()
+        val payload = ByteArray(4096) { 1 }
+        val saved = store.save(ByteArrayInputStream(payload), meta())
+
+        assertEquals(0, store.openDecrypted(saved.id, payload.size.toLong()).use { it.readBytes() }.size)
+    }
+
+    @Test
+    fun `openDecrypted rejects an offset past the payload`() {
+        val store = store()
+        val saved = store.save(ByteArrayInputStream(ByteArray(1024) { 2 }), meta())
+
+        assertThrows(IllegalArgumentException::class.java) {
+            store.openDecrypted(saved.id, 2048L)
+        }
+    }
+
     /** Plain `contains` does not exist for [ByteArray], so the search is explicit. */
     private fun ByteArray.containsSlice(slice: ByteArray): Boolean {
         if (slice.isEmpty()) return true

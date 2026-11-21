@@ -38,19 +38,21 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.ui.PlayerView
+import com.meteor.memory.core.storage.MediaRef
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.File
 
 /**
  * Inline video player for one stored reference (ADR-052 §4).
  *
- * Collapsed it is the cover thumbnail with a play disc; tapping it decrypts the
- * file into `cacheDir` (streamed through `copyDecrypted`, never read whole into
- * memory) and plays it inline with the Media3 controller. Playback stops and the
- * decoder is released when the lifecycle drops below STARTED, and the temporary
- * plaintext file is deleted as soon as playback ends.
+ * Collapsed it is the cover thumbnail with a play disc; tapping it streams the
+ * encrypted file through [MediaStreamDataSource] and plays it inline with the
+ * Media3 controller. Only the opening chunks are decrypted for the first frame:
+ * a large video is never fully decrypted into a temporary plaintext copy
+ * (ADR-058). Playback stops and the decoder is released when the lifecycle
+ * drops below STARTED.
  */
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
@@ -66,39 +68,46 @@ fun VideoPlayerCard(
     var preparing by remember(ref) { mutableStateOf(false) }
     var failed by remember(ref) { mutableStateOf(false) }
     var player by remember(ref) { mutableStateOf<ExoPlayer?>(null) }
-    var tempFile by remember(ref) { mutableStateOf<File?>(null) }
 
-    // The plaintext copy is only produced once the user actually wants to watch.
+    // The encrypted payload is streamed, not materialised: the first frame needs
+    // only the opening chunks, and seeking reopens at the requested offset.
     LaunchedEffect(ref, playing, host) {
         if (!playing || host == null || player != null) return@LaunchedEffect
         preparing = true
         failed = false
-        val materialized = withContext(Dispatchers.IO) {
-            MediaPlaybackFiles.materialize(host, ref, host.playbackDir)
+        val parsed = MediaRef.parse(ref) as? MediaRef.Media
+        val media = parsed?.let { target ->
+            withContext(Dispatchers.IO) {
+                runCatching { host.mediaStore.find(target.id) }.getOrNull()
+            }
         }
-        if (materialized == null) {
+        if (parsed == null || media == null) {
             failed = true
             preparing = false
             playing = false
             return@LaunchedEffect
         }
-        tempFile = materialized
+        val source = ProgressiveMediaSource.Factory(MediaStreamDataSource.Factory(host.mediaStore))
+            .createMediaSource(
+                MediaItem.Builder()
+                    .setUri(MediaStreamDataSource.uriFor(parsed.id))
+                    .setMimeType(media.mimeType)
+                    .build(),
+            )
         player = ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(materialized.toURI().toString()))
+            setMediaSource(source)
             prepare()
             playWhenReady = true
         }
         preparing = false
     }
 
-    // Stopping playback tears everything down immediately instead of waiting for
-    // the composable to leave the tree.
+    // Stopping playback tears the decoder down immediately instead of waiting
+    // for the composable to leave the tree.
     LaunchedEffect(playing) {
         if (playing) return@LaunchedEffect
         player?.release()
         player = null
-        MediaPlaybackFiles.release(tempFile)
-        tempFile = null
         preparing = false
     }
 
@@ -115,8 +124,6 @@ fun VideoPlayerCard(
         onDispose {
             player?.release()
             player = null
-            MediaPlaybackFiles.release(tempFile)
-            tempFile = null
         }
     }
 

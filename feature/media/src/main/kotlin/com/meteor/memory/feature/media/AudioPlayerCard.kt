@@ -40,18 +40,19 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import com.meteor.memory.core.storage.MediaRef
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import java.io.File
 
 /**
  * Mini audio player for one stored reference (ADR-052 §4).
  *
- * Play/pause, a progress bar and the duration, reusing the same streamed
- * decrypt-to-cache path as [VideoPlayerCard]. A short poll keeps the progress
- * bar and label fresh; it stops the moment playback stops.
+ * Play/pause, a progress bar and the duration, streaming the encrypted file
+ * through [MediaStreamDataSource] just like [VideoPlayerCard] (ADR-058) instead
+ * of materialising a plaintext copy. A short poll keeps the progress bar and
+ * label fresh; it stops the moment playback stops.
  */
 @androidx.annotation.OptIn(UnstableApi::class)
 @Composable
@@ -68,7 +69,6 @@ fun AudioPlayerCard(
     var preparing by remember(ref) { mutableStateOf(false) }
     var failed by remember(ref) { mutableStateOf(false) }
     var player by remember(ref) { mutableStateOf<ExoPlayer?>(null) }
-    var tempFile by remember(ref) { mutableStateOf<File?>(null) }
     var durationMs by remember(ref) { mutableLongStateOf(0L) }
     var positionMs by remember(ref) { mutableLongStateOf(0L) }
 
@@ -104,16 +104,25 @@ fun AudioPlayerCard(
         }
         preparing = true
         failed = false
-        val materialized = withContext(Dispatchers.IO) {
-            MediaPlaybackFiles.materialize(host, ref, host.playbackDir)
+        val parsed = MediaRef.parse(ref) as? MediaRef.Media
+        val media = parsed?.let { target ->
+            withContext(Dispatchers.IO) {
+                runCatching { host.mediaStore.find(target.id) }.getOrNull()
+            }
         }
-        if (materialized == null) {
+        if (parsed == null || media == null) {
             failed = true
             preparing = false
             playing = false
             return@LaunchedEffect
         }
-        tempFile = materialized
+        val source = ProgressiveMediaSource.Factory(MediaStreamDataSource.Factory(host.mediaStore))
+            .createMediaSource(
+                MediaItem.Builder()
+                    .setUri(MediaStreamDataSource.uriFor(parsed.id))
+                    .setMimeType(media.mimeType)
+                    .build(),
+            )
         val built = ExoPlayer.Builder(context).build()
         built.addListener(object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -125,7 +134,7 @@ fun AudioPlayerCard(
                 }
             }
         })
-        built.setMediaItem(MediaItem.fromUri(materialized.toURI().toString()))
+        built.setMediaSource(source)
         built.prepare()
         built.playWhenReady = true
         player = built
@@ -145,16 +154,14 @@ fun AudioPlayerCard(
         }
     }
 
-    // Leaving the screen (lifecycle stop) frees the decoder and deletes the
-    // plaintext copy; pausing keeps both alive for an instant resume.
+    // Leaving the screen (lifecycle stop) frees the decoder; pausing keeps it
+    // alive for an instant resume. No plaintext copy exists to clean up.
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_STOP) {
                 playing = false
                 player?.release()
                 player = null
-                MediaPlaybackFiles.release(tempFile)
-                tempFile = null
                 positionMs = 0L
             }
         }
@@ -166,8 +173,6 @@ fun AudioPlayerCard(
         onDispose {
             player?.release()
             player = null
-            MediaPlaybackFiles.release(tempFile)
-            tempFile = null
         }
     }
 
