@@ -356,32 +356,22 @@ private fun TextBlock(
     // offset, which is what the transformation maps between (ADR-051).
     var field by remember { mutableStateOf(TextFieldValue(value)) }
     // The last text this field itself echoed upward. Only a change that did not
-    // come from here is an outside edit (an inserted image or link), and only an
-    // outside edit may reset the caret.
+    // come from here is an outside edit — an inserted image or link, or a
+    // formatting toggle that rewrote the block — and only an outside edit may
+    // touch the caret.
     var echo by remember { mutableStateOf(value) }
 
-    LaunchedEffect(value) {
-        // A formatting action brings its own selection; letting the resync also
-        // run would overwrite it with "caret at the end".
-        if (restoredSelection != null) {
-            echo = value
-            return@LaunchedEffect
-        }
-        if (value != echo) {
-            field = TextFieldValue(value, selection = TextRange(value.length))
-            echo = value
-        }
-    }
-
-    // A formatting action rewrote this block: put the caret back where it asked.
-    LaunchedEffect(restoredSelection, value) {
-        val target = restoredSelection ?: return@LaunchedEffect
-        val clamped = TextRange(
-            target.start.coerceIn(0, field.text.length),
-            target.end.coerceIn(0, field.text.length),
-        )
-        field = field.copy(selection = clamped)
-        onSelectionRestored()
+    // An outside edit must replace what the field *shows*, not only what the
+    // block stores: a rewrite the field never displays is the bug that made
+    // bold and colour look like no-ops (the markers landed in the stored text
+    // only, and the next keystroke rebuilt the block from this stale text and
+    // threw them away). A formatting action also names the caret it wants, so
+    // the resync may not jump to the end — see resyncedField.
+    LaunchedEffect(value, restoredSelection) {
+        if (value == echo && restoredSelection == null) return@LaunchedEffect
+        field = resyncedField(value, restoredSelection)
+        echo = value
+        if (restoredSelection != null) onSelectionRestored()
     }
 
     // Report the caret so a toolbar action applied from outside knows what to
