@@ -1,19 +1,23 @@
 package com.meteor.memory.feature.editor
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -23,6 +27,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -30,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
@@ -37,14 +44,21 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.meteor.memory.core.storage.ImageStore
 
 /**
- * The whole Markdown editing surface: toolbar, plain text field, preview, and the
- * strip of images the body currently references.
+ * The whole Markdown editing surface: toolbar, the body, and the preview.
  *
- * The field is **plain text** (ADR-021): no markup is hidden, so what you see is
- * exactly what is stored. Shared by the diary editor and the person editor so
- * both get the same insert/remove/preview behaviour from one place.
+ * **An image reference is shown as the picture, not as its Markdown** (ADR-047).
+ * The body is split into blocks by [MarkdownBlocks]: text runs become text
+ * fields, and a line that held only `![描述](meteor://image/<token>)` becomes an
+ * image card with an editable description. The file on disk still holds the
+ * plain reference, so exports, the search index and the AI tools are unchanged.
+ *
+ * Nothing is hidden inside a text field. That was the ADR-021 rule and it still
+ * holds: hiding characters needs an offset mapping, and the offset mapping was
+ * exactly what used to crash and jump the caret. Images escape it because a
+ * whole line is lifted out of the text field, not a span of characters.
  */
 @Composable
 fun MarkdownField(
@@ -63,31 +77,47 @@ fun MarkdownField(
     resolveImage: (String) -> ImageBitmap? = { null },
     onActivate: (String) -> Unit = {},
     /**
-     * Reports whether the plain-text field currently holds focus.
+     * Reports whether a text block currently holds focus.
      *
      * The person editor uses it to shrink its identity card while the keyboard
      * is open (ADR-046). Default is a no-op so the diary editor is unaffected.
-     * Preview replaces the field, so losing the field always reports `false`.
+     * Preview replaces the body, so losing the field always reports `false`.
      */
     onFocusChanged: (Boolean) -> Unit = {},
     /** 日记页把「预览」放进页头胶囊时传 false，工具栏只留插入类动作。 */
     showPreviewAction: Boolean = true,
+    /** Writes the description (alt text) of one image reference. */
+    onImageCaptionChanged: (String, String) -> Unit = { _, _ -> },
 ) {
     var showLinkDialog by remember { mutableStateOf(false) }
     var pendingRemoval by remember { mutableStateOf<String?>(null) }
+    var describing by remember { mutableStateOf<BodyBlock.Image?>(null) }
 
-    // The field keeps its own copy of the text: routing every keystroke through
-    // the view model makes Chinese IME composition stutter. It resyncs only when
-    // the text changes from outside (inserted image or link).
-    var draft by remember { mutableStateOf(text) }
+    // The blocks are the editing state. They are only re-parsed when the body
+    // changed from *outside* (an inserted image or link, or a freshly loaded
+    // record); typing updates one block in place so no field loses focus.
+    var blocks by remember { mutableStateOf(MarkdownBlocks.parse(text)) }
     LaunchedEffect(text) {
-        if (text != draft) draft = text
+        if (MarkdownBlocks.serialize(blocks) != text) blocks = MarkdownBlocks.parse(text)
     }
 
-    // Preview removes the text field, so nothing can keep focus. Report the blur
+    val focusedBlocks = remember { mutableStateListOf<Int>() }
+
+    // Preview removes the body, so nothing can keep focus. Report the blur
     // explicitly instead of leaving a stale "focused" flag in the host screen.
     LaunchedEffect(previewing) {
-        if (previewing) onFocusChanged(false)
+        if (previewing) {
+            focusedBlocks.clear()
+            onFocusChanged(false)
+        }
+    }
+
+    fun setBlockText(index: Int, value: String) {
+        if (blocks.getOrNull(index) !is BodyBlock.Text) return
+        val next = blocks.toMutableList()
+        next[index] = BodyBlock.Text(value)
+        blocks = next
+        onTextChanged(MarkdownBlocks.serialize(next))
     }
 
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -99,51 +129,66 @@ fun MarkdownField(
             showPreviewAction = showPreviewAction,
         )
 
-        val images = remember(text) { MarkdownEditing.imagesOf(text) }
-        if (!previewing && images.isNotEmpty()) {
-            ImageStrip(
-                images = images,
-                resolveImage = resolveImage,
-                missing = missingImages,
-                onRemove = { token -> pendingRemoval = token },
-            )
-        }
-
         if (previewing) {
             Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
                 MarkdownPreview(
-                    body = draft,
+                    body = text,
                     resolveImage = resolveImage,
                     onActivate = onActivate,
                 )
             }
         } else {
-            OutlinedTextField(
-                value = draft,
-                onValueChange = { value ->
-                    draft = value
-                    onTextChanged(value)
-                },
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .onFocusChanged { onFocusChanged(it.isFocused) },
-                enabled = enabled,
-                textStyle = MaterialTheme.typography.bodyLarge.copy(
-                    fontSize = 17.sp,
-                    lineHeight = 26.sp,
-                ),
-                placeholder = placeholder,
-                shape = RoundedCornerShape(20.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surface,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surface,
-                    disabledContainerColor = MaterialTheme.colorScheme.surface,
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.primary,
-                    cursorColor = MaterialTheme.colorScheme.primary,
-                ),
-            )
+                    .clip(EDITOR_SHAPE)
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(BorderStroke(2.dp, MaterialTheme.colorScheme.primary), EDITOR_SHAPE),
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    blocks.forEachIndexed { index, block ->
+                        key(index) {
+                            when (block) {
+                                is BodyBlock.Text -> TextBlock(
+                                    value = block.raw,
+                                    enabled = enabled,
+                                    // The hint belongs to the first *text* block,
+                                    // which may not be the first block at all.
+                                    placeholder = placeholder.takeIf {
+                                        index == blocks.indexOfFirst { it is BodyBlock.Text }
+                                    },
+                                    onValueChange = { setBlockText(index, it) },
+                                    onFocusChanged = { focused ->
+                                        if (focused) {
+                                            if (index !in focusedBlocks) focusedBlocks.add(index)
+                                        } else {
+                                            focusedBlocks.remove(index)
+                                        }
+                                        onFocusChanged(focusedBlocks.isNotEmpty())
+                                    },
+                                )
+
+                                is BodyBlock.Image -> ImageBlock(
+                                    block = block,
+                                    bitmap = resolveImage(block.token),
+                                    isMissing = block.token in missingImages,
+                                    enabled = enabled,
+                                    onOpen = { onActivate(ImageStore.IMAGE_SCHEME + block.token) },
+                                    onDescribe = { describing = block },
+                                    onRemove = { pendingRemoval = block.token },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -166,44 +211,119 @@ fun MarkdownField(
             },
         )
     }
+
+    describing?.let { image ->
+        CaptionDialog(
+            initial = image.caption,
+            onDismiss = { describing = null },
+            onConfirm = { caption ->
+                describing = null
+                onImageCaptionChanged(image.token, caption)
+            },
+        )
+    }
+}
+
+/** A run of ordinary lines. Borderless: the surrounding box draws the frame. */
+@Composable
+private fun TextBlock(
+    value: String,
+    enabled: Boolean,
+    placeholder: (@Composable () -> Unit)?,
+    onValueChange: (String) -> Unit,
+    onFocusChanged: (Boolean) -> Unit,
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = Modifier
+            .fillMaxWidth()
+            .onFocusChanged { onFocusChanged(it.isFocused) },
+        enabled = enabled,
+        textStyle = MaterialTheme.typography.bodyLarge.copy(
+            fontSize = 17.sp,
+            lineHeight = 26.sp,
+        ),
+        placeholder = placeholder,
+        shape = RoundedCornerShape(0.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedContainerColor = Color.Transparent,
+            unfocusedContainerColor = Color.Transparent,
+            disabledContainerColor = Color.Transparent,
+            focusedBorderColor = Color.Transparent,
+            unfocusedBorderColor = Color.Transparent,
+            disabledBorderColor = Color.Transparent,
+            cursorColor = MaterialTheme.colorScheme.primary,
+        ),
+    )
 }
 
 /**
- * Thumbnails of every image in the body, each with its own delete button.
+ * The picture itself, plus its description.
  *
- * Three states, all honest: a real thumbnail, a "cannot decode" glyph for a
- * token whose file exists but yields no bitmap, and an empty frame while the
- * decode is still running.
+ * Three states, all honest: a real picture, a "cannot decode" frame for a token
+ * whose file is gone, and an empty frame while the decode is still running.
  */
 @Composable
-private fun ImageStrip(
-    images: List<AttachedImage>,
-    resolveImage: (String) -> ImageBitmap?,
-    missing: Set<String>,
-    onRemove: (String) -> Unit,
+private fun ImageBlock(
+    block: BodyBlock.Image,
+    bitmap: ImageBitmap?,
+    isMissing: Boolean,
+    enabled: Boolean,
+    onOpen: () -> Unit,
+    onDescribe: () -> Unit,
+    onRemove: () -> Unit,
 ) {
     val removeLabel = stringResource(R.string.editor_remove_image)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        images.forEach { image ->
-            Box(modifier = Modifier.padding(top = 4.dp, end = 4.dp)) {
-                ImageThumbnail(
-                    image = image,
-                    bitmap = resolveImage(image.token),
-                    isMissing = image.token in missing,
+    val shape = RoundedCornerShape(14.dp)
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Box(modifier = Modifier.fillMaxWidth()) {
+            when {
+                bitmap != null -> Image(
+                    bitmap = bitmap,
+                    contentDescription = block.caption.takeIf { it.isNotBlank() }
+                        ?: stringResource(R.string.editor_image_placeholder),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(shape)
+                        .clickable(enabled = true, onClick = onOpen),
+                    contentScale = ContentScale.FillWidth,
                 )
+
+                isMissing -> Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(MISSING_IMAGE_HEIGHT)
+                        .clip(shape)
+                        .background(MaterialTheme.colorScheme.errorContainer),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = stringResource(R.string.editor_image_missing),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                    )
+                }
+
+                else -> Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(MISSING_IMAGE_HEIGHT)
+                        .clip(shape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                )
+            }
+
+            if (enabled) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .size(22.dp)
+                        .padding(start = 6.dp, end = 6.dp)
+                        .size(26.dp)
                         .clip(CircleShape)
                         .background(MaterialTheme.colorScheme.errorContainer)
-                        .clickable { onRemove(image.token) }
+                        .clickable(onClick = onRemove)
                         .semantics { contentDescription = removeLabel },
                     contentAlignment = Alignment.Center,
                 ) {
@@ -215,41 +335,64 @@ private fun ImageStrip(
                 }
             }
         }
+
+        // The description doubles as the Markdown alt text, so it is worth
+        // showing: it is what survives in an export and in the search index.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(enabled = enabled, onClick = onDescribe)
+                .padding(horizontal = 4.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = block.caption.ifBlank {
+                    stringResource(R.string.editor_image_description_add)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = if (block.caption.isBlank()) {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+            )
+        }
     }
 }
 
 @Composable
-private fun ImageThumbnail(image: AttachedImage, bitmap: ImageBitmap?, isMissing: Boolean) {
-    val shape = RoundedCornerShape(8.dp)
-    when {
-        bitmap != null -> Image(
-            bitmap = bitmap,
-            contentDescription = image.label.takeIf { it.isNotBlank() },
-            modifier = Modifier.size(THUMBNAIL).clip(shape),
-            contentScale = ContentScale.Crop,
-        )
+private fun CaptionDialog(
+    initial: String,
+    onDismiss: () -> Unit,
+    onConfirm: (String) -> Unit,
+) {
+    var caption by remember { mutableStateOf(initial) }
 
-        isMissing -> Box(
-            modifier = Modifier
-                .size(THUMBNAIL)
-                .clip(shape)
-                .background(MaterialTheme.colorScheme.errorContainer),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = stringResource(R.string.editor_image_missing),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onErrorContainer,
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(R.string.editor_image_description_title)) },
+        text = {
+            OutlinedTextField(
+                value = caption,
+                onValueChange = { caption = it },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 2,
+                maxLines = 4,
+                placeholder = { Text(text = stringResource(R.string.editor_image_description_hint)) },
             )
-        }
-
-        else -> Box(
-            modifier = Modifier
-                .size(THUMBNAIL)
-                .clip(shape)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-        )
-    }
+        },
+        confirmButton = {
+            TextButton(onClick = { onConfirm(caption) }) {
+                Text(text = stringResource(R.string.editor_image_description_confirm))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.editor_cancel))
+            }
+        },
+    )
 }
 
 @Composable
@@ -314,4 +457,5 @@ private fun LinkDialog(
     )
 }
 
-private val THUMBNAIL = 64.dp
+private val EDITOR_SHAPE = RoundedCornerShape(20.dp)
+private val MISSING_IMAGE_HEIGHT = 140.dp

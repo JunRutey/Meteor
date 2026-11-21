@@ -209,6 +209,14 @@ class PersonEditViewModel @Inject constructor(
         _state.update { it.copy(notes = updated.body, saved = false) }
     }
 
+    /** Writes the description (alt text) of one image reference (ADR-047). */
+    fun setImageCaption(token: String, caption: String) {
+        val current = _state.value
+        val body = MarkdownEditing.setImageCaption(current.notes, token, caption)
+        if (body == current.notes) return
+        _state.update { it.copy(notes = body, saved = false) }
+    }
+
     /** Drops one image from the notes and schedules its file for deletion. */
     fun removeImage(token: String) {
         val current = _state.value

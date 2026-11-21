@@ -58,6 +58,7 @@ fun DiaryEditScreen(
     modifier: Modifier = Modifier,
     resolveImage: (String) -> ImageBitmap? = { null },
     onActivate: (String) -> Unit = {},
+    onImageCaptionChanged: (String, String) -> Unit = { _, _ -> },
 ) {
     // Purely a view concern: the record never stores whether it was last shown
     // as preview.
@@ -124,6 +125,7 @@ fun DiaryEditScreen(
             resolveImage = resolveImage,
             onActivate = onActivate,
             showPreviewAction = false,
+            onImageCaptionChanged = onImageCaptionChanged,
         )
 
         state.error?.let { message ->

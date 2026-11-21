@@ -79,6 +79,35 @@ object MarkdownEditing {
         return kept.dropWhile { it.isBlank() }.dropLastWhile { it.isBlank() }.joinToString("\n")
     }
 
+    /**
+     * Rewrites the alt text of the reference pointing at [token].
+     *
+     * Alt text doubles as the picture's description (ADR-047): it is already a
+     * Markdown field, so a description costs no new syntax and stays readable in
+     * exports, the search index and anything else that parses the file.
+     *
+     * @return [body] unchanged when no reference points at [token].
+     */
+    fun setImageCaption(body: String, token: String, caption: String): String {
+        if (token.isBlank()) return body
+        val reference = Regex("""!\[[^\]]*]\(${Regex.escape(ImageStore.IMAGE_SCHEME + token)}\)""")
+        if (!reference.containsMatchIn(body)) return body
+
+        val replacement = ImageStore.markdownFor(token, sanitizeCaption(caption))
+        return reference.replace(body, Regex.escapeReplacement(replacement))
+    }
+
+    /**
+     * Keeps a caption from breaking the surrounding Markdown: brackets would end
+     * the alt text early and a line break would split the reference in two, so
+     * both collapse into the nearest harmless character.
+     */
+    fun sanitizeCaption(raw: String): String =
+        raw.replace('[', '（')
+            .replace(']', '）')
+            .replace(Regex("[\\r\\n]+"), " ")
+            .trim()
+
     private fun appendBlock(body: String, block: String): String {
         val trimmed = body.trimEnd()
         return when {

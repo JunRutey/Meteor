@@ -95,6 +95,7 @@ fun PersonEditScreen(
     modifier: Modifier = Modifier,
     missingImages: Set<String> = emptySet(),
     resolveImage: (String) -> ImageBitmap? = { null },
+    onImageCaptionChanged: (String, String) -> Unit = { _, _ -> },
 ) {
     var previewing by rememberSaveable { mutableStateOf(false) }
     // Only body focus collapses the identity card: opening the keyboard for the
@@ -218,6 +219,7 @@ fun PersonEditScreen(
                         missingImages = missingImages,
                         resolveImage = resolveImage,
                         onFocusChanged = { bodyFocused = it },
+                        onImageCaptionChanged = onImageCaptionChanged,
                     )
                 }
             }
