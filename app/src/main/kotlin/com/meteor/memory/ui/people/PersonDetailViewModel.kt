@@ -8,7 +8,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.AlbumRepository
-import com.meteor.memory.core.storage.AttachmentStore
 import com.meteor.memory.core.storage.ImageStore
 import com.meteor.memory.core.storage.MediaOwner
 import com.meteor.memory.core.storage.MediaStore
@@ -49,19 +48,11 @@ data class PersonRecordView(
     val dateLabel: String,
 )
 
-data class PersonAttachmentView(
-    val id: String,
-    val fileName: String,
-    val mimeType: String,
-    val dateLabel: String,
-    val sizeBytes: Long,
-)
-
 /**
  * The screen gets no `AlbumEntry`: `:feature-people` must not know the storage
  * layer's types, and the only thing the UI needs is the opaque ref plus the
- * three badges. The row type itself lives in `:feature-people` next to the
- * composable that draws it, so the mapping stays in one place.
+ * badges. The row type itself lives in `:feature-people` next to the composable
+ * that draws it, so the mapping stays in one place.
  */
 
 data class PersonViewState(
@@ -76,9 +67,10 @@ data class PersonViewState(
     /** Decrypted images referenced by the notes, so the page can render them. */
     val images: Map<String, ImageBitmap> = emptyMap(),
     val records: List<PersonRecordView> = emptyList(),
-    val attachments: List<PersonAttachmentView> = emptyList(),
-    val attachmentsError: Boolean = false,
-    /** Pictures, videos and audio owned by this person (ADR-052 §5 E). */
+    /**
+     * Pictures, videos, audio and imported files owned by this person
+     * (ADR-052 §5 E, ADR-065).
+     */
     val media: List<PersonMediaRow> = emptyList(),
     val mediaError: Boolean = false,
     val importingMedia: Boolean = false,
@@ -96,8 +88,6 @@ data class PersonViewState(
     val mediaBlocks: Map<String, MediaBlockState> = emptyMap(),
     val isImporting: Boolean = false,
     val importSummary: AttachmentImportSummary? = null,
-    /** null while no export has finished; true when the last one failed. */
-    val exportFailed: Boolean? = null,
     val deleting: Boolean = false,
     /** Set after the profile is gone; the host screen leaves the route. */
     val deleted: Boolean = false,
@@ -115,7 +105,6 @@ class PersonDetailViewModel @Inject constructor(
     private val imageStore: ImageStore,
     private val mediaStore: MediaStore,
     private val albumRepository: AlbumRepository,
-    private val attachmentStore: AttachmentStore,
     private val attachmentImportCoordinator: AttachmentImportCoordinator,
     private val appLog: AppLog,
 ) : ViewModel() {
@@ -134,19 +123,10 @@ class PersonDetailViewModel @Inject constructor(
             val locale = Locale.getDefault()
             val profile = withContext(Dispatchers.IO) { personQueries.read(personId) }
             val records = withContext(Dispatchers.IO) { searchService.recordsForPerson(personId) }
-            var attachmentsError = false
-            val attachments = try {
-                withContext(Dispatchers.IO) { attachmentStore.list(personId) }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (failure: Exception) {
-                attachmentsError = true
-                appLog.warn(TAG, "person attachment list failed", failure)
-                emptyList()
-            }
-
-            // New media and legacy pictures in one list, newest import first —
-            // the same merge the album shows, scoped to this person (ADR-052 §3).
+            // New media, legacy pictures and imported files in one list, newest
+            // import first — the same merge the album shows, scoped to this
+            // person (ADR-052 §3, ADR-065). Files land in the same strip because
+            // the 记录 section that used to own them no longer exists.
             var mediaError = false
             val media = try {
                 withContext(Dispatchers.IO) {
@@ -175,19 +155,6 @@ class PersonDetailViewModel @Inject constructor(
                     notes = profile?.notes.orEmpty(),
                     tags = profile?.tags.orEmpty(),
                     records = records.map { record -> record.toView(locale) },
-                    attachments = attachments.map { attachment ->
-                        PersonAttachmentView(
-                            id = attachment.id,
-                            fileName = attachment.fileName,
-                            mimeType = attachment.mimeType,
-                            dateLabel = timeModule.formatDate(
-                                attachment.modifiedAt.atZone(ZoneId.systemDefault()).toLocalDate(),
-                                locale,
-                            ),
-                            sizeBytes = attachment.sizeBytes,
-                        )
-                    },
-                    attachmentsError = attachmentsError,
                     media = media,
                     mediaError = mediaError,
                     loaded = true,
@@ -265,29 +232,6 @@ class PersonDetailViewModel @Inject constructor(
     /** Synchronous lookup the body renderer calls for one `meteor://media/` id. */
     fun mediaBlockFor(id: String): MediaBlockState =
         _state.value.mediaBlocks[id] ?: MediaBlockState.Pending
-
-    fun export(id: String, uri: Uri) {
-        viewModelScope.launch {
-            _state.update { it.copy(exportFailed = null) }
-            val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    context.contentResolver.openOutputStream(uri)?.use { out ->
-                        attachmentStore.copyDecrypted(id, out)
-                    } ?: error("cannot open export destination")
-                }
-            }
-            result.fold(
-                onSuccess = { bytes ->
-                    appLog.info(TAG, "attachment exported: $bytes bytes")
-                    _state.update { it.copy(exportFailed = false) }
-                },
-                onFailure = { failure ->
-                    appLog.warn(TAG, "attachment export failed", failure)
-                    _state.update { it.copy(exportFailed = true) }
-                },
-            )
-        }
-    }
 
     fun importAttachments(uris: List<Uri>) {
         if (uris.isEmpty() || _state.value.isImporting) return

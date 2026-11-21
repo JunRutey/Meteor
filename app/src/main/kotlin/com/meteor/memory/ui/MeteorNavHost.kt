@@ -47,6 +47,7 @@ import androidx.navigation.navArgument
 import com.meteor.memory.BuildConfig
 import com.meteor.memory.R
 import com.meteor.memory.core.storage.MediaKind
+import com.meteor.memory.core.storage.MediaRef
 import com.meteor.memory.core.storage.RecordType
 import com.meteor.memory.feature.ai.AiPersonChip
 import com.meteor.memory.feature.ai.AiScreen
@@ -58,6 +59,7 @@ import com.meteor.memory.feature.ai.AiSkillChip
 import com.meteor.memory.feature.ai.PersonaScreen
 import com.meteor.memory.feature.ai.aiProviderLabel
 import com.meteor.memory.feature.calendar.CalendarScreen
+import com.meteor.memory.feature.gallery.FileImportSummary
 import com.meteor.memory.feature.gallery.GalleryScreen
 import com.meteor.memory.feature.gallery.MediaViewerScreen
 import com.meteor.memory.feature.gallery.R as GalleryR
@@ -87,8 +89,6 @@ import com.meteor.memory.ui.ai.AiViewModel
 import com.meteor.memory.ui.ai.PersonaViewModel
 import com.meteor.memory.ui.ai.aiUsageTotals
 import com.meteor.memory.ui.backup.BackupActions
-import com.meteor.memory.ui.chats.ChatsScreen
-import com.meteor.memory.ui.chats.ChatsViewModel
 import com.meteor.memory.ui.calendar.CalendarViewModel
 import com.meteor.memory.ui.diagnostics.StorageDiagnosticsScreen
 import com.meteor.memory.ui.diary.DiaryEditScreen
@@ -97,7 +97,6 @@ import com.meteor.memory.ui.diary.DiaryPreviewScreen
 import com.meteor.memory.ui.diary.DiaryPreviewViewModel
 import com.meteor.memory.ui.gallery.GalleryViewModel
 import com.meteor.memory.ui.gallery.MediaViewerViewModel
-import com.meteor.memory.ui.home.AlbumHubScreen
 import com.meteor.memory.ui.home.HomeTabsScreen
 import com.meteor.memory.ui.life.BirthDateSettingsScreen
 import com.meteor.memory.ui.life.LifeClockScreen
@@ -106,7 +105,6 @@ import com.meteor.memory.ui.log.LogActions
 import com.meteor.memory.ui.people.PeopleViewModel
 import com.meteor.memory.ui.people.PersonDetailViewModel
 import com.meteor.memory.ui.people.PersonEditViewModel
-import com.meteor.memory.ui.people.PersonAttachmentView
 import com.meteor.memory.ui.search.SearchScreen
 import com.meteor.memory.ui.search.SearchViewModel
 import com.meteor.memory.ui.settings.AiTestState
@@ -149,7 +147,7 @@ private const val ROUTE_CALENDAR = "calendar"
 private const val ROUTE_PEOPLE = "people"
 private const val ROUTE_PERSON = "people/{personId}"
 private const val ROUTE_PERSON_EDIT = "people/{personId}/edit"
-// 总入口「相册」，内部两段：相册（媒体网格）与记录（原 ChatsScreen）。
+// 相册总入口（ADR-065）：媒体与导入文件同一个网格，不再有独立的「记录」页。
 // date 为可选查询参数：日历入口可带 ?date= 过滤到某天。
 private const val ROUTE_ALBUM = "album?date={date}"
 // 统一媒体查看器；ref 是完整 meteor://media/<id> 或旧 meteor://image/<token>，Uri.encode 传输。
@@ -453,15 +451,6 @@ fun MeteorNavHost(
             HandleMediaPickerResult(navController) { uris ->
                 viewModel.importMedia(uris.map { uri -> Uri.parse(uri) })
             }
-            var pendingExportId by remember { mutableStateOf<String?>(null) }
-            var pendingExportName by remember { mutableStateOf("attachment") }
-            val exporter = rememberLauncherForActivityResult(
-                ActivityResultContracts.CreateDocument("application/octet-stream"),
-            ) { uri ->
-                val id = pendingExportId
-                pendingExportId = null
-                if (uri != null && id != null) viewModel.export(id, uri)
-            }
 
             RefreshOnResume { viewModel.load() }
 
@@ -481,7 +470,7 @@ fun MeteorNavHost(
                         dateLabel = it.dateLabel,
                         typeLabel = recordTypeLabel(it.type),
                     )
-                } + state.attachments.map { attachment -> attachment.toRecordRow() },
+                },
                 onBack = { navController.popBackStack() },
                 onEdit = { navController.navigate("people/$personId/edit") },
                 resolveImage = viewModel::imageFor,
@@ -511,26 +500,15 @@ fun MeteorNavHost(
                 mediaDeleteFailed = state.mediaDeleteFailed,
                 resolveMedia = viewModel::mediaBlockFor,
                 onAddRecord = pickAttachments,
-                attachmentsError = state.attachmentsError,
                 importingAttachments = state.isImporting,
                 importedAttachmentCount = state.importSummary?.imported,
                 failedAttachmentCount = state.importSummary?.failed ?: 0,
                 skippedAttachmentCount = state.importSummary?.skipped ?: 0,
                 attachmentIndexFailed = state.importSummary?.indexFailed == true,
-                onExportAttachment = { id ->
-                    val attachment = state.attachments.firstOrNull { it.id == id }
-                    if (attachment != null) {
-                        pendingExportId = attachment.id
-                        pendingExportName = attachment.fileName
-                        exporter.launch(pendingExportName)
-                    }
-                },
-                exportFailed = state.exportFailed,
                 onDelete = viewModel::delete,
                 deleting = state.deleting,
                 deleteFailed = state.deleteFailed,
-            )
-        }
+            )        }
 
         composable(
             route = ROUTE_PERSON_EDIT,
@@ -595,7 +573,8 @@ fun MeteorNavHost(
             )
         }
 
-        // 总入口「相册」：内部相册（媒体网格）/ 记录（原 ChatsScreen）两段。
+        // 相册总入口（ADR-065）：图片 / 视频 / 音频 / 导入文件同一个网格。
+        // 原「记录」段已删除，它的导入、列出、导出、删除、阅读能力都在这里。
         composable(
             route = ROUTE_ALBUM,
             arguments = listOf(
@@ -612,56 +591,38 @@ fun MeteorNavHost(
             val filterLabel by galleryViewModel.filterLabel.collectAsStateWithLifecycle()
             val filter by galleryViewModel.filter.collectAsStateWithLifecycle()
             val sortMode by galleryViewModel.sortMode.collectAsStateWithLifecycle()
+            val importingFile by galleryViewModel.importingFile.collectAsStateWithLifecycle()
+            val importProgress by galleryViewModel.importProgress.collectAsStateWithLifecycle()
+            val importSummary by galleryViewModel.importSummary.collectAsStateWithLifecycle()
 
-            val chatsViewModel: ChatsViewModel = hiltViewModel()
-            val chatsState by chatsViewModel.state.collectAsStateWithLifecycle()
-            val pickAttachments = rememberAttachmentPicker(chatsViewModel::importFiles)
-            var pendingExportId by remember { mutableStateOf<String?>(null) }
-            var pendingExportName by remember { mutableStateOf("attachment") }
-            val exporter = rememberLauncherForActivityResult(
-                ActivityResultContracts.CreateDocument("application/octet-stream"),
-            ) { uri ->
-                val id = pendingExportId
-                pendingExportId = null
-                if (uri != null && id != null) chatsViewModel.export(id, uri)
-            }
+            val pickFiles = rememberAttachmentPicker(galleryViewModel::importFiles)
 
-            RefreshOnResume {
-                galleryViewModel.refresh()
-                chatsViewModel.refresh()
-            }
+            RefreshOnResume { galleryViewModel.refresh() }
 
-            AlbumHubScreen(
-                mediaContent = {
-                    GalleryScreen(
-                        days = days,
-                        loading = loading,
-                        sortMode = sortMode,
-                        onSortModeChange = galleryViewModel::setSortMode,
-                        filter = filter,
-                        onFilterChange = galleryViewModel::setFilter,
-                        animationsEnabled = animationsEnabled,
-                        onOpen = { ref -> navController.navigate("media/${Uri.encode(ref)}") },
-                        onDelete = galleryViewModel::delete,
-                        onBack = { navController.popBackStack() },
-                        title = filterLabel,
+            GalleryScreen(
+                days = days,
+                loading = loading,
+                sortMode = sortMode,
+                onSortModeChange = galleryViewModel::setSortMode,
+                filter = filter,
+                onFilterChange = galleryViewModel::setFilter,
+                animationsEnabled = animationsEnabled,
+                onOpen = { ref -> navController.navigate("media/${Uri.encode(ref)}") },
+                onDelete = galleryViewModel::delete,
+                onBack = { navController.popBackStack() },
+                title = filterLabel,
+                onImportFile = pickFiles,
+                importingFile = importingFile,
+                importProgress = importProgress,
+                importSummary = importSummary?.let { summary ->
+                    FileImportSummary(
+                        imported = summary.imported,
+                        failed = summary.failed,
+                        skipped = summary.skipped,
+                        indexFailed = summary.indexFailed,
                     )
                 },
-                recordsContent = {
-                    ChatsScreen(
-                        state = chatsState,
-                        onPersonSelected = chatsViewModel::selectPerson,
-                        onImportFiles = pickAttachments,
-                        onExport = { row ->
-                            pendingExportId = row.id
-                            pendingExportName = row.fileName
-                            exporter.launch(pendingExportName)
-                        },
-                        onDelete = { row -> chatsViewModel.delete(row.id) },
-                        onBack = { navController.popBackStack() },
-                        showHeader = false,
-                    )
-                },
+                onDismissImportSummary = galleryViewModel::clearImportSummary,
             )
         }
 
@@ -754,6 +715,7 @@ fun MeteorNavHost(
                 sharing = state.sharing,
                 error = state.error,
                 hasContent = state.hasContent,
+                fileText = state.fileText,
             )
         }
 
@@ -921,6 +883,9 @@ fun MeteorNavHost(
                 onOpenMood = { date ->
                     calendarViewModel?.showDate(date)
                     navController.popBackStack(ROUTE_CALENDAR, inclusive = false)
+                },
+                onOpenAttachment = { id ->
+                    navController.navigate("media/${Uri.encode("${MediaRef.FILE_SCHEME}$id")}")
                 },
                 onBack = { navController.popBackStack() },
             )
@@ -1131,7 +1096,7 @@ fun MeteorNavHost(
             )
         }
 
-        // 旧「记录」深链：重定向到相册总入口（记录段）。
+        // 旧「记录」深链：ADR-065 删除了记录页，重定向到相册（文件段）。
         composable(ROUTE_CHATS) {
             LaunchedEffect(Unit) {
                 navController.navigate("album") {
@@ -1452,15 +1417,6 @@ private fun rememberAiFilePicker(onUris: (List<Uri>) -> Unit): () -> Unit {
     }
     return { launcher.launch(arrayOf("*/*")) }
 }
-
-private fun PersonAttachmentView.toRecordRow(): PersonRecordRow =
-    PersonRecordRow(
-        recordId = id,
-        dateLabel = dateLabel,
-        typeLabel = mimeType,
-        title = fileName,
-        sizeBytes = sizeBytes,
-    )
 
 @Composable
 private fun RefreshOnResume(block: () -> Unit) {

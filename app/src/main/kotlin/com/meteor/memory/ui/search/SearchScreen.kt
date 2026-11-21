@@ -56,6 +56,7 @@ fun SearchScreen(
     onQueryChange: (String) -> Unit,
     onOpenDiary: (java.time.LocalDate) -> Unit,
     onOpenMood: (java.time.LocalDate) -> Unit,
+    onOpenAttachment: (String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -181,6 +182,10 @@ fun SearchScreen(
                                     when (row.type) {
                                         RecordType.DIARY -> onOpenDiary(row.date)
                                         RecordType.MOOD -> onOpenMood(row.date)
+                                        // Attachment hits carry the store id as recordId;
+                                        // the album viewer resolves `meteor://file/<id>`
+                                        // (ADR-065), so the hit is finally clickable.
+                                        RecordType.CHAT_LOG -> onOpenAttachment(row.recordId)
                                         else -> Unit
                                     }
                                 },
@@ -198,6 +203,7 @@ private enum class SearchFilter(val labelRes: Int) {
     DIARY(R.string.search_filter_diary),
     MOOD(R.string.search_filter_mood),
     PROFILE(R.string.search_filter_profile),
+    FILE(R.string.search_filter_file),
     ;
 
     fun matches(row: SearchRow): Boolean = when (this) {
@@ -205,6 +211,8 @@ private enum class SearchFilter(val labelRes: Int) {
         DIARY -> row.type == RecordType.DIARY
         MOOD -> row.type == RecordType.MOOD
         PROFILE -> row.type == RecordType.PROFILE || row.type == RecordType.PERSONA
+        // Attachment hits are indexed as CHAT_LOG until ADR-029 lands.
+        FILE -> row.type == RecordType.CHAT_LOG
     }
 }
 

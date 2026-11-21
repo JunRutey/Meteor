@@ -58,14 +58,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meteor.memory.feature.media.MediaThumb
 
-/** UI-side media kind; `:app` maps `core-storage.MediaKind` onto this. */
-enum class GalleryKind { IMAGE, VIDEO, AUDIO }
+/**
+ * UI-side album kind; `:app` maps `core-storage.MediaKind` onto the first three.
+ *
+ * [FILE] is an imported document (ADR-065): the former 记录 page merged into the
+ * album, so one grid holds pictures, videos, audio and files. A file is not
+ * playable — opening it shows the text extracted at import time.
+ */
+enum class GalleryKind { IMAGE, VIDEO, AUDIO, FILE }
 
 /** UI-side sort switch; `:app` maps `core-storage.AlbumSortMode` onto this. */
 enum class GallerySortMode { SOURCE_DATE, IMPORT_DATE }
 
 /** Filter chips shown above the grid. */
-enum class GalleryFilter { ALL, IMAGES, VIDEOS, AUDIO }
+enum class GalleryFilter { ALL, IMAGES, VIDEOS, AUDIO, FILES }
 
 /** One album entry: enough to render the grid and open the viewer. */
 data class GalleryItem(
@@ -74,12 +80,28 @@ data class GalleryItem(
     val durationMs: Long? = null,
     val fileName: String? = null,
     val hasThumbnail: Boolean = false,
+    /** Imported file size; null for media and legacy images. */
+    val sizeBytes: Long? = null,
 )
 
 /** One album page: a localized date and every item stored that day. */
 data class GalleryDay(
     val label: String,
     val items: List<GalleryItem>,
+)
+
+/**
+ * Outcome of the last document import, as the grid reports it.
+ *
+ * Defined here rather than imported from `:app`'s attachment layer because
+ * `:feature-gallery` must not know the storage or import types (ADR-052 §5 C);
+ * the host maps its own summary onto this.
+ */
+data class FileImportSummary(
+    val imported: Int,
+    val failed: Int,
+    val skipped: Int,
+    val indexFailed: Boolean,
 )
 
 /**
@@ -103,6 +125,12 @@ fun GalleryScreen(
     onBack: () -> Unit,
     title: String? = null,
     animationsEnabled: Boolean = true,
+    /** Asks the host to open the document picker; null hides the import action. */
+    onImportFile: (() -> Unit)? = null,
+    importingFile: Boolean = false,
+    importProgress: Pair<Int, Int>? = null,
+    importSummary: FileImportSummary? = null,
+    onDismissImportSummary: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var selection by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -118,14 +146,31 @@ fun GalleryScreen(
             sortMode = sortMode,
             onSortModeChange = onSortModeChange,
             onBack = onBack,
+            onImportFile = onImportFile,
+            importingFile = importingFile,
         )
 
         FilterChips(filter = filter, onFilterChange = onFilterChange)
 
+        ImportStatus(
+            importing = importingFile,
+            progress = importProgress,
+            summary = importSummary,
+            onDismiss = onDismissImportSummary,
+        )
+
         when {
             loading -> PlaceholderCard(text = stringResource(R.string.gallery_loading))
 
-            days.isEmpty() -> PlaceholderCard(text = stringResource(R.string.gallery_empty))
+            days.isEmpty() -> PlaceholderCard(
+                text = stringResource(
+                    if (filter == GalleryFilter.FILES) {
+                        R.string.gallery_files_empty
+                    } else {
+                        R.string.gallery_empty
+                    },
+                ),
+            )
 
             else -> LazyVerticalGrid(
                 columns = GridCells.Fixed(COLUMNS),
@@ -222,6 +267,8 @@ private fun GalleryHeader(
     sortMode: GallerySortMode,
     onSortModeChange: (GallerySortMode) -> Unit,
     onBack: () -> Unit,
+    onImportFile: (() -> Unit)?,
+    importingFile: Boolean,
 ) {
     val backLabel = stringResource(R.string.gallery_back)
     var sortMenuExpanded by remember { mutableStateOf(false) }
@@ -256,6 +303,28 @@ private fun GalleryHeader(
                     text = stringResource(R.string.gallery_hint),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (onImportFile != null) {
+            val importLabel = stringResource(
+                if (importingFile) R.string.gallery_importing_file else R.string.gallery_import_file,
+            )
+            Box(
+                modifier = Modifier
+                    .heightIn(min = 40.dp)
+                    .clickable(enabled = !importingFile, onClick = onImportFile)
+                    .padding(horizontal = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = importLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (importingFile) {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    } else {
+                        MaterialTheme.colorScheme.primary
+                    },
                 )
             }
         }
@@ -321,6 +390,11 @@ private fun FilterChips(filter: GalleryFilter, onFilterChange: (GalleryFilter) -
             selected = filter == GalleryFilter.AUDIO,
             onClick = { onFilterChange(GalleryFilter.AUDIO) },
         )
+        FilterChip(
+            label = stringResource(R.string.gallery_filter_files),
+            selected = filter == GalleryFilter.FILES,
+            onClick = { onFilterChange(GalleryFilter.FILES) },
+        )
     }
 }
 
@@ -359,9 +433,88 @@ private fun FilterChip(
     }
 }
 
+/**
+ * Progress and outcome of a document import.
+ *
+ * The album is a grid, so the banner sits above it and disappears once the
+ * result is acknowledged — the former 记录 page could afford a permanent status
+ * line, the album cannot.
+ */
 @Composable
-private fun PlaceholderCard(text: String) {
+private fun ImportStatus(
+    importing: Boolean,
+    progress: Pair<Int, Int>?,
+    summary: FileImportSummary?,
+    onDismiss: () -> Unit,
+) {
+    if (importing) {
+        val (done, total) = progress ?: (0 to 0)
+        StatusCard(
+            text = stringResource(R.string.gallery_import_progress, done, total),
+            error = false,
+            onDismiss = null,
+        )
+        return
+    }
+    if (summary == null) return
+
+    val messages = buildList {
+        if (summary.imported > 0) {
+            add(stringResource(R.string.gallery_import_summary, summary.imported, summary.failed))
+        } else if (summary.failed > 0) {
+            add(stringResource(R.string.gallery_import_failed))
+        }
+        if (summary.skipped > 0) add(stringResource(R.string.gallery_import_skipped, summary.skipped))
+        if (summary.indexFailed) add(stringResource(R.string.gallery_index_failed))
+    }
+    if (messages.isEmpty()) {
+        onDismiss()
+        return
+    }
+    StatusCard(
+        text = messages.joinToString("\n"),
+        error = summary.imported == 0 || summary.indexFailed,
+        onDismiss = onDismiss,
+    )
+}
+
+@Composable
+private fun StatusCard(text: String, error: Boolean, onDismiss: (() -> Unit)?) {
     Surface(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = if (error) {
+            MaterialTheme.colorScheme.errorContainer
+        } else {
+            MaterialTheme.colorScheme.primaryContainer
+        },
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = text,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (error) {
+                    MaterialTheme.colorScheme.onErrorContainer
+                } else {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                },
+            )
+            if (onDismiss != null) {
+                TextButton(onClick = onDismiss) {
+                    Text(stringResource(R.string.gallery_dismiss))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaceholderCard(text: String) {    Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
         shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.surface,
@@ -439,6 +592,8 @@ private fun GalleryTile(
             }
 
             GalleryKind.AUDIO -> AudioCard(item)
+
+            GalleryKind.FILE -> FileCard(item)
         }
 
         AnimatedVisibility(

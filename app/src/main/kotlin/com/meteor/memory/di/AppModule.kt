@@ -387,13 +387,14 @@ object AppModule {
         mediaKeyCrypto = mediaKeyCrypto,
     )
 
-    /** Album view over both the new media store and legacy images (ADR-052). */
+    /** Album view over the media store, legacy images and imported files (ADR-052, ADR-065). */
     @Provides
     @Singleton
     fun provideAlbumRepository(
         mediaStore: MediaStore,
         imageStore: ImageStore,
-    ): AlbumRepository = AlbumRepository(mediaStore, imageStore)
+        attachmentStore: AttachmentStore,
+    ): AlbumRepository = AlbumRepository(mediaStore, imageStore, attachmentStore)
 
     @Provides
     @Singleton
