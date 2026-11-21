@@ -27,10 +27,14 @@ import javax.inject.Inject
 
 /** 只读预览，不写任何东西。 */
 data class DiaryPreviewState(
-    val dateLabel: String,
+    /** 日记所属的那天（文件名上的日期），页头主日期用它。 */
+    val date: LocalDate,
+    /** 写下这份记录的时刻（本地化）；记录还没写过时为空。 */
+    val writtenAtLabel: String? = null,
+    /** 补写：写于另一天。主日期只剩那天本身，写入时刻挪到「记录于」。 */
+    val backfilled: Boolean = false,
     val body: String = "",
     val exists: Boolean = false,
-    val signedAtLabel: String? = null,
     val images: Map<String, ImageBitmap> = emptyMap(),
     val missingImages: Set<String> = emptySet(),
     val loading: Boolean = true,
@@ -46,21 +50,20 @@ class DiaryPreviewViewModel @Inject constructor(
 
     private val date: LocalDate = LocalDate.parse(checkNotNull(savedStateHandle.get<String>(ARG_DATE)))
 
-    private val _state = MutableStateFlow(
-        DiaryPreviewState(dateLabel = formatAt(Instant.now())),
-    )
+    private val _state = MutableStateFlow(DiaryPreviewState(date = date))
     val state: StateFlow<DiaryPreviewState> = _state.asStateFlow()
 
     fun load() {
         viewModelScope.launch {
             val document = withContext(Dispatchers.IO) { diaryQueries.read(date) }
             appLog.debug(TAG, "preview $date exists=${document != null}")
+            val writtenAt = document?.let(DiaryDates::writtenAt)
             _state.update {
                 it.copy(
-                    dateLabel = document?.let { doc -> formatAt(doc.timestamp) } ?: it.dateLabel,
+                    writtenAtLabel = writtenAt?.let(::formatAt),
+                    backfilled = writtenAt != null && DiaryDates.isBackfilled(date, writtenAt),
                     body = document?.body.orEmpty(),
                     exists = document != null,
-                    signedAtLabel = document?.signedAt?.let(::formatAt),
                     loading = false,
                 )
             }

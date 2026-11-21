@@ -56,7 +56,7 @@ object MarkdownStyles {
 
             when (match.kind) {
                 Kind.COLOR -> styled(match, text, imageLabel, SpanStyle(color = parseColor(match.extra)))
-                Kind.BOLD -> styled(match, text, imageLabel, SpanStyle(fontWeight = FontWeight.Bold))
+                Kind.BOLD -> styled(match, text, imageLabel, SpanStyle(fontWeight = FontWeight.ExtraBold))
                 Kind.ITALIC -> styled(match, text, imageLabel, SpanStyle(fontStyle = FontStyle.Italic))
 
                 Kind.IMAGE -> {

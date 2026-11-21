@@ -230,7 +230,12 @@ private class Builder(private val source: String) {
 
         val SPAN_OPEN = Regex("""<span style="color:(#[0-9A-Fa-f]{6})">""")
 
-        val BOLD_STYLE = SpanStyle(fontWeight = FontWeight.Bold)
+        /**
+         * ExtraBold rather than Bold: plain Bold read as too subtle in Chinese
+         * body text (v1.4 feedback), and ExtraBold resolves to the heaviest
+         * face a font offers on the weight axis.
+         */
+        val BOLD_STYLE = SpanStyle(fontWeight = FontWeight.ExtraBold)
 
         /**
          * `#RRGGBB` to a colour.

@@ -29,6 +29,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meteor.memory.R
+import java.time.LocalDate
+import java.time.format.TextStyle
+import java.util.Locale
 
 /**
  * 日记页通用页头：左侧返回箭头、20sp 标题、右侧动作（如「预览」胶囊）。
@@ -81,6 +84,22 @@ internal fun DiaryScreenHeader(
             content = supportingContent,
         )
     }
+}
+
+/**
+ * 日记所属那天的标题：「11 月 3 日 · 周一」。
+ *
+ * 编辑页与预览页共用同一句式：补写的日记主日期就是这天，绝不带时分。
+ */
+@Composable
+internal fun diaryDayLabel(date: LocalDate): String {
+    val locale = Locale.getDefault()
+    return stringResource(
+        R.string.diary_day_label,
+        date.monthValue,
+        date.dayOfMonth,
+        date.dayOfWeek.getDisplayName(TextStyle.SHORT, locale),
+    )
 }
 
 @Composable
