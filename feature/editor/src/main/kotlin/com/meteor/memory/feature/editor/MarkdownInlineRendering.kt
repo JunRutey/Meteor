@@ -232,9 +232,19 @@ private class Builder(private val source: String) {
 
         val BOLD_STYLE = SpanStyle(fontWeight = FontWeight.Bold)
 
-        /** Same parsing as the preview, so both agree on what a colour is. */
-        fun parseColor(hex: String): Color =
-            runCatching { Color(android.graphics.Color.parseColor(hex)) }
-                .getOrDefault(Color.Unspecified)
+        /**
+         * `#RRGGBB` to a colour.
+         *
+         * Parsed by hand rather than through `android.graphics.Color`: that
+         * class is a no-op stub in JVM unit tests, so routing through it would
+         * make the renderer silently untested (every colour would come back
+         * `Unspecified`).
+         */
+        fun parseColor(hex: String): Color {
+            val digits = hex.removePrefix("#")
+            if (digits.length != 6) return Color.Unspecified
+            val value = digits.toLongOrNull(16) ?: return Color.Unspecified
+            return Color(value or 0xFF000000L)
+        }
     }
 }

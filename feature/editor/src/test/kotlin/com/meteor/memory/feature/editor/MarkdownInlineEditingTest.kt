@@ -45,7 +45,8 @@ class MarkdownInlineEditingTest {
     @Test
     fun `opening bold puts the caret inside the markers`() {
         val edit = MarkdownInlineEditing.open("你好", 1, InlineFormat.Bold)
-        assertEquals("你****好", edit.text)
+        // One "**" at the caret; the caret sits right after it.
+        assertEquals("你**好", edit.text)
         assertEquals(3, edit.selectionStart)
         assertEquals(3, edit.selectionEnd)
     }
@@ -60,7 +61,7 @@ class MarkdownInlineEditingTest {
     @Test
     fun `opening clamps an out-of-range caret`() {
         val edit = MarkdownInlineEditing.open("字", 99, InlineFormat.Bold)
-        assertEquals("字****", edit.text)
+        assertEquals("字**", edit.text)
         assertEquals(3, edit.selectionStart)
     }
 
@@ -186,7 +187,8 @@ class MarkdownInlineEditingTest {
         for (hex in MarkdownInlineFormat.COLORS) {
             val format = InlineFormat.Color(hex)
             val opened = MarkdownInlineEditing.open("", 0, format)
-            val closed = MarkdownInlineEditing.close(opened.text + "字", 3, format)
+            val typed = opened.text + "字"
+            val closed = MarkdownInlineEditing.close(typed, typed.length, format)
             assertTrue("unrenderable span for $hex: ${closed.text}", preview.matches(closed.text))
         }
     }

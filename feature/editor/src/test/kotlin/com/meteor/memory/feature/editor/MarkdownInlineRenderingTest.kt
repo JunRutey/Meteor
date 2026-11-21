@@ -61,10 +61,12 @@ class MarkdownInlineRenderingTest {
         assertEquals("红粗", text)
 
         val annotated = MarkdownInlineRendering.of(source).text
-        val colors = annotated.spanStyles.count { it.item.color != androidx.compose.ui.graphics.Color.Unspecified }
+        val colors = annotated.spanStyles.count {
+            it.item.color != androidx.compose.ui.graphics.Color.Unspecified
+        }
         val bolds = annotated.spanStyles.count { it.item.fontWeight == FontWeight.Bold }
-        assertEquals(1, colors)
-        assertEquals(1, bolds)
+        assertEquals("colour span", 1, colors)
+        assertEquals("bold span", 1, bolds)
     }
 
     @Test
@@ -75,7 +77,7 @@ class MarkdownInlineRenderingTest {
 
         val annotated = MarkdownInlineRendering.of(source).text
         // "粗" is bold, "普通" is not.
-        assertEquals(2, annotated.text.length)
+        assertEquals(3, annotated.text.length)
         val styled = annotated.spanStyles.filter { it.item.fontWeight == FontWeight.Bold }
         assertEquals(1, styled.size)
         assertEquals(0, styled.single().start)
