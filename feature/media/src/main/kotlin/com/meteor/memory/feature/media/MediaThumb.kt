@@ -1,5 +1,6 @@
 package com.meteor.memory.feature.media
 
+import android.util.LruCache
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -43,15 +44,26 @@ fun MediaThumb(
     val placeholderColor = MaterialTheme.colorScheme.surfaceVariant
     val iconTint = MaterialTheme.colorScheme.onSurfaceVariant
     val label = contentDescription ?: stringResource(R.string.media_thumb_description)
-    var state by remember(ref, host) { mutableStateOf<ThumbState>(ThumbState.Loading) }
+    // Seed from the cache so a tile scrolled back into view paints immediately
+    // instead of decrypting again.
+    var state by remember(ref, host) {
+        mutableStateOf(host?.let { ThumbCache.get(it, ref) } ?: ThumbState.Loading)
+    }
 
     LaunchedEffect(ref, host) {
         if (host == null) {
             state = ThumbState.Unavailable(MediaKind.IMAGE)
             return@LaunchedEffect
         }
+        val cached = ThumbCache.get(host, ref)
+        if (cached != null) {
+            state = cached
+            return@LaunchedEffect
+        }
         state = ThumbState.Loading
-        state = withContext(Dispatchers.IO) { loadThumbnail(host, ref) }
+        val loaded = withContext(Dispatchers.IO) { loadThumbnail(host, ref) }
+        ThumbCache.put(host, ref, loaded)
+        state = loaded
     }
 
     Box(
@@ -158,3 +170,37 @@ internal fun loadThumbnail(host: MediaHost, ref: String): ThumbState {
 }
 
 private const val FRACTION_PLACEHOLDER_ICON = 0.28f
+
+/**
+ * Process-wide thumbnail cache.
+ *
+ * Without it every scroll of the album grid re-decrypted and re-decoded the same
+ * tiles: `loadThumbnail` does a store lookup, a Keystore-backed decrypt and a
+ * bitmap decode per tile, and a 3-column grid recycles roughly a screenful of
+ * them on each pass. `Unavailable`/`Document` are cached too — a missing file
+ * would otherwise be retried on every recomposition.
+ *
+ * Sized in bytes, not entries, so a grid of large thumbnails cannot exhaust the
+ * heap. Keyed by host identity as well as ref: a different archive root (a
+ * restored backup, a test host) must not read another host's pixels.
+ */
+private object ThumbCache {
+    private val cache = object : LruCache<String, ThumbState>(CACHE_BYTES) {
+        override fun sizeOf(key: String, value: ThumbState): Int = when (value) {
+            is ThumbState.Ready -> value.bitmap.height * value.bitmap.width * 4
+            else -> 1
+        }
+    }
+
+    private fun key(host: MediaHost, ref: String): String =
+        "${System.identityHashCode(host)}|$ref"
+
+    fun get(host: MediaHost, ref: String): ThumbState? =
+        runCatching { cache.get(key(host, ref)) }.getOrNull()
+
+    fun put(host: MediaHost, ref: String, state: ThumbState) {
+        runCatching { cache.put(key(host, ref), state) }
+    }
+
+    private const val CACHE_BYTES = 16 * 1024 * 1024
+}
