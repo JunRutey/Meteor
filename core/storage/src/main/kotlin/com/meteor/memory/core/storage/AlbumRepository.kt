@@ -83,7 +83,11 @@ class AlbumRepository(
             .mapNotNull { image -> image.toAlbumEntry() }
             .filter { entry -> entry.kind in wanted && belongs(entry.personId) }
 
-        val imported = attachments.orEmpty()
+        // `attachments` is nullable: spell the empty case out so the receiver is
+        // a `List<StoredAttachment>` and `filter` cannot resolve to an array
+        // overload.
+        val importedFiles: List<StoredAttachment> = attachments?.list().orEmpty()
+        val imported = importedFiles
             .asSequence()
             .filter { AlbumKind.FILE in wanted && belongs(it.personId) }
             .map { it.toAlbumEntry() }
