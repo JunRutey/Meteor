@@ -23,7 +23,6 @@ android {
 dependencies {
     api(project(":core-storage"))
 
-    implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
 
     testImplementation(libs.junit)

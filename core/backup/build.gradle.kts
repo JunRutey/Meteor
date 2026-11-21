@@ -24,7 +24,6 @@ dependencies {
     api(project(":core-storage"))
     api(project(":core-crypto"))
 
-    implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
 
     testImplementation(libs.junit)

@@ -92,7 +92,6 @@ dependencies {
     implementation(libs.androidx.hilt.navigation.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.kotlinx.coroutines.android)
 
@@ -101,5 +100,4 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.org.json)
-    testImplementation(libs.kotlinx.coroutines.test)
 }

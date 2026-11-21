@@ -24,7 +24,6 @@ dependencies {
     api(project(":core-crypto"))
     api(project(":core-time"))
 
-    implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
 
     testImplementation(libs.junit)
