@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#FFFFFF</color>
-    <!-- Matches MeteorLight.background (periwinkle paper) so the splash hands over without a flash. -->
-    <color name="splash_background">#F7FAFF</color>
+    <!-- Matches MeteorLight.background (pale blue paper) so the splash hands over without a flash. -->
+    <color name="splash_background">#F6FAFE</color>
 </resources>
