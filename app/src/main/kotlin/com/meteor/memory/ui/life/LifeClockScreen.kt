@@ -98,9 +98,9 @@ fun LifeClockScreen(
         )
 
         !dynamicColor -> Brush.verticalGradient(
-            0f to Color(0xFFEDF3FE),
-            0.55f to Color(0xFFF7FAFF),
-            1f to Color(0xFFE9F0FD),
+            0f to Color(0xFFECF3FB),
+            0.55f to Color(0xFFF6FAFE),
+            1f to Color(0xFFEAF2FB),
         )
 
         dark -> Brush.verticalGradient(

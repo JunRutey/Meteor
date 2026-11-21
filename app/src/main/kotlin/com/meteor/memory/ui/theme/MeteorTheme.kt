@@ -41,80 +41,83 @@ val LocalAnimationsEnabled = staticCompositionLocalOf { true }
 val LocalDynamicColorEnabled = staticCompositionLocalOf { false }
 
 /**
- * Colour roles are sampled from the app icon art
- * (`res/drawable-xxxhdpi/splash_icon.png`, clustered around the periwinkle
- * royal blue #4C77FC with a lighter tint at #7599FC) and lifted into a usable
- * Material 3 sheet. The result is a fresh periwinkle-blue identity with two
- * deliberately mixed partners so the scheme never reads as monochrome blue:
- * a cool sky/teal secondary and a warm amber tertiary accent.
+ * Colour roles are the app icon's blue, **desaturated**: the icon art
+ * (`res/drawable-xxxhdpi/splash_icon.png`) clusters around #4C77FC, a 97%
+ * saturation royal blue, but that intensity is too loud for a diary you read
+ * every day. The sheet keeps the icon's hue family (~210-215°) and drops the
+ * saturation to ~30-37%, which is the same restrained register the previous
+ * slate palette lived in — just brighter, cleaner and clearly blue rather than
+ * grey-blue. Two deliberately mixed partners keep it from reading as one flat
+ * blue: a soft teal secondary and a muted warm sand tertiary.
  *
- * Light — periwinkle paper (#F7FAFF) over white cards, ink (#131A2A),
- * icon-blue accents darkened for white text (#3B60E4 / #0F6E8C),
- * soft blue fills (#DCE4FF / #D5EFF9 / #E7EEFC) and a single
- * periwinkle hairline (#D5DEF7).
+ * Light — pale blue paper (#F6FAFE) over white cards, ink (#1B2A38),
+ * desaturated blue accents (#4A6D96 / #3F7286), pale blue fills
+ * (#DCE8F4 / #DFEDF1 / #EAF2FA) and a single soft hairline (#D8E5F0).
  *
- * Dark — deep periwinkle night (#0D1226) with the icon blue lifted toward
- * #A9BEFF so it still reads as the same hue, ink (#E6EBFA), and matching
- * desaturated fills (#2A3A85 / #16495C / #232C46).
+ * Dark — deep blue-slate night (#111823) with the accent lifted to a soft
+ * #9CB3CE so it still reads as the same hue, ink (#DFE8F1), and matching
+ * desaturated fills (#2B3F55 / #24414C / #212D3B).
  *
- * Contrast bar: `onPrimary` is >= 5.2:1 on `primary` in light mode (the raw
- * icon blue #4C77FC is only 3.9:1 against white, so light `primary` is shifted
- * to a deeper periwinkle); body ink stays >= 15:1 on every surface.
+ * Contrast bar (all computed, not eyeballed): `primary` carries text and icons
+ * all over the light UI, so it must stay legible on paper — #4A6D96 is 5.11:1
+ * on `background` and 5.36:1 on white, and white `onPrimary` on it is 5.36:1.
+ * Body ink stays >= 13.9:1 on every light surface and >= 14.3:1 on dark.
+ * Every accent sits at 30-37% saturation, so nothing is a saturated "pop".
  */
 private val MeteorDark = darkColorScheme(
-    primary = Color(0xFFA9BEFF),
-    onPrimary = Color(0xFF0E1A4A),
-    primaryContainer = Color(0xFF2A3A85),
-    onPrimaryContainer = Color(0xFFDCE4FF),
-    secondary = Color(0xFF8FD3E8),
-    onSecondary = Color(0xFF00333F),
-    secondaryContainer = Color(0xFF16495C),
-    onSecondaryContainer = Color(0xFFC9ECF8),
-    tertiary = Color(0xFFF3BE8A),
-    onTertiary = Color(0xFF46290E),
-    tertiaryContainer = Color(0xFF6B4420),
-    onTertiaryContainer = Color(0xFFFFDDB8),
-    background = Color(0xFF0D1226),
-    onBackground = Color(0xFFE6EBFA),
-    surface = Color(0xFF141A2E),
-    onSurface = Color(0xFFE6EBFA),
-    surfaceVariant = Color(0xFF232C46),
-    onSurfaceVariant = Color(0xFFAFB9D4),
-    surfaceContainerLowest = Color(0xFF090D1C),
-    surfaceContainerLow = Color(0xFF111729),
-    surfaceContainer = Color(0xFF151C31),
-    surfaceContainerHigh = Color(0xFF1A2239),
-    surfaceContainerHighest = Color(0xFF212A44),
-    outline = Color(0xFF8290B4),
-    outlineVariant = Color(0xFF364260),
+    primary = Color(0xFF9CB3CE),
+    onPrimary = Color(0xFF101A26),
+    primaryContainer = Color(0xFF2B3F55),
+    onPrimaryContainer = Color(0xFFD6E4F2),
+    secondary = Color(0xFF8FB8C6),
+    onSecondary = Color(0xFF0C2229),
+    secondaryContainer = Color(0xFF24414C),
+    onSecondaryContainer = Color(0xFFCFE7EE),
+    tertiary = Color(0xFFDCBB9A),
+    onTertiary = Color(0xFF2A1C0E),
+    tertiaryContainer = Color(0xFF4F3B27),
+    onTertiaryContainer = Color(0xFFF8E3CD),
+    background = Color(0xFF111823),
+    onBackground = Color(0xFFDFE8F1),
+    surface = Color(0xFF161F2B),
+    onSurface = Color(0xFFDFE8F1),
+    surfaceVariant = Color(0xFF212D3B),
+    onSurfaceVariant = Color(0xFFA6B6C6),
+    surfaceContainerLowest = Color(0xFF0C131C),
+    surfaceContainerLow = Color(0xFF131B26),
+    surfaceContainer = Color(0xFF171F2B),
+    surfaceContainerHigh = Color(0xFF1C2634),
+    surfaceContainerHighest = Color(0xFF232E3E),
+    outline = Color(0xFF7C90A3),
+    outlineVariant = Color(0xFF2F4053),
 )
 
 private val MeteorLight = lightColorScheme(
-    primary = Color(0xFF3B60E4),
+    primary = Color(0xFF4A6D96),
     onPrimary = Color(0xFFFFFFFF),
-    primaryContainer = Color(0xFFDCE4FF),
-    onPrimaryContainer = Color(0xFF16225E),
-    secondary = Color(0xFF0F6E8C),
+    primaryContainer = Color(0xFFDCE8F4),
+    onPrimaryContainer = Color(0xFF1B3049),
+    secondary = Color(0xFF3F7286),
     onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFD5EFF9),
-    onSecondaryContainer = Color(0xFF04303D),
-    tertiary = Color(0xFFA85B22),
+    secondaryContainer = Color(0xFFDFEDF1),
+    onSecondaryContainer = Color(0xFF123039),
+    tertiary = Color(0xFF8A6440),
     onTertiary = Color(0xFFFFFFFF),
-    tertiaryContainer = Color(0xFFFFDFC0),
-    onTertiaryContainer = Color(0xFF391A00),
-    background = Color(0xFFF7FAFF),
-    onBackground = Color(0xFF131A2A),
+    tertiaryContainer = Color(0xFFF7E7D6),
+    onTertiaryContainer = Color(0xFF331A00),
+    background = Color(0xFFF6FAFE),
+    onBackground = Color(0xFF1B2A38),
     surface = Color(0xFFFFFFFF),
-    onSurface = Color(0xFF131A2A),
-    surfaceVariant = Color(0xFFE7EEFC),
-    onSurfaceVariant = Color(0xFF4C5A73),
+    onSurface = Color(0xFF1B2A38),
+    surfaceVariant = Color(0xFFEAF2FA),
+    onSurfaceVariant = Color(0xFF55677A),
     surfaceContainerLowest = Color(0xFFFFFFFF),
-    surfaceContainerLow = Color(0xFFFBFDFF),
-    surfaceContainer = Color(0xFFF7FAFF),
-    surfaceContainerHigh = Color(0xFFEFF4FE),
-    surfaceContainerHighest = Color(0xFFE8EFFC),
-    outline = Color(0xFF8A9AC0),
-    outlineVariant = Color(0xFFD5DEF7),
+    surfaceContainerLow = Color(0xFFFAFCFE),
+    surfaceContainer = Color(0xFFF6FAFE),
+    surfaceContainerHigh = Color(0xFFEEF5FC),
+    surfaceContainerHighest = Color(0xFFE7F0F9),
+    outline = Color(0xFF93A7B8),
+    outlineVariant = Color(0xFFD8E5F0),
 )
 
 private val MeteorShapes = Shapes(
