@@ -10,6 +10,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meteor.memory.core.log.AppLog
+import com.meteor.memory.core.storage.AlbumEntry
 import com.meteor.memory.core.storage.AlbumKind
 import com.meteor.memory.core.storage.AlbumRepository
 import com.meteor.memory.feature.gallery.GalleryKind
@@ -76,10 +77,19 @@ class MediaViewerViewModel @Inject constructor(
     @Volatile
     private var loadedBytes: ByteArray? = null
 
+    /**
+     * Entry resolved while loading. `entry(ref)` walks the whole legacy image
+     * directory for `meteor://image/` refs, so sharing reuses this instead of
+     * paying for the same scan a second time.
+     */
+    @Volatile
+    private var loadedEntry: AlbumEntry? = null
+
     init {
         viewModelScope.launch {
             try {
                 val loaded = withContext(Dispatchers.IO) { load() }
+                loadedEntry = loaded.entry
                 _state.update {
                     it.copy(
                         kind = loaded.kind,
@@ -178,6 +188,7 @@ class MediaViewerViewModel @Inject constructor(
         val hasContent: Boolean,
         val dateLabel: String?,
         val fileText: String? = null,
+        val entry: AlbumEntry? = null,
     )
 
     private fun load(): Loaded {
@@ -195,22 +206,27 @@ class MediaViewerViewModel @Inject constructor(
         // importer extracted, and "no text" is a normal outcome (PDF, images).
         if (entry.kind == AlbumKind.FILE) {
             val text = albumRepository.readFileText(ref)
-            return Loaded(kind, entry.fileName, null, hasContent = true, dateLabel, text)
+            return Loaded(kind, entry.fileName, null, hasContent = true, dateLabel, text, entry)
         }
 
         if (entry.kind != AlbumKind.IMAGE) {
-            return Loaded(kind, entry.fileName, null, hasContent = true, dateLabel = dateLabel)
+            return Loaded(
+                kind, entry.fileName, null, hasContent = true, dateLabel = dateLabel, entry = entry,
+            )
         }
 
-        val bytes = albumRepository.loadBytes(ref) ?: return Loaded(kind, entry.fileName, null, false, dateLabel)
+        val bytes = albumRepository.loadBytes(ref)
+            ?: return Loaded(
+                kind, entry.fileName, null, false, dateLabel, entry = entry,
+            )
         val options = sampledImageOptions(bytes, MAX_IMAGE_EDGE)
         val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.asImageBitmap()
         if (bitmap != null) loadedBytes = bytes
-        return Loaded(kind, entry.fileName, bitmap, hasContent = bitmap != null, dateLabel = dateLabel)
+        return Loaded(kind, entry.fileName, bitmap, hasContent = bitmap != null, dateLabel, entry = entry)
     }
 
     private suspend fun buildShareRequest(): ShareRequest? {
-        val entry = albumRepository.entry(ref) ?: return null
+        val entry = loadedEntry ?: albumRepository.entry(ref) ?: return null
         val mimeType = entry.mimeType?.takeIf { it.isNotBlank() }
             ?: MediaShareFile.mimeTypeForKind(entry.kind)
         val dir = File(context.cacheDir, SHARE_DIR)

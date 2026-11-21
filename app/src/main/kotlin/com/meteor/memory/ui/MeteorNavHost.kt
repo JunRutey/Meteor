@@ -17,9 +17,6 @@ import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.FastOutLinearInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -109,6 +106,7 @@ import com.meteor.memory.ui.search.SearchScreen
 import com.meteor.memory.ui.search.SearchViewModel
 import com.meteor.memory.ui.settings.AiTestState
 import com.meteor.memory.ui.settings.SettingsViewModel
+import com.meteor.memory.ui.theme.MotionTokens
 import com.meteor.memory.update.UpdateError
 import com.meteor.memory.update.UpdateState
 import kotlinx.coroutines.Dispatchers
@@ -120,14 +118,10 @@ private const val ROUTE_SETTINGS = "settings"
 
 /**
  * The primary destinations use a shared fade-through transition. Settings
- * detail pages are the only destinations that slide laterally.
+ * detail pages are the only destinations that slide laterally. All durations
+ * and easings come from [MotionTokens] so every screen moves on one scale.
  */
-private const val SETTINGS_ENTER_MS = 340
-private const val SETTINGS_EXIT_MS = 200
 private const val SETTINGS_ENTER_SCALE = 0.97f
-private const val DETAIL_SLIDE_MS = 300
-private const val PAGE_FADE_ENTER_MS = 280
-private const val PAGE_FADE_EXIT_MS = 220
 private const val ROUTE_BIRTH_DATE = "settings/birth-date"
 private const val ROUTE_AI_SETTINGS = "settings/ai"
 private const val ROUTE_AI_USAGE = "settings/ai/usage"
@@ -182,17 +176,14 @@ private val MAIN_FADE_ROUTES = setOf(
 private fun usesMainFadeTransition(route: String?): Boolean = route != null && route in MAIN_FADE_ROUTES
 
 private fun fadeThroughEnterTransition(): EnterTransition =
-    fadeIn(tween(durationMillis = SETTINGS_ENTER_MS, easing = FastOutSlowInEasing)) +
+    fadeIn(MotionTokens.pageIn()) +
         scaleIn(
             initialScale = SETTINGS_ENTER_SCALE,
-            animationSpec = tween(
-                durationMillis = SETTINGS_ENTER_MS,
-                easing = FastOutSlowInEasing,
-            ),
+            animationSpec = MotionTokens.pageIn(),
         )
 
 private fun fadeThroughExitTransition(): ExitTransition =
-    fadeOut(tween(durationMillis = SETTINGS_EXIT_MS, easing = FastOutLinearInEasing))
+    fadeOut(MotionTokens.pageOut())
 
 private fun Context.openInBrowser(url: String, failureMessage: String? = null) {
     val opened = runCatching {
@@ -266,10 +257,10 @@ fun MeteorNavHost(
             } else if (initialState.destination.route == ROUTE_SETTINGS) {
                 slideIntoContainer(
                     towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                    animationSpec = tween(durationMillis = DETAIL_SLIDE_MS, easing = FastOutSlowInEasing),
+                    animationSpec = MotionTokens.slide(),
                 )
             } else {
-                fadeIn(tween(durationMillis = PAGE_FADE_ENTER_MS, easing = FastOutSlowInEasing))
+                fadeIn(MotionTokens.pageIn())
             }
         } else {
             EnterTransition.None
@@ -282,10 +273,10 @@ fun MeteorNavHost(
             } else if (initialState.destination.route == ROUTE_SETTINGS) {
                 slideOutOfContainer(
                     towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                    animationSpec = tween(durationMillis = DETAIL_SLIDE_MS, easing = FastOutSlowInEasing),
+                    animationSpec = MotionTokens.slide(),
                 )
             } else {
-                fadeOut(tween(durationMillis = PAGE_FADE_EXIT_MS, easing = FastOutLinearInEasing))
+                fadeOut(MotionTokens.pageOut())
             }
         } else {
             ExitTransition.None
@@ -299,12 +290,12 @@ fun MeteorNavHost(
             ) {
                 slideIntoContainer(
                     towards = AnimatedContentTransitionScope.SlideDirection.End,
-                    animationSpec = tween(durationMillis = DETAIL_SLIDE_MS, easing = FastOutSlowInEasing),
+                    animationSpec = MotionTokens.slide(),
                 )
             } else if (usesMainFadeTransition(targetState.destination.route)) {
                 fadeThroughEnterTransition()
             } else {
-                fadeIn(tween(durationMillis = PAGE_FADE_ENTER_MS, easing = FastOutSlowInEasing))
+                fadeIn(MotionTokens.pageIn())
             }
         } else {
             EnterTransition.None
@@ -318,12 +309,12 @@ fun MeteorNavHost(
             ) {
                 slideOutOfContainer(
                     towards = AnimatedContentTransitionScope.SlideDirection.End,
-                    animationSpec = tween(durationMillis = DETAIL_SLIDE_MS, easing = FastOutSlowInEasing),
+                    animationSpec = MotionTokens.slide(),
                 )
             } else if (usesMainFadeTransition(initialState.destination.route)) {
                 fadeThroughExitTransition()
             } else {
-                fadeOut(tween(durationMillis = PAGE_FADE_EXIT_MS, easing = FastOutLinearInEasing))
+                fadeOut(MotionTokens.pageOut())
             }
         } else {
             ExitTransition.None
@@ -408,7 +399,12 @@ fun MeteorNavHost(
             val viewModel: PeopleViewModel = hiltViewModel()
             val people by viewModel.people.collectAsStateWithLifecycle()
             val availableTags by viewModel.customTags.collectAsStateWithLifecycle()
-            val context = LocalContext.current
+            // Resolved through stringResource, not context.getString: a
+            // LocalContext read is not invalidated by a configuration change,
+            // so the label would keep the previous locale after a language
+            // switch. The map below is not a composable scope, hence the hoist.
+            val profileLabel = stringResource(R.string.people_secondary_profile)
+            val missingLabel = stringResource(R.string.people_secondary_missing)
 
             RefreshOnResume { viewModel.refresh() }
 
@@ -418,13 +414,7 @@ fun MeteorNavHost(
                         personId = entry.personId,
                         displayName = entry.displayName ?: entry.personId.take(8),
                         relation = entry.relation,
-                        secondary = context.getString(
-                            if (entry.hasProfile) {
-                                R.string.people_secondary_profile
-                            } else {
-                                R.string.people_secondary_missing
-                            },
-                        ),
+                        secondary = if (entry.hasProfile) profileLabel else missingLabel,
                         tags = entry.tags,
                     )
                 },
@@ -638,7 +628,9 @@ fun MeteorNavHost(
             ),
         ) { entry ->
             val date = entry.arguments?.getString(GalleryViewModel.ARG_DATE)
-            LaunchedEffect(Unit) {
+            // Keyed on `date`: a reused destination (single-top or state restore)
+            // must re-run the redirect when the argument differs.
+            LaunchedEffect(date) {
                 navController.navigate(if (date == null) "album" else "album?date=$date") {
                     popUpTo(ROUTE_CALENDAR) { inclusive = false }
                 }
@@ -651,7 +643,8 @@ fun MeteorNavHost(
             arguments = listOf(navArgument(ARG_LEGACY_TOKEN) { type = NavType.StringType }),
         ) { entry ->
             val token = entry.arguments?.getString(ARG_LEGACY_TOKEN).orEmpty()
-            LaunchedEffect(Unit) {
+            // Keyed on `token` for the same reason as the gallery redirect above.
+            LaunchedEffect(token) {
                 val ref = "meteor://image/$token"
                 navController.navigate("media/${Uri.encode(ref)}") {
                     popUpTo(ROUTE_CALENDAR) { inclusive = false }
@@ -667,6 +660,10 @@ fun MeteorNavHost(
             val viewModel: MediaViewerViewModel = hiltViewModel()
             val state by viewModel.state.collectAsStateWithLifecycle()
             val context = LocalContext.current
+            // Hoisted out of the LaunchedEffect below: getString on a
+            // LocalContext read is not invalidated by configuration changes.
+            val clipLabel = stringResource(GalleryR.string.gallery_share_clip_label)
+            val chooserLabel = stringResource(GalleryR.string.gallery_share_chooser)
 
             LaunchedEffect(state.deleted) {
                 if (state.deleted) navController.popBackStack()
@@ -675,21 +672,17 @@ fun MeteorNavHost(
             LaunchedEffect(state.shareRequest) {
                 val request = state.shareRequest ?: return@LaunchedEffect
                 val launched = runCatching {
-                    val label = context.getString(GalleryR.string.gallery_share_clip_label)
                     val send = Intent(Intent.ACTION_SEND).apply {
                         type = request.mimeType
                         putExtra(Intent.EXTRA_STREAM, request.uri)
                         clipData = ClipData(
-                            ClipDescription(label, arrayOf(request.mimeType)),
+                            ClipDescription(clipLabel, arrayOf(request.mimeType)),
                             ClipData.Item(request.uri),
                         )
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
                     context.startActivity(
-                        Intent.createChooser(
-                            send,
-                            context.getString(GalleryR.string.gallery_share_chooser),
-                        ),
+                        Intent.createChooser(send, chooserLabel),
                     )
                     onSystemScreenOpened()
                 }

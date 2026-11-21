@@ -165,7 +165,11 @@ class GalleryViewModel @Inject constructor(
                 val mode = AlbumMapping.toStorageSort(_sortMode.value)
                 val kinds = AlbumMapping.toKinds(_filter.value)
                 val days = withContext(Dispatchers.IO) {
-                    val entries = albumRepository.entries()
+                    // Narrow by kind in the repository, then cap: taking the first
+                    // MAX_ITEMS before the kind filter emptied the grid once the
+                    // archive grew past the cap (the newest 120 items could all be
+                    // images, leaving the 「文件」 chip with nothing to show).
+                    val entries = albumRepository.entries(kinds = kinds)
                     val sorted = albumRepository.sorted(entries, mode)
                     val filtered = if (filterDate == null) {
                         sorted
@@ -174,11 +178,7 @@ class GalleryViewModel @Inject constructor(
                             entry.importedAt.atZone(zone).toLocalDate() == filterDate
                         }
                     }.take(MAX_ITEMS)
-                    // Apply the kind filter in-memory: the repository's `entries`
-                    // already returns all kinds; the chip narrows them here so
-                    // the count-based pagination stays deterministic.
-                    val byKind = if (kinds == null) filtered else filtered.filter { it.kind in kinds }
-                    AlbumMapping.groupByDay(byKind, { date -> dayFormat.format(date) }, zone)
+                    AlbumMapping.groupByDay(filtered, { date -> dayFormat.format(date) }, zone)
                 }
                 _days.value = days
                 appLog.debug(TAG, "album loaded ${days.sumOf { it.items.size }} media")
