@@ -31,11 +31,7 @@ data class StorageSnapshot(
     val files: List<StoredFileInfo>,
 )
 
-data class IndexSummary(
-    val records: Int,
-    val types: Int,
-    val persons: Int,
-)/**
+/**
  * DEBUG ONLY. Reads the private directory as raw bytes so the encrypted form can
  * be inspected on-device, and rebuilds the FTS index so v0.2 can be verified
  * without a cable or a debugger.

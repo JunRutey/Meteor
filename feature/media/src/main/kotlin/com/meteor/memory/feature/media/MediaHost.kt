@@ -29,15 +29,6 @@ class MediaHost(
     val album: AlbumRepository by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
         AlbumRepository(mediaStore, imageStore)
     }
-
-    /** Scratch directory for ExoPlayer's temporary plaintext copies. */
-    val playbackDir: File by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-        File(cacheDir, PLAYBACK_DIR_NAME).also { directory ->
-            // A playback killed mid-stream leaves a plaintext file behind; clear
-            // the stale ones the first time this process needs the directory.
-            MediaPlaybackFiles.prune(directory, MediaPlaybackFiles.STALE_AFTER_MS)
-        }
-    }
 }
 
 /** Null when the tree was not wrapped in [ProvideMediaHost]; composables degrade instead of crashing. */
@@ -48,5 +39,3 @@ val LocalMediaHost = staticCompositionLocalOf<MediaHost?> { null }
 fun ProvideMediaHost(host: MediaHost, content: @Composable () -> Unit) {
     CompositionLocalProvider(LocalMediaHost provides host, content = content)
 }
-
-private const val PLAYBACK_DIR_NAME = "media-playback"

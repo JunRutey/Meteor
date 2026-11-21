@@ -33,11 +33,6 @@ object AlbumMapping {
         GallerySortMode.IMPORT_DATE -> AlbumSortMode.IMPORT_DATE
     }
 
-    fun toUiSort(mode: AlbumSortMode): GallerySortMode = when (mode) {
-        AlbumSortMode.SOURCE_DATE -> GallerySortMode.SOURCE_DATE
-        AlbumSortMode.IMPORT_DATE -> GallerySortMode.IMPORT_DATE
-    }
-
     fun toKinds(filter: GalleryFilter): Set<AlbumKind>? = when (filter) {
         GalleryFilter.ALL -> null
         GalleryFilter.IMAGES -> setOf(AlbumKind.IMAGE)

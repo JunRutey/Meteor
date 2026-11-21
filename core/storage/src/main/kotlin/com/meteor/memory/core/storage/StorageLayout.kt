@@ -54,8 +54,6 @@ class StorageLayout(private val root: File) {
      */
     fun settingsSnapshotFile(): File = File(File(root, SETTINGS), SETTINGS_SNAPSHOT)
 
-    fun legacyRoot(): File = File(root, LEGACY)
-
     private fun personDir(personId: String?): String =
         if (personId == null) SELF else "$RELATIONS/${requirePerson(personId)}"
 

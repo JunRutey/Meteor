@@ -272,14 +272,4 @@ class MediaImportLogicTest {
         assertEquals(expected, actual)
         assertEquals(64, actual.length)
     }
-
-    @Test
-    fun `playback file extensions follow the container`() {
-        assertEquals(".mp4", MediaPlaybackFiles.extensionFor("video/mp4"))
-        assertEquals(".mov", MediaPlaybackFiles.extensionFor("video/QuickTime; codecs=hvc1"))
-        assertEquals(".mp3", MediaPlaybackFiles.extensionFor("audio/mpeg"))
-        assertEquals(".m4a", MediaPlaybackFiles.extensionFor("audio/mp4"))
-        assertEquals(".bin", MediaPlaybackFiles.extensionFor("application/octet-stream"))
-        assertEquals(".bin", MediaPlaybackFiles.extensionFor(null))
-    }
 }

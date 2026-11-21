@@ -33,6 +33,12 @@ import java.time.format.FormatStyle
 import java.util.Locale
 import javax.inject.Inject
 
+/** A decrypted cache file ready to be handed to the system share sheet. */
+data class ShareRequest(
+    val uri: Uri,
+    val mimeType: String,
+)
+
 /** Everything the media viewer needs to render one item and its actions. */
 data class MediaViewerState(
     val ref: String = "",

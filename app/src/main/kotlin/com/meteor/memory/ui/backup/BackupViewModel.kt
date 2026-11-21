@@ -79,10 +79,6 @@ class BackupViewModel @Inject constructor(
         }
     }
 
-    fun clearOutcome() {
-        _state.value = _state.value.copy(outcome = null)
-    }
-
     private companion object {
         const val TAG = "Backup"
     }

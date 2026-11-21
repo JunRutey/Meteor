@@ -90,11 +90,6 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
 
     suspend fun setVerboseLogging(enabled: Boolean) = store.edit { it[KEY_VERBOSE_LOGGING] = enabled }
 
-    suspend fun setAutoBackupEnabled(enabled: Boolean) = store.edit { it[KEY_AUTO_BACKUP] = enabled }
-
-    suspend fun setBackupRetention(count: Int) =
-        store.edit { it[KEY_BACKUP_RETENTION] = count.coerceIn(1, 30) }
-
     suspend fun setAutoCheckForUpdates(enabled: Boolean) =
         store.edit { it[KEY_AUTO_CHECK_FOR_UPDATES] = enabled }
 
@@ -114,12 +109,6 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
 
     suspend fun setAiConsentAccepted(accepted: Boolean) =
         store.edit { it[KEY_AI_CONSENT] = accepted }
-
-    suspend fun setAiProvider(provider: String) =
-        store.edit { it[KEY_AI_PROVIDER] = provider.trim() }
-
-    suspend fun setAiBaseUrl(baseUrl: String) =
-        store.edit { it[KEY_AI_BASE_URL] = baseUrl.trim() }
 
     suspend fun setAiModel(model: String) =
         store.edit { it[KEY_AI_MODEL] = model.trim() }

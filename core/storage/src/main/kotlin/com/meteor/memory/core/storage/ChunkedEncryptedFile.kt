@@ -68,7 +68,6 @@ internal object ChunkedEncryptedFile {
      * come out of [FileCrypto].
      */
     const val MIN_ENCRYPTED_CHUNK_SIZE = 29
-    const val MAX_ENCRYPTED_CHUNK_SIZE = CHUNK_SIZE + Int.SIZE_BYTES + 29
 
     private const val END_OF_DATA = 0
 

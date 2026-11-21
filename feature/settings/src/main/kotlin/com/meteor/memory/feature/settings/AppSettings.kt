@@ -110,11 +110,3 @@ enum class FontScale { SYSTEM, SMALL, NORMAL, LARGE }
 
 /** File picker used by the media insertion flows (ADR-059). */
 enum class MediaPickerMode { IN_APP, SYSTEM }
-
-/**
- * Feature switches resolved at composition time. `aiEnabled` gates the AI entry
- * points, so feature code asks here instead of reading AI settings directly.
- */
-class FeatureFlags(private val aiEnabled: Boolean) {
-    val ai: Boolean get() = aiEnabled
-}

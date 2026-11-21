@@ -38,9 +38,6 @@ internal object MediaImportLogic {
     private val RETRIEVER_DATE_TIME: DateTimeFormatter =
         DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss", Locale.ROOT)
 
-    private val EXIF_OFFSET: DateTimeFormatter =
-        DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT)
-
     /**
      * The `image`, `video` and `audio` MIME families decide the kind; anything
      * else is not media Meteor can store, so the import is rejected with `null`.

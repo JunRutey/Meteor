@@ -95,9 +95,6 @@ data class AiConfig(
 
     val reasoningMode: ReasoningMode get() = ReasoningMode.fromWire(reasoning)
 
-    /** Only DeepSeek documents the thinking fields; others keep AUTO. */
-    val reasoningSupported: Boolean get() = provider == AiPresets.DEEPSEEK
-
     /** The official API accepts both `/v1` and the bare host as base URL. */
     val officialDeepSeekEndpoint: Boolean
         get() {

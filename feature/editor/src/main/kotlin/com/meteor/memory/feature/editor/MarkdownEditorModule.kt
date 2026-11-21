@@ -44,9 +44,6 @@ class MarkdownEditorModule(
         doc.copy(body = MarkdownEditing.appendLink(doc.body, target, label))
 }
 
-/** Alias kept so the frozen signature reads naturally in Kotlin. */
-private typealias ComposableUnit = () -> Unit
-
 /**
  * Downscales to a sane maximum edge and re-encodes as JPEG.
  *
