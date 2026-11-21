@@ -9,6 +9,9 @@
 > 当前版本 **v1.5.0**。功能与隐私的细节见 [AI 功能与隐私](docs/AI.md) 与
 > [加密与安全](docs/SECURITY.md)，设计取舍见 [ADR](docs/adr)，
 > 历次发布见 [发布说明](docs/releases)。
+>
+> **要改代码，先读 [开发手册](docs/DEVELOPMENT.md)**——模块边界、数据格式、
+> 冻结接口、编码规范与发布流程都在那里，它是本仓库唯一的规范文档。
 
 ## 功能概览
 
@@ -58,7 +61,11 @@
 - 在 Actions 页面下载 `meteor-debug-apk` 构件即可安装
 - 打 `v*` 标签 → 触发 [`Release`](.github/workflows/release.yml)，生成签名 APK 并发布
 
-详见 [AGENTS.md](AGENTS.md)。
+CI 固定使用 Gradle 8.11.1，并且**同时构建 debug 与 release 变体**——release 才跑 R8
+与资源压缩，只在发 tag 时才第一次执行收缩规则的话，规则写错会表现为发版失败而不是 PR 失败。
+
+本地想构建的话自行安装 ≥8.11.1 的 Gradle；验证仍以 CI 为准。
+详见 [开发手册 §2](docs/DEVELOPMENT.md#2-环境与验证闭环) 与 [AGENTS.md](AGENTS.md)。
 
 ## 模块结构
 
@@ -83,6 +90,9 @@
 依赖严格单向、无环，由 `tools/check-module-graph.sh` 在 CI 中强制。
 不要求模块能被整体摘掉，只要求单个功能的改动不要把整个应用弄坏。
 `:feature-ai` 刻意不依赖 `:core-index`：自己在解密后的记录上检索，耦合面更小。
+
+完整的依赖边表、各模块公开 API 与已知边界瑕疵见
+[开发手册 §3](docs/DEVELOPMENT.md#3-模块图与依赖方向r1)。
 
 ## 版本路线
 

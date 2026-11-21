@@ -8,7 +8,7 @@ Meteor 的实现和发布流程依赖以下开源项目。这里列出直接依�
 | 项目 | 用途 | 许可证 |
 |---|---|---|
 | [AndroidX / Jetpack](https://github.com/androidx/androidx)（Core KTX、SplashScreen、Lifecycle、Activity Compose、Navigation Compose、DataStore、Security Crypto、Biometric） | Android 基础能力、冷启动 Splash、状态管理、导航、偏好与生物识别 | Apache-2.0 |
-| [Jetpack Compose](https://github.com/androidx/androidx)（Compose BOM、UI、Material 3、Animation、Material Icons） | 全应用 UI 与 Material 3 主题 | Apache-2.0 |
+| [Jetpack Compose](https://github.com/androidx/androidx)（Compose BOM、UI、Material 3、Animation） | 全应用 UI 与 Material 3 主题；图标全部是自绘 Canvas 路径，不依赖 Material Icons | Apache-2.0 |
 | [Kotlin](https://github.com/JetBrains/kotlin) | 应用与测试代码语言 | Apache-2.0 |
 | [kotlinx.coroutines](https://github.com/Kotlin/kotlinx.coroutines) | 异步任务、流式读取与 IO 调度 | Apache-2.0 |
 | [Hilt / Dagger](https://github.com/google/dagger) | 依赖注入，仅限 `:app` 组装边界 | Apache-2.0 |

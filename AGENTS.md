@@ -2,6 +2,10 @@
 
 本文件是**硬约束**。任何自动化代理或协作者在本仓库工作前必须读完。
 
+**配套文档**：[`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)（开发手册）是本仓库唯一的规范文档，
+包含模块依赖边表、数据格式、各模块公开 API、编码规范与发布流程。
+本文件只列最容易被违反、违反代价最高的硬规则；其余细节以开发手册为准。
+
 ---
 
 ## 1. 环境说明：这台机器不构建（仅限当前维护者环境）
@@ -38,7 +42,7 @@
 **目标不是「每个模块都能被整体摘掉」，而是「单个功能的改动不要把整个应用弄坏」。**
 判断标准：依赖单向、无环，跨模块只走窄接口，不出现一个 feature 直接摸另一个 feature 的内部实现。
 
-依赖方向由 `tools/check-module-graph.sh` 强制，CI 第一步就会跑。新增依赖边 = 改架构 = 必须先在档案 §3 登记。
+依赖方向由 `tools/check-module-graph.sh` 强制，CI 第一步就会跑。新增依赖边 = 改架构 = 必须先在 [开发手册 §3](docs/DEVELOPMENT.md#3-模块图与依赖方向r1) 登记。
 
 > **已废止：R3「模块必须可整体移除」。** 不再要求任何模块能被摘掉，CI 也不再验证这一点。
 > 为它服务的 `-Pmeteor.excludeModules` 开关、条件源码集（`src/indexEnabled` 等）与对应替身实现已全部删除，
@@ -49,6 +53,10 @@
 `core-crypto`、`core-storage`、`core-backup`、`feature-editor`、`feature-ai`、`core-index` 中标注 `FROZEN INTERFACE` 的签名**不得修改**。
 
 新增能力只能：新增模块，或新增带默认实现的方法。改签名必须先写 ADR。
+
+完整冻结清单（7 个接口）与合规的扩展先例见 [开发手册 §8](docs/DEVELOPMENT.md#8-冻结接口r2)。
+其中包含一条容易忽略的硬要求：**`app/proguard-rules.pro` 必须保留 `-keepclassmembers enum *`**，
+因为 `MediaKind`、`DarkMode` 等枚举按 `valueOf(name)` 读写磁盘，被 R8 改名后旧档案会静默读不回来。
 
 ## 5. 版本与依赖
 

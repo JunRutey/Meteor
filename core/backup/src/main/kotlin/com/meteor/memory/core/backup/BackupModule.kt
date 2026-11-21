@@ -23,7 +23,7 @@ data class BackupMeta(
 )
 
 /**
- * FROZEN INTERFACE (Meteor archive §7). Do not modify without an ADR.
+ * FROZEN INTERFACE (Meteor archive §8). Do not modify without an ADR.
  *
  * Exports are deliberately plaintext: the Keystore key is device-bound and
  * cannot migrate, so plaintext zip is the only path to a new device.
