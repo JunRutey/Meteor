@@ -50,8 +50,6 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Locale
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 private data class LunarDateSelection(
     val year: Int,
@@ -60,15 +58,10 @@ private data class LunarDateSelection(
     val leapMonth: Boolean,
 )
 
-private data class LunarDateConversion(
-    val selection: LunarDateSelection,
-    val gregorianDate: LocalDate?,
-)
-
 /**
  * A lunar year spans two Gregorian years, so a usable conversion has to land in
- * the selected year or the one right after it; anything else means the ICU
- * result does not belong to this selection.
+ * the selected year or the one right after it; anything else means the
+ * conversion does not belong to this selection.
  */
 private fun isUsableLunarDate(date: LocalDate?, lunarYear: Int): Boolean =
     date != null && (date.year == lunarYear || date.year == lunarYear + 1)
@@ -87,12 +80,10 @@ private val DateWheelCenterPadding = 54.dp
  * mid-flick would save whichever day happened to pass the centre line. Only a
  * tap commits a value.
  *
- * The lunar conversion never runs on the main thread: enumerating a lunar year
- * reads one ICU field per Gregorian day, which is too slow for a composable
- * that reacts to every wheel change. [onProfileChanged] receives `null`
- * while the current calendar has no valid, explicitly chosen date; it is not
- * called while the conversion for the latest selection is still running, so
- * callers keep the last settled profile instead of seeing a flash of `null`.
+ * Lunar conversion is a table lookup (ADR-047), so it runs inline on every
+ * wheel change; there is no pending window between a selection and its
+ * Gregorian date. [onProfileChanged] receives `null` while the current
+ * calendar has no valid, explicitly chosen date.
  */
 @Composable
 internal fun BirthDatePicker(
@@ -123,44 +114,21 @@ internal fun BirthDatePicker(
     var pickerExpanded by rememberSaveable { mutableStateOf(false) }
     val lunarSelection = LunarDateSelection(lunarYear, lunarMonth, lunarDay, leapMonth)
 
-    var lunarMonths by remember { mutableStateOf<List<LunarMonth>>(emptyList()) }
-    LaunchedEffect(useLunar, lunarYear) {
-        lunarMonths = if (useLunar) {
-            withContext(Dispatchers.Default) { calendar.monthsInYear(lunarYear) }
-        } else {
-            emptyList()
-        }
+    val lunarMonths = remember(useLunar, lunarYear) {
+        if (useLunar) calendar.monthsInYear(lunarYear) else emptyList()
     }
-
-    var lunarConversion by remember { mutableStateOf<LunarDateConversion?>(null) }
-    LaunchedEffect(useLunar, lunarSelection) {
-        val date = if (useLunar) {
-            withContext(Dispatchers.Default) {
-                calendar.toGregorian(
-                    lunarSelection.year,
-                    lunarSelection.month,
-                    lunarSelection.day,
-                    lunarSelection.leapMonth,
-                )
-            }
+    val settledLunarDate = remember(useLunar, lunarSelection) {
+        if (useLunar) {
+            calendar.toGregorian(
+                lunarSelection.year,
+                lunarSelection.month,
+                lunarSelection.day,
+                lunarSelection.leapMonth,
+            )
         } else {
             null
         }
-        lunarConversion = LunarDateConversion(lunarSelection, date)
     }
-
-    // The conversion runs off the main thread, so right after a wheel change
-    // the stored result still belongs to the previous selection. Publishing
-    // `null` for those frames would flicker the Save button and the "choose a
-    // date" hint; keep the last settled profile until the new result lands.
-    val conversionPending = useLunar && lunarConversion?.selection != lunarSelection
-    val settledLunarDate = lunarConversion
-        ?.takeIf { it.selection == lunarSelection }
-        ?.gregorianDate
-    // Same reason as above: the Gregorian date under the wheels must keep
-    // showing the last completed conversion instead of blinking out while the
-    // next one runs. It is replaced as soon as the new result lands.
-    val shownLunarDate = settledLunarDate ?: lunarConversion?.gregorianDate
 
     val selectedLunarMonth = lunarMonths.firstOrNull {
         it.month == lunarMonth && it.leapMonth == leapMonth
@@ -207,10 +175,8 @@ internal fun BirthDatePicker(
         !useLunar && initialProfile is BirthProfile.Solar -> initialProfile
         else -> null
     }
-    if (!conversionPending) {
-        SideEffect {
-            onProfileChanged(if (hasSelection) computedProfile else initialForCalendar)
-        }
+    SideEffect {
+        onProfileChanged(if (hasSelection) computedProfile else initialForCalendar)
     }
 
     val invalidSelection = if (useLunar) {
@@ -398,7 +364,7 @@ internal fun BirthDatePicker(
         if (pickerExpanded) {
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 if (useLunar) {
-                    shownLunarDate?.let { date ->
+                    settledLunarDate?.let { date ->
                         Text(
                             text = stringResource(
                                 R.string.birth_date_value,

@@ -11,7 +11,6 @@ import androidx.lifecycle.lifecycleScope
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.feature.settings.SettingsRepository
 import com.meteor.memory.ui.MeteorRoot
-import com.meteor.memory.ui.life.LifeStartupPrewarm
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
@@ -33,9 +32,6 @@ class MainActivity : FragmentActivity() {
     @Inject
     lateinit var settingsRepository: SettingsRepository
 
-    @Inject
-    lateinit var lifePrewarm: LifeStartupPrewarm
-
     /**
      * Set once [MeteorRoot] has resolved the lock preference and the onboarding
      * gate. Until then the system splash keeps the Meteor icon on screen, so no
@@ -45,17 +41,9 @@ class MainActivity : FragmentActivity() {
     private var contentReady: Boolean = false
 
     /**
-     * Mirror of [LifeStartupPrewarm.ready] for the splash predicate. A plain
-     * `@Volatile` field (instead of touching the injected singleton inside the
-     * predicate) keeps the condition independent of Hilt injection order.
-     */
-    @Volatile
-    private var prewarmReady: Boolean = false
-
-    /**
      * Set by the 5-second safety valve. It releases the splash even if the root
-     * state or the life prewarm never finishes. The lock gate below is still the
-     * only thing that decides whether content may render.
+     * state never finishes. The lock gate below is still the only thing that
+     * decides whether content may render.
      */
     @Volatile
     private var splashTimedOut: Boolean = false
@@ -63,17 +51,12 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         // Must run before super.onCreate so the platform splash is adopted
         // instead of the plain window background (ADR-038). It stays until the
-        // shell knows what it may render *and* the life prewarm has something
-        // cached (ADR-044); both are cheap volatile reads.
+        // shell knows what it may render; the condition is a cheap volatile read.
         installSplashScreen().setKeepOnScreenCondition {
-            !contentReady || (!prewarmReady && !splashTimedOut)
+            !contentReady && !splashTimedOut
         }
 
         super.onCreate(savedInstanceState)
-
-        lifecycleScope.launch {
-            lifePrewarm.ready.collect { ready -> prewarmReady = ready }
-        }
 
         // Edge-to-edge in one place (ADR-024): the app draws behind the bars and
         // MeteorRoot pads by the insets. Without this the client still believes the
@@ -109,10 +92,10 @@ class MainActivity : FragmentActivity() {
             )
         }
 
-        // Safety valve: if the root state or the prewarm never resolves, hand
-        // over to the shell anyway instead of leaving the splash up forever. The
-        // lock gate still decides what may be rendered; releasing the splash
-        // unlocks nothing, and the life tab falls back to its own loading state.
+        // Safety valve: if the root state never resolves, hand over to the
+        // shell anyway instead of leaving the splash up forever. The lock gate
+        // still decides what may be rendered; releasing the splash unlocks
+        // nothing, and the life tab falls back to its own loading state.
         lifecycleScope.launch {
             delay(SPLASH_MAX_WAIT_MS)
             splashTimedOut = true
