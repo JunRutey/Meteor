@@ -130,7 +130,7 @@ fun AiSettingsSection(
             .fillMaxWidth()
             .animateContentSize(
                 animationSpec = if (animationsEnabled) {
-                    tween(durationMillis = 180, easing = FastOutSlowInEasing)
+                    tween(durationMillis = PANEL_MS, easing = FastOutSlowInEasing)
                 } else {
                     snap()
                 },
@@ -272,19 +272,19 @@ fun AiSettingsSection(
             AnimatedVisibility(
                 visible = writeEnabled,
                 enter = if (animationsEnabled) {
-                    fadeIn(tween(140, easing = FastOutSlowInEasing)) +
+                    fadeIn(tween(PANEL_MS, easing = FastOutSlowInEasing)) +
                         slideInVertically(
                             initialOffsetY = { it / 24 },
-                            animationSpec = tween(170, easing = FastOutSlowInEasing),
+                            animationSpec = tween(PANEL_MS, easing = FastOutSlowInEasing),
                         )
                 } else {
                     EnterTransition.None
                 },
                 exit = if (animationsEnabled) {
-                    fadeOut(tween(90, easing = FastOutSlowInEasing)) +
+                    fadeOut(tween(PANEL_EXIT_MS, easing = FastOutSlowInEasing)) +
                         slideOutVertically(
                             targetOffsetY = { it / 24 },
-                            animationSpec = tween(120, easing = FastOutSlowInEasing),
+                            animationSpec = tween(PANEL_EXIT_MS, easing = FastOutSlowInEasing),
                         )
                 } else {
                     ExitTransition.None
@@ -681,3 +681,12 @@ private const val MASK_HEAD_CHARS = 3
 private const val MASK_TAIL_CHARS = 4
 private const val MASK_DOTS = 8
 private const val COPIED_BADGE_MS = 1_500L
+
+/**
+ * Panel enter/exit on the app-wide MotionTokens scale (200 in, 150 out).
+ *
+ * Local constants rather than an import: MotionTokens lives in `:app` and a
+ * feature module may not depend on it.
+ */
+private const val PANEL_MS = 200
+private const val PANEL_EXIT_MS = 150

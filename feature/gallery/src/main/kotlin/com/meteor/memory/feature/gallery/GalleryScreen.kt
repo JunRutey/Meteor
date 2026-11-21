@@ -178,9 +178,12 @@ fun GalleryScreen(
                 verticalArrangement = Arrangement.spacedBy(TILE_GAP),
                 horizontalArrangement = Arrangement.spacedBy(TILE_GAP),
             ) {
-                days.forEachIndexed { index, day ->
+                days.forEach { day ->
                     item(
-                        key = "day-$index-${day.label}",
+                        // The label alone identifies a day group; including the
+                        // index would change the key of every following header
+                        // whenever one day is added or removed.
+                        key = "day-${day.label}",
                         span = { GridItemSpan(maxLineSpan) },
                     ) {
                         DayHeader(day.label)
@@ -199,6 +202,7 @@ fun GalleryScreen(
                             },
                             onLongPress = { selection = selection.toggle(item.ref) },
                             animationsEnabled = animationsEnabled,
+                            modifier = Modifier.animateItem(),
                         )
                     }
                 }
@@ -208,19 +212,19 @@ fun GalleryScreen(
         AnimatedVisibility(
             visible = selection.isNotEmpty(),
             enter = if (animationsEnabled) {
-                fadeIn(tween(durationMillis = 150, easing = FastOutSlowInEasing)) +
+                fadeIn(tween(durationMillis = ENTER_MS, easing = FastOutSlowInEasing)) +
                     slideInVertically(
                         initialOffsetY = { it / 2 },
-                        animationSpec = tween(durationMillis = 190, easing = FastOutSlowInEasing),
+                        animationSpec = tween(durationMillis = ENTER_MS, easing = FastOutSlowInEasing),
                     )
             } else {
                 EnterTransition.None
             },
             exit = if (animationsEnabled) {
-                fadeOut(tween(durationMillis = 100, easing = FastOutSlowInEasing)) +
+                fadeOut(tween(durationMillis = EXIT_MS, easing = FastOutSlowInEasing)) +
                     slideOutVertically(
                         targetOffsetY = { it / 2 },
-                        animationSpec = tween(durationMillis = 140, easing = FastOutSlowInEasing),
+                        animationSpec = tween(durationMillis = EXIT_MS, easing = FastOutSlowInEasing),
                     )
             } else {
                 ExitTransition.None
@@ -552,9 +556,10 @@ private fun GalleryTile(
     onTap: () -> Unit,
     onLongPress: () -> Unit,
     animationsEnabled: Boolean,
+    modifier: Modifier = Modifier,
 ) {
     Box(
-        modifier = Modifier
+        modifier = modifier
             .aspectRatio(1f)
             .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant)
@@ -599,14 +604,14 @@ private fun GalleryTile(
         AnimatedVisibility(
             visible = selected,
             enter = if (animationsEnabled) {
-                fadeIn(tween(durationMillis = 120)) +
-                    scaleIn(initialScale = 0.92f, animationSpec = tween(durationMillis = 160))
+                fadeIn(tween(durationMillis = ENTER_MS)) +
+                    scaleIn(initialScale = 0.92f, animationSpec = tween(durationMillis = ENTER_MS))
             } else {
                 EnterTransition.None
             },
             exit = if (animationsEnabled) {
-                fadeOut(tween(durationMillis = 90)) +
-                    scaleOut(targetScale = 0.96f, animationSpec = tween(durationMillis = 120))
+                fadeOut(tween(durationMillis = EXIT_MS)) +
+                    scaleOut(targetScale = 0.96f, animationSpec = tween(durationMillis = EXIT_MS))
             } else {
                 ExitTransition.None
             },
@@ -728,6 +733,16 @@ private fun formatDuration(durationMs: Long): String {
     }
 }
 
+/**
+ * Panel enter/exit, matching the app-wide MotionTokens scale.
+ *
+ * Duplicated rather than imported: MotionTokens lives in :app, and feature
+ * modules may not depend on it (R1 keeps dependencies one-directional). These
+ * two values are the same 200/150 pair used everywhere else, so a panel on this
+ * screen moves like a panel on any other.
+ */
+private const val ENTER_MS = 200
+private const val EXIT_MS = 150
 private const val COLUMNS = 3
 private val TILE_GAP = 8.dp
 private val SELECTED_SCRIM = Color(0x66000000)

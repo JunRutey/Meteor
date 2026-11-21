@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.animateItem
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -119,8 +120,12 @@ fun PeopleListScreen(
         ) {
             items(people, key = { it.personId }) { row ->
                 Card(
+                    // animateItem: a newly created or deleted person used to make
+                    // every following card jump; the list is small, so the cost
+                    // of the placement animation is negligible.
                     modifier = Modifier
                         .fillMaxWidth()
+                        .animateItem()
                         .clickable { onOpen(row.personId) },
                     shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
