@@ -1194,6 +1194,22 @@ fun MeteorNavHost(
                 viewModel.enqueueMediaImport(uris.map { uri -> Uri.parse(uri) })
             }
 
+            // T10 保存流程的延伸：保存成功后自动进入当天的只读预览页。
+            //
+            // 写完的日记，成品形态就是预览页（ADR-018 / ADR-021：编辑区只是录入
+            // 通道，排版与媒体的呈现归预览），所以保存成功直接把用户送到结果，
+            // 不必再让他自己按返回。三条约束决定了这段接线：
+            // 1. 只在成功时走 —— viewModel.save 的 onSaved 只在正文真正写进档案后
+            //    回调；失败时页面原地不动，错误仍由 state.error 显示，正文不丢。
+            // 2. 编辑器必须离开返回栈 —— 否则从预览页按返回会落回一个「已存完」
+            //    的旧编辑器，看起来像这次保存没生效。
+            // 3. 不能叠出第二张预览页 —— 见下面 onSave 里的两条分支。
+            //
+            // 连点保存：ViewModel 在 isSaving 时已忽略重复的 save，这里再用
+            // savedNavigated 闩住导航，并沿用 entry.id 判据，让迟到的回调（用户
+            // 已返回或已删除该页）既不会导航也不会弹错页。
+            var savedNavigated by remember { mutableStateOf(false) }
+
             DiaryEditScreen(
                 state = state,
                 onTextChanged = viewModel::onTextChanged,
@@ -1209,7 +1225,36 @@ fun MeteorNavHost(
                         systemMediaPicker()
                     }
                 },
-                onSave = { viewModel.save() },
+                onSave = {
+                    viewModel.save {
+                        if (!savedNavigated && navController.currentBackStackEntry?.id == entry.id) {
+                            savedNavigated = true
+                            // The usual way in is 预览 → 编辑: `onEdit` above pushes
+                            // the editor on top of the view, so popping the editor
+                            // reveals that very preview. Its `RefreshOnResume` reads
+                            // the archive again on the way back, so it shows the body
+                            // that was just written — no second view page, no reload
+                            // route. Only a direct 日历 → 编辑 entry has nothing to
+                            // return to and needs a fresh preview pushed.
+                            val below = navController.previousBackStackEntry
+                            val viewBelow = below?.destination?.route == ROUTE_DIARY_VIEW &&
+                                below.arguments?.getString(DiaryPreviewViewModel.ARG_DATE) ==
+                                state.date.toString()
+                            if (viewBelow) {
+                                navController.popBackStack()
+                            } else {
+                                navController.navigate(diaryViewRoute(state.date)) {
+                                    // Drop the editor: a back press from the preview
+                                    // must not land on a stale, already-saved editor.
+                                    // The destination id (not `entry.id`, a UUID that
+                                    // would bind to the route overload) is what
+                                    // NavOptionsBuilder matches here.
+                                    popUpTo(entry.destination.id) { inclusive = true }
+                                }
+                            }
+                        }
+                    }
+                },
                 onBack = { navController.popBackStack() },
                 // T10: 删除日记 confirms first, then deletes the archive record,
                 // drops its search-index entry and pops the editor. The pop is

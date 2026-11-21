@@ -116,6 +116,41 @@ jobs:
           } >> "$GITHUB_OUTPUT"
           echo "用 $FILE 作为发布说明"
 
+      # docs/releases/<tag>.md 与 app/src/main/assets/changelog.md 是两份手写文档：
+      # 前者进 GitHub Release 正文，后者是应用内「关于 → 更新日志」的数据源。
+      # v1.5.0 发布时漏同步了 changelog.md，Release 正文正常但应用内看不到本版，
+      # 所以这里做一次交叉校验。见 docs/adr/ADR-065-in-app-changelog-sync-guard.md。
+      - name: Verify in-app changelog has this version
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.tag || github.ref_name }}"
+          NOTES="docs/releases/${TAG}.md"
+          CHANGELOG="app/src/main/assets/changelog.md"
+
+          if [ ! -f "$NOTES" ]; then
+            echo "::error::缺少发布说明：$NOTES（必须用中文手写）"
+            exit 1
+          fi
+          if [ ! -f "$CHANGELOG" ]; then
+            echo "::error::缺少应用内更新日志：$CHANGELOG"
+            exit 1
+          fi
+
+          # ChangelogParser 只认第 0 列的「## 」标题，因此这里做整行精确匹配，
+          # 不接受「### v1.5.0」或行首带空格的写法。
+          if ! grep -Fxq -- "## ${TAG}" "$CHANGELOG"; then
+            echo "::error::$CHANGELOG 里没有「## ${TAG}」段落：请把 $NOTES 的内容同步进去，否则应用内「关于 → 更新日志」看不到本版"
+            exit 1
+          fi
+
+          # 应用内列表按文件顺序展示，最新版本应在最前；重新发布旧 tag 时只提示不拦。
+          FIRST="$(grep -m1 '^## ' "$CHANGELOG" | sed 's/^##[[:space:]]*//')"
+          if [ "$FIRST" != "$TAG" ]; then
+            echo "::warning::$CHANGELOG 的最新版本是 ${FIRST}，不是 ${TAG}；若本次是发布新版本，请把 ${TAG} 移到文件最前"
+          fi
+
+          echo "$CHANGELOG 已包含 ${TAG}，应用内更新日志与 $NOTES 对齐。"
+
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
