@@ -97,6 +97,47 @@ cacheDir，不参与备份，也不出现在相册 `ImageStore` 的目录里。
 
 `:feature-gallery` 仍不引入测试依赖；纯逻辑放在 `:app`，与既有 ViewModel 同层。
 
+### 6. 分享与应用锁（事后补充）
+
+点「分享」会让 `startActivity` 打开系统分享面板，我们的 Activity 随即进入
+STOPPED。壳层原本把每一次 `ON_STOP` 都当成「人离开了应用」：应用锁开启时会
+`AppLock.lock()` 并置 `locked = true`，`MeteorRoot` 于是把整个 `NavHost` 换成
+`LockScreen`，查看器、待交接的分享请求和整条回退栈一起被销毁。用户从分享面板
+回来看到的是锁屏，解锁后落在首页 —— 看起来就像闪退。
+
+不重做锁的设计，只豁免「我们自己发起的系统页面」这一次后台跳转：
+
+- `MeteorNavHost` 在分享面板**成功启动之后**调用 `onSystemScreenOpened()`，
+  `MeteorRoot` 把它接到 `RootViewModel.beginSystemTransition()`；
+- 它只登记一个 60 秒上限的时间戳；`onEnterBackground()` 在窗口内跳过
+  `AppLock.lock()` 与 `locked = true`，但仍然清掉附件文本索引（离开前台就该清）。
+  窗口给得宽是有意的：要盖住的 `ON_STOP` 是在**分享面板真正显示之后**才投递的，
+  `startActivity` 到那一刻的间隔就是面板冷启动，量级是数百毫秒到数秒（低端机更久），
+  窗口太紧会在慢设备上把原症状重新打开；
+- 窗口由下一次回到前台的 `ON_START` **或 `ON_RESUME`**（`onReturnToForeground()`）
+  关闭，之后的后台照常上锁。`ON_RESUME` 这条是必须的：个别 OEM 的分享面板是对话框
+  式，只会让我们 `ON_PAUSE` 而不产生 `ON_STOP`，回来时也只有 `ON_RESUME` 而没有
+  `ON_START`，只靠 `ON_START` 会关不掉窗口，把紧接着的一次真实后台漏判成
+  「自己发起的系统页面」。两个事件调同一个幂等处理器（`backgroundSince` 已清零即早退）。
+
+**兜底阈值**：分享面板不会产生第二次 `ON_STOP`，所以「在分享面板里直接按 Home
+走了」这条路径没有任何事件能把锁补上。因此 `onEnterBackground()` 在跳过上锁的同
+时记下 `backgroundSince`，`onReturnToForeground()` 会比较本次后台停留时长，超过
+`SHARE_ROUNDTRIP_MAX_MS`（3 分钟）就立刻补做被跳过的上锁（`AppLock.lock()` +
+`locked = true`），回来时走锁屏。3 分钟的依据：正常分享往返是秒级到几十秒，远小
+于这个值；超过它更像「人已经离开」，此时按普通后台处理才对。这个阈值只作用于
+「自己发起的系统页面」这条路径，其它后台跳转仍由 `onEnterBackground()` 立即上锁。
+
+这里必须调 `AppLock.lock()` 而不只是置标志位 —— `EncryptedPrefsAppLock.unlock()`
+在 session 仍标记为已解锁时会直接 `return true` 而不弹任何验证，只置
+`locked = true` 的话锁屏会自己消失，等于没锁。
+
+代价：正常分享返回后的同一个前台会话里，查看器是无锁可见的。要彻底消除这个窗口
+需要「锁屏不销毁 NavHost」的锁设计改动，不在本次修复范围内。另外，分享往返超过
+`SHARE_ROUNDTRIP_MAX_MS`（3 分钟）后返回仍会补锁，此时 `NavHost` 被换成锁屏、
+解锁后落在首页 —— 这是刻意保留的取舍：宁可让回来的人多按一次验证，也不让一份带
+`FLAG_SECURE` 的存档在无人看管后仍然敞着。
+
 ## R1 模块准入
 
 1. **模块归属**：查看器 / 相册 UI 在既有 `:feature-gallery`；FileProvider、cache 写入、

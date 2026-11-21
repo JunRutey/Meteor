@@ -1,5 +1,6 @@
 package com.meteor.memory.ui
 
+import android.os.SystemClock
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -71,6 +72,29 @@ class RootViewModel @Inject constructor(
     /** Guards against re-locking while a biometric check is in flight. */
     @Volatile
     private var unlocking: Boolean = false
+
+    /**
+     * Deadline ([SystemClock.elapsedRealtime]) until which an ON_STOP does not
+     * re-arm the gate. Set by [beginSystemTransition] as soon as a screen of our
+     * own has been started, cleared by [onReturnToForeground]. A plain timestamp
+     * rather than a boolean so a launch that never produces a matching ON_START
+     * cannot leave the gate disabled.
+     */
+    @Volatile
+    private var systemTransitionUntil: Long = 0L
+
+    /**
+     * `elapsedRealtime` of the ON_STOP whose re-lock was skipped because of
+     * [systemTransitionUntil], or 0 when no lock is owed.
+     *
+     * This is the safety net for the window: the share sheet produces no second
+     * ON_STOP, so a person who presses Home from the sheet leaves the activity
+     * STOPPED with the gate held open. Comparing this timestamp against the
+     * return time lets [onReturnToForeground] apply the lock that was skipped,
+     * once the trip is clearly no longer "just sharing".
+     */
+    @Volatile
+    private var backgroundSince: Long = 0L
 
     val settings: StateFlow<AppSettings> = settingsRepository.settings.stateIn(
         scope = viewModelScope,
@@ -249,18 +273,45 @@ class RootViewModel @Inject constructor(
         // while a check is already in flight or the prompt would loop.
         if (unlocking) return
 
+        // Our own share sheet also stops the activity. Re-arming the gate there
+        // would swap the NavHost for the lock screen, throwing away the viewer
+        // (and the share that is still being handed over); the person comes back
+        // to a lock screen, or to the home tab after unlocking, instead of the
+        // image they just shared. Keep the session for that one transition only:
+        // the window closes on the next ON_START, and [onReturnToForeground]
+        // still applies the skipped lock when the trip was long.
+        val keepSession = systemScreenOnTop()
+        if (keepSession) {
+            appLog.info(TAG, "background transition from our own system screen, gate stays open")
+            // Remember when the re-lock was skipped: only that lock can still be
+            // owed, and only [onReturnToForeground] can notice it went unapplied.
+            backgroundSince = SystemClock.elapsedRealtime()
+        }
+
         viewModelScope.launch {
             val wasEnabled = withContext(Dispatchers.IO) {
                 runCatching {
-                    if (appLock.isEnabled()) {
+                    if (keepSession || !appLock.isEnabled()) {
+                        false
+                    } else {
                         appLock.lock()
                         true
-                    } else {
-                        false
                     }
                 }.getOrDefault(false)
             }
-            searchService.clearAttachmentIndex()
+            // Decrypted attachment text must not outlive the foreground even when
+            // the gate is skipped; the index rebuilds lazily on the next search.
+            // This runs on every background transition — including the one the
+            // share sheet causes — so an uncaught throw here would crash the app
+            // the moment the sheet opens. Cancellation is rethrown rather than
+            // logged: it means the scope is going away, not that the clear failed.
+            try {
+                searchService.clearAttachmentIndex()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (failure: Throwable) {
+                appLog.warn(TAG, "attachment index clear failed", failure)
+            }
             if (wasEnabled) {
                 appLog.info(TAG, "entered background, lock re-armed")
                 _locked.value = true
@@ -268,6 +319,64 @@ class RootViewModel @Inject constructor(
             }
         }
     }
+
+    /**
+     * Records that we just handed the foreground to a screen we started ourselves
+     * (the share sheet), so the [onEnterBackground] that follows must not re-arm
+     * the gate.
+     */
+    fun beginSystemTransition() {
+        systemTransitionUntil = SystemClock.elapsedRealtime() + SYSTEM_SCREEN_GRACE_MS
+    }
+
+    /**
+     * Called when the activity is the foreground app again — driven by **both**
+     * ON_START and ON_RESUME.
+     *
+     * Always closes the "own system screen" window, so the next background trip
+     * arms the gate normally. ON_RESUME is what covers dialog-style share sheets
+     * (some OEMs inject them): they only pause us, so coming back produces
+     * ON_RESUME without any ON_START, and the window would otherwise stay armed
+     * and swallow the next real background trip. Calling this from both events is
+     * idempotent — it returns immediately once [backgroundSince] is 0.
+     *
+     * And if the trip was long, it applies the re-lock that the window skipped: a
+     * person who left through the share sheet by pressing Home never produces
+     * another ON_STOP, and the archive would stay unlocked for the rest of the
+     * process lifetime.
+     */
+    fun onReturnToForeground() {
+        val since = backgroundSince
+        backgroundSince = 0L
+        systemTransitionUntil = 0L
+        if (since == 0L) return
+        if (SystemClock.elapsedRealtime() - since < SHARE_ROUNDTRIP_MAX_MS) return
+
+        viewModelScope.launch {
+            // Already gated by a normal ON_STOP: nothing to redo.
+            if (_locked.value == true) return@launch
+            val reArmed = withContext(Dispatchers.IO) {
+                runCatching {
+                    if (appLock.isEnabled()) {
+                        // lock(), not just the flag: AppLock.unlock() short-circuits
+                        // while the session is still marked unlocked, so the gate
+                        // would dismiss itself without asking for anything.
+                        appLock.lock()
+                        true
+                    } else {
+                        false
+                    }
+                }.getOrDefault(false)
+            }
+            if (!reArmed) return@launch
+            appLog.info(TAG, "long background trip, lock re-armed on return")
+            _locked.value = true
+            updateLockAvailability()
+        }
+    }
+
+    private fun systemScreenOnTop(): Boolean =
+        SystemClock.elapsedRealtime() < systemTransitionUntil
 
     fun retryOnboardingState() {
         _onboardingGate.value = OnboardingGate.LOADING
@@ -319,6 +428,34 @@ class RootViewModel @Inject constructor(
         const val TAG = "AppLock"
         const val UPDATE_TAG = "AppUpdate"
         const val ONBOARDING_TAG = "Onboarding"
+
+        /**
+         * How long a screen we started ourselves may keep the gate open.
+         *
+         * Deliberately generous: the ON_STOP we are covering is delivered only
+         * once the share sheet is actually on screen, so the gap between
+         * `startActivity` and that callback is the sheet's cold start — hundreds
+         * of milliseconds to a few seconds, longer on a loaded device. A tight
+         * window would simply reopen the original bug on slow devices.
+         *
+         * Widening the window does not widen the leak surface, because the window
+         * is closed by the next foreground event rather than by the clock: the
+         * dialog-style panels that never stop us at all are handled from the other
+         * side, since [onReturnToForeground] also runs on ON_RESUME.
+         */
+        const val SYSTEM_SCREEN_GRACE_MS = 60_000L
+
+        /**
+         * Longest gap that still counts as "the person just shared something".
+         *
+         * Only consulted on the "own system screen" path ([beginSystemTransition]):
+         * every other background trip is locked immediately by [onEnterBackground].
+         * A normal share round trip is seconds to about a minute — sheet up, target
+         * picked, back — so three minutes is far beyond it; past that the app was
+         * out of sight long enough for someone else to have picked the phone up,
+         * and the skipped lock is applied on return.
+         */
+        const val SHARE_ROUNDTRIP_MAX_MS = 3 * 60 * 1000L
     }
 
     /**
