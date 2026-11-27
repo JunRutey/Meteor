@@ -20,6 +20,7 @@ import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.notify.DailyReminderPolicy
 import com.meteor.memory.core.notify.DailyReminderScheduler
 import com.meteor.memory.core.notify.NotificationChannels
+import com.meteor.memory.core.notify.QuestionReminderScheduler
 import com.meteor.memory.core.notify.ReminderSchedulePrecision
 import com.meteor.memory.feature.settings.SettingsRepository
 import dagger.Binds
@@ -36,6 +37,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import java.time.Instant
 import java.time.ZonedDateTime
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -47,6 +49,16 @@ class AndroidNotificationFeature @Inject constructor(
     private val appLog: AppLog,
     private val settingsRepository: SettingsRepository,
     private val scheduler: DailyReminderScheduler,
+    /**
+     * `dagger.Lazy`, not a plain parameter: `AndroidQuestionReminderController`
+     * injects [NotificationFeature] to post and dismiss the reminder itself, so a
+     * direct dependency here would close a constructor cycle
+     * (`NotificationFeature → Controller → NotificationFeature`) that Hilt cannot
+     * satisfy. It is resolved only inside [syncReminder] — never in the fields or
+     * `init` — so construction order stays acyclic and the work only happens on
+     * the IO coroutine that already owns it.
+     */
+    private val questionReminderController: dagger.Lazy<QuestionReminderController>,
 ) : NotificationFeature {
     private val scope = CoroutineScope(
         SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, failure ->
@@ -129,9 +141,25 @@ class AndroidNotificationFeature @Inject constructor(
         if (!settings.notificationsEnabled) {
             scheduler.cancel()
             hideUpdateNotification()
+            // 每日一问 alarms are armed separately from the daily reminder, so the
+            // master switch must clear those too — a muted app must not keep
+            // waking the device for questions.
+            questionReminderController.get().cancelAll()
             appLog.info(TAG, "Notifications are disabled; pending alarm cancelled")
             return
         }
+
+        // 每日一问 alarms live outside `scheduler`, so they are re-armed here as
+        // well: this method is the one path every "reminders may need rebuilding"
+        // signal goes through (master switch flips in either direction, boot,
+        // TIME_SET, timezone change, package replace), and re-arming is
+        // idempotent — the scheduler identifies an alarm by its data URI, so
+        // scheduling a still-valid instant replaces itself in place.
+        //
+        // Deliberately before the daily-reminder channel gate below: questions have
+        // their own channel, so muting the once-a-day diary nudge must not stop
+        // question alarms from being armed.
+        questionReminderController.get().syncAll()
 
         val notificationsAllowed = canPostNotifications()
         val reminderChannelAllowed = isDailyReminderChannelEnabled()
@@ -306,6 +334,156 @@ class AndroidNotificationFeature @Inject constructor(
         NotificationManagerCompat.from(context).cancel(UPDATE_NOTIFICATION_ID)
     }
 
+    /**
+     * 每日一问 reminder (ADR-068).
+     *
+     * Unlike the update notifications this posts on its own channel
+     * ([NotificationChannels.QUESTIONS]) so muting the once-a-day diary nudge
+     * never silences a reminder the person explicitly asked for.
+     */
+    @SuppressLint("MissingPermission")
+    override fun showQuestionReminder(questionId: String, questionText: String, trigger: Instant) {
+        // [notificationsEnabled] is the cached master switch: this is called from
+        // the controller's IO coroutine and must not read DataStore synchronously.
+        if (!notificationsEnabled) return
+        if (!canPostNotifications()) return
+
+        val flattened = flattenQuestionText(questionText)
+        val body = context.getString(R.string.question_notification_body, shorten(flattened))
+        val notification = NotificationCompat.Builder(context, NotificationChannels.QUESTIONS)
+            .setSmallIcon(android.R.drawable.ic_menu_help)
+            .setContentTitle(context.getString(R.string.question_notification_title))
+            .setContentText(body)
+            // The expanded view shows the whole question: the collapsed line above
+            // is a preview, and hiding the rest behind "…" in the only place that
+            // has room for it would defeat the point of expanding.
+            .setStyle(
+                NotificationCompat.BigTextStyle()
+                    .bigText(context.getString(R.string.question_notification_body, flattened)),
+            )
+            .setContentIntent(openQuestionPendingIntent(questionId))
+            .addAction(
+                // Icon 0: the actions are text-only so they stay legible in the
+                // collapsed notification and need no per-density drawables.
+                0,
+                context.getString(R.string.question_notification_snooze_hour),
+                questionSnoozePendingIntent(
+                    questionId,
+                    trigger,
+                    QuestionReminderReceiver.ACTION_QUESTION_SNOOZE_HOUR,
+                    offset = QUESTION_INTENT_OFFSET_SNOOZE_HOUR,
+                ),
+            )
+            .addAction(
+                0,
+                context.getString(R.string.question_notification_snooze_tomorrow),
+                questionSnoozePendingIntent(
+                    questionId,
+                    trigger,
+                    QuestionReminderReceiver.ACTION_QUESTION_SNOOZE_TOMORROW,
+                    offset = QUESTION_INTENT_OFFSET_SNOOZE_TOMORROW,
+                ),
+            )
+            .setAutoCancel(true)
+            .build()
+
+        NotificationManagerCompat.from(context)
+            .notify(questionNotificationId(questionId), notification)
+    }
+
+    override fun hideQuestionReminder(questionId: String) {
+        NotificationManagerCompat.from(context).cancel(questionNotificationId(questionId))
+    }
+
+    /**
+     * One notification id per question, derived from its id.
+     *
+     * Two questions reminded at the same moment must stay two notifications;
+     * a fixed shared id would let the second replace the first before it was even
+     * read, and would make [hideQuestionReminder] dismiss the wrong one. The hash
+     * is masked to 12 bits so the id stays inside the 4xxx band; a collision then
+     * only means two questions share a slot, which is a rare cosmetic overlap, not
+     * a lost reminder.
+     */
+    private fun questionNotificationId(questionId: String): Int =
+        QUESTION_NOTIFICATION_BASE + (questionId.hashCode() and NOTIFICATION_ID_MASK)
+
+    /**
+     * The tap target: `MainActivity` reads [EXTRA_QUESTION_ID] and hands it to
+     * `QuestionOpenRequest`.
+     *
+     * The request code **must** be derived from the question id. A PendingIntent
+     * is identified by `Intent.filterEquals`, which ignores extras but compares
+     * action, data and component — all three are identical for every question
+     * here, so with one shared request code the second question's notification
+     * would silently overwrite the first one's pending intent and tapping it
+     * would open the wrong question.
+     */
+    private fun openQuestionPendingIntent(questionId: String): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java)
+            .setAction(ACTION_OPEN_QUESTION)
+            .putExtra(EXTRA_QUESTION_ID, questionId)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        return PendingIntent.getActivity(
+            context,
+            questionRequestCode(questionId, QUESTION_INTENT_OFFSET_OPEN),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
+    /**
+     * One snooze button. The data URI is the (question, instant) identity the
+     * receiver parses back out; the action says which button it was.
+     */
+    private fun questionSnoozePendingIntent(
+        questionId: String,
+        trigger: Instant,
+        action: String,
+        offset: Int,
+    ): PendingIntent {
+        val intent = Intent(context, QuestionReminderReceiver::class.java)
+            .setAction(action)
+            .setData(QuestionReminderScheduler.questionUri(questionId, trigger))
+        return PendingIntent.getBroadcast(
+            context,
+            questionRequestCode(questionId, offset),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+    }
+
+    /**
+     * Request code for one of a question's three pending intents.
+     *
+     * `* INTENT_STRIDE + offset` rather than `+ offset`: with a plain sum, question
+     * A's "open" (hash 5, offset 0) and question B's "snooze hour" (hash 4,
+     * offset 1) would land on the same number and `FLAG_UPDATE_CURRENT` would let
+     * one overwrite the other.
+     */
+    private fun questionRequestCode(questionId: String, offset: Int): Int =
+        QUESTION_INTENT_BASE + (questionId.hashCode() and NOTIFICATION_ID_MASK) * INTENT_STRIDE +
+            offset
+
+    /**
+     * Newlines cannot be rendered in a collapsed notification, so they become
+     * spaces before any length decision is made — otherwise a question made of
+     * short lines would look short yet still be clipped by the platform.
+     */
+    private fun flattenQuestionText(raw: String): String =
+        raw.replace('\n', ' ').replace('\r', ' ')
+
+    /**
+     * Collapsed-notification budget: a question can be 500 characters, and the
+     * platform would cut that mid-word.
+     */
+    private fun shorten(text: String): String =
+        if (text.length <= NOTIFICATION_TEXT_MAX_CHARS) {
+            text
+        } else {
+            text.take(NOTIFICATION_TEXT_MAX_CHARS) + ELLIPSIS
+        }
+
     private fun openAppPendingIntent(requestCode: Int): PendingIntent =
         PendingIntent.getActivity(
             context,
@@ -316,12 +494,56 @@ class AndroidNotificationFeature @Inject constructor(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-    private companion object {
-        const val TAG = "AndroidNotification"
-        const val DAILY_REMINDER_NOTIFICATION_ID = 2020
-        const val DAILY_REMINDER_REQUEST_CODE = 2020
-        const val UPDATE_NOTIFICATION_ID = 2021
-        const val UPDATE_REQUEST_CODE = 2021
+    companion object {
+        /**
+         * Notification tap → open one question (ADR-068).
+         *
+         * Public because `MainActivity` reads it out of `Activity#getIntent()`:
+         * the activity is the only place that can hand the question id to the
+         * navigation graph, and it must do so without depending on this class's
+         * instance.
+         */
+        const val ACTION_OPEN_QUESTION = "com.meteor.memory.action.OPEN_QUESTION"
+
+        /** `questionId` extra carried by [ACTION_OPEN_QUESTION]. */
+        const val EXTRA_QUESTION_ID = "question_id"
+
+        private const val TAG = "AndroidNotification"
+        private const val DAILY_REMINDER_NOTIFICATION_ID = 2020
+        private const val DAILY_REMINDER_REQUEST_CODE = 2020
+        private const val UPDATE_NOTIFICATION_ID = 2021
+        private const val UPDATE_REQUEST_CODE = 2021
+
+        /**
+         * 每日一问 (ADR-068) uses the 4xxx band so it can never collide with the
+         * daily reminder (2020) or the update notification (2021).
+         */
+        private const val QUESTION_NOTIFICATION_BASE = 4000
+
+        /**
+         * Request-code band for the question notification's pending intents,
+         * kept far from the alarm scheduler's single 2030 slot.
+         */
+        private const val QUESTION_INTENT_BASE = 4100
+
+        /** Offsets within [QUESTION_INTENT_BASE]; each pending intent needs its own. */
+        private const val QUESTION_INTENT_OFFSET_OPEN = 0
+        private const val QUESTION_INTENT_OFFSET_SNOOZE_HOUR = 1
+        private const val QUESTION_INTENT_OFFSET_SNOOZE_TOMORROW = 2
+
+        /**
+         * Gap between two questions' request codes: must be larger than the
+         * number of offsets, so `hash * STRIDE + offset` never overlaps.
+         */
+        private const val INTENT_STRIDE = 4
+
+        /** 12 bits of the question id hash: keeps the id inside the 4xxx band. */
+        private const val NOTIFICATION_ID_MASK = 0x0FFF
+
+        /** Collapsed-notification budget; longer questions are expanded instead. */
+        private const val NOTIFICATION_TEXT_MAX_CHARS = 120
+
+        private const val ELLIPSIS = "…"
     }
 }
 
@@ -346,4 +568,43 @@ object NotificationSchedulerModule {
             DailyReminderReceiver::class.java,
             DailyReminderReceiver.ACTION_DAILY_REMINDER,
         )
+}
+
+/**
+ * 每日一问 reminder wiring (ADR-068).
+ *
+ * The scheduler is constructed here rather than injected as an `@Inject` type
+ * because it needs the concrete receiver class and alarm action — the two things
+ * a `core-notify` type must not know about `:app`.
+ */
+@Module
+@InstallIn(SingletonComponent::class)
+object QuestionReminderModule {
+    @Provides
+    @Singleton
+    fun provideQuestionReminderScheduler(
+        @ApplicationContext context: Context,
+    ): QuestionReminderScheduler =
+        QuestionReminderScheduler(
+            context,
+            QuestionReminderReceiver::class.java,
+            QuestionReminderReceiver.ACTION_QUESTION_REMINDER,
+        )
+}
+
+/**
+ * Binding for [QuestionReminderController].
+ *
+ * Kept as its own `abstract class` module: [QuestionReminderModule] is an
+ * `object` for the `@Provides` factory, and an `object` cannot hold `@Binds`
+ * methods because those must be abstract.
+ */
+@Module
+@InstallIn(SingletonComponent::class)
+abstract class QuestionReminderBinding {
+    @Binds
+    @Singleton
+    abstract fun bindQuestionReminderController(
+        impl: AndroidQuestionReminderController,
+    ): QuestionReminderController
 }

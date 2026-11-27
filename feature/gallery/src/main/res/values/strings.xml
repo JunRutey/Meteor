@@ -49,4 +49,11 @@
     <string name="gallery_import_failed">文件导入失败，请检查文件后重试</string>
     <string name="gallery_import_skipped">%1$d 个文件超过 256 MB，已跳过</string>
     <string name="gallery_index_failed">文件已保存，但文本索引更新失败</string>
+
+    <!-- 添加媒体：首页「存张记忆」并入相册后，从设备导入图片 / 视频 / 音频走这里（ADR-068） -->
+    <string name="gallery_add_media">添加媒体</string>
+    <string name="gallery_adding_media">导入中…</string>
+    <string name="gallery_add_media_summary">已导入 %1$d 个，失败 %2$d 个</string>
+    <string name="gallery_add_media_failed">没有可导入的媒体，或导入失败。</string>
+    <string name="gallery_add_media_progress">正在导入 %1$d/%2$d</string>
 </resources>

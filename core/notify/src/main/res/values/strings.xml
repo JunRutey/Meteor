@@ -1,6 +1,8 @@
 <resources>
     <string name="notification_channel_daily_reminder_name">日记提醒</string>
     <string name="notification_channel_daily_reminder_description">每天在 20:00–21:00 之间随机提醒你记录今天的生活</string>
+    <string name="notification_channel_questions_name">每日一问</string>
+    <string name="notification_channel_questions_description">在你设定的时间提醒你回答之前写下的问题</string>
     <string name="notification_channel_ai_messages_name">AI 消息</string>
     <string name="notification_channel_ai_messages_description">应用内置 AI 发送的消息通知</string>
     <string name="notification_channel_update_name">应用更新</string>

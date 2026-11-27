@@ -95,6 +95,29 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!--
+            每日一问 (ADR-068). Three app-internal actions (a fired alarm and the
+            two notification snooze buttons, all delivered with a
+            meteor://question-reminder/<id>/<epochMillis> data URI) plus the same
+            "the world moved" broadcasts the daily reminder listens to: after a
+            reboot, a clock/timezone change or an exact-alarm permission change,
+            every question alarm has to be rebuilt from the stored reminder lists.
+        -->
+        <receiver
+            android:name=".system.QuestionReminderReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.meteor.memory.action.QUESTION_REMINDER" />
+                <action android:name="com.meteor.memory.action.QUESTION_SNOOZE_HOUR" />
+                <action android:name="com.meteor.memory.action.QUESTION_SNOOZE_TOMORROW" />
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 
 </manifest>

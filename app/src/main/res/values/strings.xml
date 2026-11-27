@@ -189,4 +189,18 @@
     <string name="about_link_unavailable">没有找到可以打开该链接的应用。</string>
 
     <string name="diary_preview_edit">修改日记</string>
+
+    <!-- 每日一问（ADR-068）：界面文案在 :feature-question，这里只放通知与跳转失败提示。 -->
+    <string name="question_notification_title">你有个问题等着回答</string>
+    <string name="question_notification_body">%1$s</string>
+    <string name="question_notification_snooze_hour">延迟 1 小时</string>
+    <string name="question_notification_snooze_tomorrow">明天再提醒</string>
+    <string name="question_notification_open_failed">这个问题已不存在。</string>
+
+    <!-- 每日一问：ViewModel 的错误文案。界面文案在 :feature-question，
+         这里只放 ViewModel 需要直接 getString 的几条（ViewModel 拿不到 feature 模块的 R）。 -->
+    <string name="question_error_save">保存问题失败，请重试。</string>
+    <string name="question_error_answer">保存回答失败，请重试。</string>
+    <string name="question_error_delete">删除失败，请重试。</string>
+    <string name="question_error_load">读取问题失败，请重试。</string>
 </resources>

@@ -33,6 +33,7 @@ import com.meteor.memory.core.storage.EncryptedAiChatStore
 import com.meteor.memory.core.storage.EncryptedAttachmentStore
 import com.meteor.memory.core.storage.EncryptedImageStore
 import com.meteor.memory.core.storage.EncryptedMediaStore
+import com.meteor.memory.core.storage.EncryptedQuestionStore
 import com.meteor.memory.core.storage.ImageStore
 import com.meteor.memory.core.storage.MediaStore
 import com.meteor.memory.core.storage.MoodQueries
@@ -43,6 +44,7 @@ import com.meteor.memory.core.storage.PrivateMoodQueries
 import com.meteor.memory.core.storage.PrivatePersonQueries
 import com.meteor.memory.core.storage.PrivateRecordScanner
 import com.meteor.memory.core.storage.PrivateStorageRouter
+import com.meteor.memory.core.storage.QuestionStore
 import com.meteor.memory.core.storage.RecordScanner
 import com.meteor.memory.core.storage.StorageLayout
 import com.meteor.memory.core.storage.StorageRouter
@@ -224,6 +226,21 @@ object AppModule {
         @ApplicationContext context: Context,
         fileCrypto: FileCrypto,
     ): AiChatStore = EncryptedAiChatStore(File(context.filesDir, StorageLayout.ROOT_NAME), fileCrypto)
+
+    /**
+     * 每日一问 (ADR-068). Encrypted JSON per question with the archive's Keystore
+     * key, not the media payload key: a question is small text, and the split
+     * follows ADR-067's text/binary boundary.
+     */
+    @Provides
+    @Singleton
+    fun provideQuestionStore(
+        @ApplicationContext context: Context,
+        fileCrypto: FileCrypto,
+    ): QuestionStore = EncryptedQuestionStore(
+        rootDir = File(context.filesDir, StorageLayout.ROOT_NAME),
+        crypto = fileCrypto,
+    )
 
     @Provides
     @Singleton

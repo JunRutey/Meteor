@@ -85,13 +85,14 @@ gradle :app:assembleDebug :app:assembleRelease testDebugUnitTest :app:lintDebug 
 
 ```
 app                 → feature-settings, feature-calendar, feature-editor, feature-people,
-                      feature-gallery, feature-media, feature-ai,
+                      feature-gallery, feature-media, feature-question, feature-ai,
                       core-backup, core-storage, core-crypto, core-time, core-notify,
                       core-log, core-index
 feature-settings    → core-crypto, core-backup
 feature-calendar    → core-storage
 feature-editor      → core-storage, feature-media
 feature-people      → core-storage, feature-editor, feature-media
+feature-question    → feature-editor
 feature-ai          → core-storage
 feature-media       → core-storage
 feature-gallery     → feature-media
@@ -126,6 +127,8 @@ core-log            → （叶子）
   共同依赖），但仍叫 `feature-*`。它的 Composable 签名改动会同时影响三个模块。
 - `feature-people` 直接 import `feature-editor` 的 `MarkdownPreview`/`MediaBlockState`，
   这是渲染实现细节而非窄接口。
+- `feature-question` 同样为了「回答像记日记一样有编辑 / 预览」而 import `feature-editor`
+  的 `MarkdownField`/`MarkdownPreview`，性质与上一条相同，是既有瑕疵的又一例而非新问题。
 - `feature-settings` 在 `build.gradle.kts` 里以 `api(...)` 声明了 `core-crypto` 与
   `core-backup`，但模块内**没有任何** `AppLock`/`BackupModule`/`FileCrypto` 类型引用
   （它只存了一个 `appLockEnabled: Boolean` 偏好）。这两条边是声明了却没用的，
@@ -158,6 +161,7 @@ filesDir/
 │   ├── 时光轴/心情/                    ← TIMELINE / MOOD
 │   │   ├── <yyyy-MM-dd>.md            ← 当天心情
 │   │   └── 日记/<yyyy>/<yyyy-MM-dd>.md ← 日记正文
+│   ├── 每日一问/<id>.bin              ← QUESTIONS（ADR-068，加密 JSON，非记录）
 │   ├── 数字遗产/                      ← LEGACY
 │   │   ├── 聊天记录/<person_id>/<yyyy-MM-dd>.md
 │   │   ├── 图片/<owner>/<uuid>.enc     ← 编辑器插图；v3 分块帧（ADR-067），旧整文件密文仍可读
@@ -287,7 +291,13 @@ int 0                     ← 结束标记
 | 时间水印 | 正文密文内 | `<!-- meteor-sig: <ISO_OFFSET_DATE_TIME> -->` |
 | AI 会话 | `AI对话/sessions/<id>.bin` | 加密 JSON，`{"version":2,...}` |
 | AI 旧会话 | `AI对话/<scope>.bin` | `v1 \t u\|a \t <epochMillis> \t <Base64(UTF-8)>` |
+| 每日一问 | `每日一问/<id>.bin` | 加密 JSON，`{"version":1,"id","text","createdAt","reminders","answers"}`（ADR-068） |
 | 索引库 | `databases/meteor_index.db` | §9.3 |
+
+**每日一问（`QuestionStore`，ADR-068）**：一问题一文件，随机 32 位十六进制 id，
+用 **Keystore 主密钥**（不是媒体数据密钥——它是几百字节文本，没有并行收益）。
+`reminders` 只存**待触发**的时刻：闹钟投递即移除，通知按钮追加新的。`.bin` 后缀让它
+不进 `RecordScanner`（只认 `.md`），所以问题与回答**不进搜索索引，也不成为 AI 档案证据**。
 
 ---
 
@@ -575,6 +585,9 @@ v0.4 交付的是基于纯 Compose 的 Markdown 实现，将来换第三方富�
   内部导航不要指向它们。
 - 重定向的 `LaunchedEffect` 必须**以参数为键**（`LaunchedEffect(date)` 而非 `LaunchedEffect(Unit)`），
   否则 destination 被复用时不会重跑。
+- **通知不能直接导航**。系统通知可能在 Activity 已死时投递，所以它只写一个待打开的目标
+  （`QuestionOpenRequest`，`@Singleton` + `StateFlow`），由导航图就绪后 `consume()` 一次。
+  `consume` 是原子的，配置变更不会重放。ADR-068 是现成范例。
 
 ### §13.3 状态流约定
 
@@ -799,6 +812,24 @@ class AlbumRepository(media: MediaStore, images: ImageStore, attachments: Attach
 interface DiaryQueries { fun dates(): List<LocalDate>; fun read(date: LocalDate): Document?; fun save(date: LocalDate, body: String) }
 interface MoodQueries  { fun range(from: LocalDate, to: LocalDate): Map<LocalDate, List<Mood>>; fun read(date: LocalDate): List<Mood>; fun save(date: LocalDate, moods: List<Mood>) }
 interface PersonQueries { fun list(): List<PersonEntry>; fun read(personId: String): PersonProfile?; fun create(...): String; fun update(...); fun delete(personId: String): PersonDeleteResult }
+
+// 每日一问（ADR-068）：阻塞式，调用方切 IO。一问题一加密 JSON 文件。
+data class StoredAnswer(val id: String, val text: String, val answeredAt: Instant)
+data class StoredQuestion(
+    val id: String, val text: String, val createdAt: Instant,
+    val reminders: List<Instant> = emptyList(),      // 只存待触发的时刻
+    val answers: List<StoredAnswer> = emptyList(),   // 追加式，旧回答永不覆盖
+) { val isAnswered: Boolean; val lastAnsweredAt: Instant?
+    fun upcomingReminders(now: Instant): List<Instant>; fun nextReminder(now: Instant): Instant? }
+
+interface QuestionStore {
+    fun list(): List<StoredQuestion>; fun find(id: String): StoredQuestion?
+    fun create(text: String, reminders: List<Instant> = emptyList(), createdAt: Instant = Instant.now()): StoredQuestion
+    fun addAnswer(id: String, text: String, answeredAt: Instant = Instant.now()): StoredQuestion?
+    fun updateReminders(id: String, reminders: List<Instant>): StoredQuestion?
+    fun delete(id: String): Boolean
+    // MAX_QUESTION_CHARS = 500, MAX_ANSWER_CHARS = 20000, MAX_REMINDERS = 8
+}
 ```
 
 `MediaRef` 三种引用：`meteor://media/<id>`、`meteor://image/<token>`、`meteor://file/<id>`。
@@ -842,6 +873,22 @@ object DailyReminderPolicy {                  // 纯函数，无时钟无随机�
     fun nextTrigger(now: ZonedDateTime, alreadySentToday: Boolean, randomMinute: (Int) -> Int): ZonedDateTime
     fun hoursUntilEndOfDay(at: ZonedDateTime): Int
 }
+
+object QuestionReminderPolicy {               // 纯函数（ADR-068）
+    fun defaultReminder(now: ZonedDateTime): Instant        // 明天同一时刻
+    fun snoozeOneHour(now: ZonedDateTime): Instant
+    fun snoozeTomorrow(now: ZonedDateTime): Instant
+    fun nextPending(reminders: List<Instant>, now: Instant): Instant?
+    fun pruneExpired(reminders: List<Instant>, now: Instant): List<Instant>
+    fun replace(reminders: List<Instant>, consumed: Instant, replacement: Instant?): List<Instant>
+}
+
+class QuestionReminderScheduler(context, receiverClass, action) {
+    fun canScheduleExactAlarms(): Boolean
+    fun schedule(questionId: String, trigger: Instant): ReminderSchedulePrecision
+    fun cancel(questionId: String, trigger: Instant)
+    // companion: questionUri(questionId, trigger) = meteor://question-reminder/<id>/<epochMillis>
+}
 ```
 
 ### §19.4 feature 模块
@@ -875,8 +922,9 @@ feature 的 Composable 一律通过参数接收状态、通过回调向上报告
 | `feature-calendar` | `CalendarScreen`、`CalendarHeader`、`Mood.emoji()` | 全部状态（month/today/moods/…）与所有意图的持久化 |
 | `feature-editor` | `EditorModule`、`MarkdownEditorModule`、`MarkdownField`、`MarkdownPreview`、`MarkdownEditing`、`MediaBlockState` | 插入/删除/图片解析回调；`LocalMediaHost` |
 | `feature-media` | `MediaHost`、`ProvideMediaHost`、`MediaThumb`、`VideoPlayerCard`、`AudioPlayerCard`、`MediaPickerScreen`、`MediaStreamDataSource` | 一个 `MediaHost` 实例并包住整棵树 |
-| `feature-gallery` | `GalleryScreen`、`MediaViewerScreen`、`GalleryKind`/`GallerySortMode`/`GalleryFilter`/`GalleryItem` | 已排好序的 `GalleryDay` 列表；删除只发意图 |
+| `feature-gallery` | `GalleryScreen`、`MediaViewerScreen`、`GalleryKind`/`GallerySortMode`/`GalleryFilter`/`GalleryItem` | 已排好序的 `GalleryDay` 列表；删除只发意图；`onAddMedia` 由宿主打开媒体选择器 |
 | `feature-people` | `PeopleListScreen`、`PersonDetailScreen`、`PersonEditScreen`、`PeopleTagLibrary` | `availableTags`、标签持久化、媒体路由 |
+| `feature-question` | `QuestionListScreen`、`QuestionDetailScreen`、`QuestionRow`/`QuestionDetailUi`/`ReminderRow`/`AnswerRow`/`ReminderPick`、`QuestionFormat`、`QuestionSchedule` | 已格式化的展示模型（时间标签由宿主算好）、`.delete` 只发意图、保存/删除须在写盘后才回调 |
 | `feature-ai` | `AiModule`、`MeteorAiModule`、`AiScreen`、`AiSettingsScreen`、`AiProtocol`、`ArchiveTools` | `AiConfig`、对话记录、朗读、工具批准决策 |
 
 `feature-media` 的播放与缩略图组件通过 `LocalMediaHost` 拿档案句柄
@@ -894,7 +942,7 @@ feature 的 Composable 一律通过参数接收状态、通过回调向上报告
 | core-backup | 4 | 保留、清单、媒体归档、兼容性 |
 | core-crypto | 3 | 信封、凭据迁移、媒体密钥 |
 | core-index | 2 | 分词、匹配 |
-| core-notify | 1 | 提醒窗口策略 |
+| core-notify | 2 | 提醒窗口策略、每日一问提醒策略 |
 | feature-ai | 15 | 最多（协议、工具、人格、Markdown） |
 | feature-editor | 7 | 块解析、内联格式、渲染 |
 | feature-people | 2 | 标签库、媒体格式 |
@@ -904,6 +952,7 @@ feature 的 Composable 一律通过参数接收状态、通过回调向上报告
 | **core-time** | **0** | 缺口（§20.2） |
 | **feature-calendar** | **0** | 缺口 |
 | **feature-gallery** | **0** | 缺口 |
+| **feature-question** | **0** | 缺口（界面全在手写 Compose，纯函数已提到 `QuestionFormat`/`QuestionSchedule`） |
 
 ---
 
@@ -919,7 +968,7 @@ feature 的 Composable 一律通过参数接收状态、通过回调向上报告
 
 ### §20.2 现有覆盖与缺口
 
-零测试模块：`core-time`、`feature-calendar`、`feature-gallery`。
+零测试模块：`core-time`、`feature-calendar`、`feature-gallery`、`feature-question`。
 
 最值得补的（按风险）：
 
@@ -928,6 +977,8 @@ feature 的 Composable 一律通过参数接收状态、通过回调向上报告
 2. `AlbumMapping`——ADR-052 §6 明确要求过排序映射的单测。
 3. `MediaStreamDataSource` 的 seek 与越界分支——流式播放是 v1.5 的性能核心。
 4. `MediaShareFile`——文件名清洗是路径穿越防线。
+5. `QuestionSchedule`——默认提醒「明天同一时刻」与「必须晚于现在」是每日一问的两个
+   易错边界，目前只有 `EncryptedQuestionStoreTest` 覆盖了存储侧。
 
 ---
 

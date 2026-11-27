@@ -65,6 +65,8 @@ import com.meteor.memory.feature.people.PeopleRow
 import com.meteor.memory.feature.people.PersonDetailScreen
 import com.meteor.memory.feature.people.PersonEditScreen
 import com.meteor.memory.feature.people.PersonRecordRow
+import com.meteor.memory.feature.question.QuestionDetailScreen
+import com.meteor.memory.feature.question.QuestionListScreen
 import com.meteor.memory.feature.media.MediaPickerScreen
 import com.meteor.memory.feature.media.PickedMedia
 import com.meteor.memory.feature.settings.MediaPickerMode
@@ -102,6 +104,9 @@ import com.meteor.memory.ui.log.LogActions
 import com.meteor.memory.ui.people.PeopleViewModel
 import com.meteor.memory.ui.people.PersonDetailViewModel
 import com.meteor.memory.ui.people.PersonEditViewModel
+import com.meteor.memory.ui.question.QuestionDetailViewModel
+import com.meteor.memory.ui.question.QuestionListViewModel
+import com.meteor.memory.ui.question.QuestionOpenEntryPoint
 import com.meteor.memory.ui.search.SearchScreen
 import com.meteor.memory.ui.search.SearchViewModel
 import com.meteor.memory.ui.settings.AiTestState
@@ -109,6 +114,7 @@ import com.meteor.memory.ui.settings.SettingsViewModel
 import com.meteor.memory.ui.theme.MotionTokens
 import com.meteor.memory.update.UpdateError
 import com.meteor.memory.update.UpdateState
+import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -156,9 +162,15 @@ private const val ROUTE_GALLERY = "gallery?date={date}"
 private const val ROUTE_IMAGE = "gallery/{token}"
 private const val ROUTE_AI = "ai?personId={personId}"
 private const val ROUTE_PERSONA = "ai/persona/{personId}"
+// 每日一问（ADR-068）：列表与单条详情。
+private const val ROUTE_QUESTIONS = "questions"
+private const val ROUTE_QUESTION = "questions/{questionId}"
 
 /** Read-only preview of the diary written for [date]. */
 private fun diaryViewRoute(date: LocalDate): String = "diary/view/$date"
+
+/** 每日一问详情页：与 [ROUTE_QUESTION] 的模板一一对应。 */
+private fun questionRoute(questionId: String): String = "questions/$questionId"
 
 private fun changelogVersionRoute(number: String): String =
     "$ROUTE_ABOUT_CHANGELOG/${Uri.encode(number)}"
@@ -171,6 +183,8 @@ private val MAIN_FADE_ROUTES = setOf(
     ROUTE_ALBUM,
     ROUTE_PEOPLE,
     ROUTE_AI,
+    ROUTE_QUESTIONS,
+    ROUTE_QUESTION,
 )
 
 private fun usesMainFadeTransition(route: String?): Boolean = route != null && route in MAIN_FADE_ROUTES
@@ -337,13 +351,6 @@ fun MeteorNavHost(
             val selectedDate by viewModel.selectedDate.collectAsStateWithLifecycle()
             val homeTab by viewModel.homeTab.collectAsStateWithLifecycle()
             val diaryDates by viewModel.diaryDates.collectAsStateWithLifecycle()
-            val imageDates by viewModel.imageDates.collectAsStateWithLifecycle()
-
-            var pendingImageDate by remember { mutableStateOf<LocalDate?>(null) }
-            val pickImage = rememberImagePicker { bytes ->
-                pendingImageDate?.let { viewModel.saveImage(it, bytes) }
-                pendingImageDate = null
-            }
 
             RefreshOnResume { viewModel.refresh() }
 
@@ -367,7 +374,6 @@ fun MeteorNavHost(
                         moods = moods,
                         selectedDate = selectedDate,
                         diaryDates = diaryDates,
-                        imageDates = imageDates,
                         onPreviousMonth = viewModel::previousMonth,
                         onNextMonth = viewModel::nextMonth,
                         onToday = viewModel::goToToday,
@@ -377,21 +383,72 @@ fun MeteorNavHost(
                         onOpenDiary = { date -> navController.navigate(diaryViewRoute(date)) },
                         onEditDiary = { date -> navController.navigate("$ROUTE_DIARY_EDIT/$date") },
                         onOpenImages = { date -> navController.navigate("gallery?date=$date") },
-                        onPickImage = { date ->
-                            pendingImageDate = date
-                            pickImage()
-                        },
                         onOpenSearch = { navController.navigate(ROUTE_SEARCH) },
                         onOpenAi = if (aiEnabled) {
                             { navController.navigate("ai") }
                         } else {
                             null
                         },
+                        onOpenQuestions = { navController.navigate(ROUTE_QUESTIONS) },
                         onOpenAlbum = { navController.navigate("album") },
                         onOpenPeople = { navController.navigate(ROUTE_PEOPLE) },
                         showHeader = false,
                     )
                 },
+            )
+        }
+
+        // 每日一问（ADR-068）：列表页 + 单条详情页。两者都在主淡入淡出路由集合里。
+        composable(ROUTE_QUESTIONS) {
+            val viewModel: QuestionListViewModel = hiltViewModel()
+            val rows by viewModel.rows.collectAsStateWithLifecycle()
+            val composer by viewModel.composer.collectAsStateWithLifecycle()
+
+            RefreshOnResume { viewModel.refresh() }
+
+            QuestionListScreen(
+                rows = rows,
+                composer = composer,
+                onDraftChange = viewModel::onDraftChange,
+                onAddDefaultReminder = viewModel::addDefaultReminder,
+                onAddCustomReminder = viewModel::addCustomReminder,
+                onRemoveReminder = viewModel::removeReminder,
+                onSubmit = viewModel::submit,
+                onOpen = { id -> navController.navigate(questionRoute(id)) },
+                onDelete = viewModel::delete,
+                onBack = { navController.popBackStack() },
+                animationsEnabled = animationsEnabled,
+            )
+        }
+
+        composable(
+            route = ROUTE_QUESTION,
+            arguments = listOf(
+                navArgument(QuestionDetailViewModel.ARG_ID) { type = NavType.StringType },
+            ),
+        ) { entry ->
+            val viewModel: QuestionDetailViewModel = hiltViewModel()
+            val state by viewModel.state.collectAsStateWithLifecycle()
+
+            RefreshOnResume { viewModel.load() }
+
+            QuestionDetailScreen(
+                state = state,
+                onDraftChange = viewModel::onDraftChange,
+                onTogglePreview = viewModel::togglePreview,
+                onStartAnswer = viewModel::startAnswer,
+                onSaveAnswer = viewModel::saveAnswer,
+                onAddDefaultReminder = viewModel::addDefaultReminder,
+                onAddCustomReminder = viewModel::addCustomReminder,
+                onRemoveReminder = viewModel::removeReminder,
+                // 删除成功才弹栈，且只在用户仍停在这一页时弹：迟到的回调不能把
+                // 别人 (或上一页) 顶掉。
+                onDelete = { onDeleted ->
+                    viewModel.delete {
+                        if (navController.currentBackStackEntry?.id == entry.id) onDeleted()
+                    }
+                },
+                onBack = { navController.popBackStack() },
             )
         }
 
@@ -584,8 +641,13 @@ fun MeteorNavHost(
             val importingFile by galleryViewModel.importingFile.collectAsStateWithLifecycle()
             val importProgress by galleryViewModel.importProgress.collectAsStateWithLifecycle()
             val importSummary by galleryViewModel.importSummary.collectAsStateWithLifecycle()
+            val addingMedia by galleryViewModel.addingMedia.collectAsStateWithLifecycle()
+            val addMediaProgress by galleryViewModel.addMediaProgress.collectAsStateWithLifecycle()
+            val addMediaSummary by galleryViewModel.addMediaSummary.collectAsStateWithLifecycle()
 
             val pickFiles = rememberAttachmentPicker(galleryViewModel::importFiles)
+            // 添加媒体（ADR-068）：设备选择器 → MediaImporter 逐张加密入库。
+            val pickMedia = rememberMediaUriPicker(galleryViewModel::importMedia)
 
             RefreshOnResume { galleryViewModel.refresh() }
 
@@ -613,6 +675,11 @@ fun MeteorNavHost(
                     )
                 },
                 onDismissImportSummary = galleryViewModel::clearImportSummary,
+                onAddMedia = pickMedia,
+                addingMedia = addingMedia,
+                addMediaProgress = addMediaProgress,
+                addMediaSummary = addMediaSummary,
+                onDismissAddMediaSummary = galleryViewModel::clearAddMediaSummary,
             )
         }
 
@@ -1255,6 +1322,23 @@ fun MeteorNavHost(
                 },
             )
         }
+    }
+
+    // 通知点击 → 详情页（ADR-068）。通知在 Activity 可能还没起来时投递，所以它只
+    // 记下「要打开哪个问题」（QuestionOpenRequest），导航图建好后才在这里消费一次。
+    // 放在 NavHost { } 之后：上面的 block 不是 Composable 作用域，拿不到 remember /
+    // LaunchedEffect。QuestionOpenRequest 是普通 @Singleton，hiltViewModel() 取不到，
+    // 所以经 QuestionOpenEntryPoint 从 Application 拿同一个实例。
+    val appContext = LocalContext.current.applicationContext
+    val openRequest = remember(appContext) {
+        EntryPointAccessors
+            .fromApplication(appContext, QuestionOpenEntryPoint::class.java)
+            .questionOpenRequest()
+    }
+    val pendingQuestion by openRequest.pending.collectAsStateWithLifecycle()
+    LaunchedEffect(pendingQuestion) {
+        val questionId = openRequest.consume() ?: return@LaunchedEffect
+        navController.navigate(questionRoute(questionId))
     }
 }
 

@@ -7,13 +7,11 @@ import androidx.lifecycle.viewModelScope
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.storage.Document
-import com.meteor.memory.core.storage.ImageStore
 import com.meteor.memory.core.storage.Mood
 import com.meteor.memory.core.storage.MoodQueries
 import com.meteor.memory.core.storage.RecordType
 import com.meteor.memory.core.storage.StorageLayout
 import com.meteor.memory.core.storage.StorageRouter
-import com.meteor.memory.feature.editor.ImageCompressor
 import com.meteor.memory.ui.search.SearchService
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -28,7 +26,6 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.LocalDate
 import java.time.YearMonth
-import java.time.ZoneId
 import javax.inject.Inject
 
 @HiltViewModel
@@ -37,7 +34,6 @@ class CalendarViewModel @Inject constructor(
     private val moodQueries: MoodQueries,
     private val diaryQueries: DiaryQueries,
     private val appLog: AppLog,
-    private val imageStore: ImageStore,
     private val searchService: SearchService,
     private val storageRouter: StorageRouter,
     @ApplicationContext private val context: Context,
@@ -59,9 +55,6 @@ class CalendarViewModel @Inject constructor(
     /** Days with a diary on disk — drives the ✓✓ next to the selected date. */
     private val _diaryDates = MutableStateFlow<Set<LocalDate>>(emptySet())
     val diaryDates: StateFlow<Set<LocalDate>> = _diaryDates.asStateFlow()
-
-    private val _imageDates = MutableStateFlow<Set<LocalDate>>(emptySet())
-    val imageDates: StateFlow<Set<LocalDate>> = _imageDates.asStateFlow()
 
     /**
      * Serializes mood read-modify-write cycles. Without it two quick taps read
@@ -147,45 +140,23 @@ class CalendarViewModel @Inject constructor(
         }
     }
 
-    /** 一次性刷新：已写日记的日期 + 当天有图的日期。 */
+    /**
+     * 一次性刷新：已写日记的日期 + 本月心情。
+     *
+     * 「当天有没有图」不再扫描：ADR-068 把「存张记忆」从日历里拿掉了，图片一律从
+     * 相册导入，日历不需要知道哪一天有图片。
+     */
     fun refresh() {
         viewModelScope.launch {
             val diary = withContext(Dispatchers.IO) {
                 runCatching { diaryQueries.dates().toSet() }.getOrDefault(emptySet())
             }
-            val images = withContext(Dispatchers.IO) {
-                runCatching {
-                    imageStore.list()
-                        .map { it.modifiedAt.atZone(ZoneId.systemDefault()).toLocalDate() }
-                        .toSet()
-                }.getOrDefault(emptySet())
-            }
             _diaryDates.value = diary
-            _imageDates.value = images
             moodWriteMutex.withLock {
                 // Re-read the month inside the lock: the user may have swiped
-                // while the diary/image IO above was running.
+                // while the diary IO above was running.
                 _moods.value = readMoods(_month.value)
             }
-        }
-    }
-
-    fun saveImage(date: LocalDate, bytes: ByteArray) {
-        viewModelScope.launch {
-            val saved = withContext(Dispatchers.IO) {
-                runCatching {
-                    val token = imageStore.save(ImageCompressor.compress(bytes), personId = null)
-                    val at = date.atTime(12, 0).atZone(ZoneId.systemDefault()).toInstant()
-                    File(File(context.filesDir, StorageLayout.ROOT_NAME), token)
-                        .setLastModified(at.toEpochMilli())
-                    token
-                }
-            }
-            saved.fold(
-                onSuccess = { appLog.info(TAG, "image saved for $date") },
-                onFailure = { appLog.warn(TAG, "image save failed", it) },
-            )
-            refresh()
         }
     }
 
