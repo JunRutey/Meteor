@@ -800,8 +800,8 @@ interface AppLog {                            // 落盘异步，Logcat 同步
 }
 
 object DailyReminderPolicy {                  // 纯函数，无时钟无随机源
-    val WINDOW_START: LocalTime = LocalTime.of(8, 0)
-    val WINDOW_END: LocalTime = LocalTime.of(9, 0)
+    val WINDOW_START: LocalTime = LocalTime.of(20, 0)
+    val WINDOW_END: LocalTime = LocalTime.of(21, 0)
     fun nextTrigger(now: ZonedDateTime, alreadySentToday: Boolean, randomMinute: (Int) -> Int): ZonedDateTime
     fun hoursUntilEndOfDay(at: ZonedDateTime): Int
 }

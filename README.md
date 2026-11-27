@@ -35,7 +35,7 @@
   [ADR-034](docs/adr/ADR-034-person-deletion-custom-tags-and-detail-redesign.md)、
   [ADR-036](docs/adr/ADR-036-custom-tag-deletion.md)、
   [ADR-045](docs/adr/ADR-045-unified-person-tags.md)
-- **生辰与提醒**：实时年龄、公历/农历生日倒计时；每日 8:00–9:00 随机写日记提醒，
+- **生辰与提醒**：实时年龄、公历/农历生日倒计时；每日 20:00–21:00 随机写日记提醒，
   由通知总开关统一控制下载通知与提醒。详见
   [ADR-033](docs/adr/ADR-033-daily-reminder-and-notification-channels.md)、
   [ADR-039](docs/adr/ADR-039-notification-master-random-window.md)

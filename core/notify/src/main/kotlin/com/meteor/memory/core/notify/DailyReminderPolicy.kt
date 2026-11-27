@@ -13,14 +13,17 @@ import java.time.temporal.ChronoUnit
  * [WINDOW_START]..[WINDOW_END). "Already sent today" is supplied by the caller
  * because the date is persisted in DataStore, not here.
  *
+ * The window is in the evening (20:00–21:00) so the reminder reaches the user
+ * when they are about to close the day, not in the morning (ADR-039 修订).
+ *
  * Randomness is injected as a function returning a value in `0 until bound`, so
  * every branch is unit-testable without touching the global random source.
  */
 object DailyReminderPolicy {
-    val WINDOW_START: LocalTime = LocalTime.of(8, 0)
-    val WINDOW_END: LocalTime = LocalTime.of(9, 0)
+    val WINDOW_START: LocalTime = LocalTime.of(20, 0)
+    val WINDOW_END: LocalTime = LocalTime.of(21, 0)
 
-    /** Whole minutes available in the window: 08:00 through 08:59. */
+    /** Whole minutes available in the window: 20:00 through 20:59. */
     const val WINDOW_MINUTES = 60
 
     /**
@@ -64,7 +67,7 @@ object DailyReminderPolicy {
      * Whole hours from [at] to the next local midnight.
      *
      * The notification copy uses this as "hours left today". The value is
-     * truncated, matching the ADR-039 example: 08:30 -> 15.
+     * truncated: 20:30 -> 3.
      */
     fun hoursUntilEndOfDay(at: ZonedDateTime): Int {
         val endOfDay = at.toLocalDate().plusDays(1).atStartOfDay(at.zone)
