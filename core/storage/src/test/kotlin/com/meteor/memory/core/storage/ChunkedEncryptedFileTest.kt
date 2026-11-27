@@ -259,6 +259,98 @@ class ChunkedEncryptedFileTest {
         }
     }
 
+    // --- on-demand read buffer (ADR-067) ------------------------------------
+
+    /**
+     * Counts the frames on disk, which is how the read buffer's growth shows up:
+     * a small payload must be exactly one frame, not one frame per refill.
+     */
+    private fun frameCount(file: File): Int {
+        var frames = 0
+        val scratch = ByteArray(8 * 1024)
+        DataInputStream(file.inputStream().buffered()).use { input ->
+            input.readInt()
+            input.readInt()
+            while (true) {
+                val size = input.readInt()
+                if (size == 0) break
+                var remaining = size
+                while (remaining > 0) {
+                    val count = input.read(scratch, 0, minOf(remaining, scratch.size))
+                    if (count < 0) error("truncated frame")
+                    remaining -= count
+                }
+                frames++
+            }
+        }
+        return frames
+    }
+
+    @Test
+    fun `a payload smaller than one chunk is a single frame`() {
+        val file = newFile("small.enc")
+        // Well below the 10 MiB logical chunk size, but several times the initial
+        // buffer: growth must not split the payload into one frame per refill.
+        val source = payload(1536 * 1024)
+
+        val written = ChunkedEncryptedFile.write(
+            input = ByteArrayInputStream(source),
+            target = file,
+            magic = MAGIC,
+            crypto = crypto,
+            version = ChunkedEncryptedFile.FORMAT_VERSION_MEDIA_KEY,
+            parallelism = 2,
+        )
+
+        assertEquals(1, written.chunkCount)
+        assertEquals(1, frameCount(file))
+        assertArrayEquals(source, readAll(file, ChunkedEncryptedFile.FORMAT_VERSION_MEDIA_KEY).first)
+    }
+
+    @Test
+    fun `chunk boundaries stay at the logical chunk size`() {
+        val file = newFile("boundaries.enc")
+        val chunk = ChunkedEncryptedFile.CHUNK_SIZE
+        val source = payload(chunk + 1)
+
+        val written = ChunkedEncryptedFile.write(
+            input = ByteArrayInputStream(source),
+            target = file,
+            magic = MAGIC,
+            crypto = crypto,
+            version = ChunkedEncryptedFile.FORMAT_VERSION,
+            parallelism = 2,
+        )
+
+        assertEquals(2, written.chunkCount)
+        assertEquals(2, frameCount(file))
+        assertArrayEquals(source, readAll(file, ChunkedEncryptedFile.FORMAT_VERSION).first)
+    }
+
+    @Test
+    fun `a dribbling stream still fills whole chunks`() {
+        val file = newFile("dribble.enc")
+        // The 1 MiB format keeps this test fast; the growth logic is shared.
+        val chunk = ChunkedEncryptedFile.CHUNK_SIZE
+        val source = payload(chunk + 7)
+        // One byte per read: the buffer must keep growing until a chunk is full.
+        val dribble = object : java.io.InputStream() {
+            private var index = 0
+            override fun read(): Int = if (index < source.size) source[index++].toInt() and 0xFF else -1
+        }
+
+        val written = ChunkedEncryptedFile.write(
+            input = dribble,
+            target = file,
+            magic = MAGIC,
+            crypto = crypto,
+            version = ChunkedEncryptedFile.FORMAT_VERSION,
+        )
+
+        assertEquals(2, written.chunkCount)
+        assertArrayEquals(source, readAll(file, ChunkedEncryptedFile.FORMAT_VERSION).first)
+    }
+
     private companion object {
         /** Mirrors the media store's magic; the parser never cares about the value. */
         const val MAGIC = 0x4D454449

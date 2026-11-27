@@ -15,7 +15,8 @@ import java.util.concurrent.Executors
 import java.util.concurrent.Future
 
 /**
- * Authenticated chunk framing for large encrypted payloads (ADR-052, ADR-063).
+ * Authenticated chunk framing for large encrypted payloads (ADR-052, ADR-063,
+ * ADR-067).
  *
  * Wire format, mirroring the one [EncryptedAttachmentStore] writes:
  * ```
@@ -31,13 +32,14 @@ import java.util.concurrent.Future
  * The version in the header decides both the plaintext chunk size and, through
  * the caller's `cryptoFor`, which [FileCrypto] can read the file: v1/v2 payloads
  * were written with the Keystore key, v3 payloads with the in-process media data
- * key (ADR-063).
+ * key (ADR-063). Since ADR-067 every writer uses v3: media, attachments and
+ * images share this one framing.
  */
 internal object ChunkedEncryptedFile {
 
     /**
-     * Original 1 MiB framing: every file written before ADR-062, and all
-     * attachments (which stay on this version).
+     * Original 1 MiB framing: every payload written before ADR-062. Read-only
+     * today — attachments moved to [FORMAT_VERSION_MEDIA_KEY] in ADR-067.
      */
     const val FORMAT_VERSION = 1
 
@@ -52,8 +54,8 @@ internal object ChunkedEncryptedFile {
      * 10 MiB framing encrypted with the in-process media data key (ADR-063).
      *
      * Same chunk size as [FORMAT_VERSION_LARGE_CHUNKS]: only the key differs, so
-     * the reader needs nothing but the version to pick a [FileCrypto]. New media
-     * is written in this format; v1/v2 files stay readable.
+     * the reader needs nothing but the version to pick a [FileCrypto]. Every
+     * writer uses this format since ADR-067; v1/v2 files stay readable.
      */
     const val FORMAT_VERSION_MEDIA_KEY = 3
 
@@ -61,6 +63,16 @@ internal object ChunkedEncryptedFile {
 
     /** Plaintext size of one chunk in the v2/v3 formats. */
     internal const val LARGE_CHUNK_SIZE = 10 * 1024 * 1024
+
+    /**
+     * First size of the read buffer, which then doubles up to the chunk size.
+     *
+     * The format decides the *logical* chunk size, but most payloads are far
+     * smaller than one chunk: a 200 KB image must not reserve a 10 MiB array to
+     * be written. [ChunkReader] therefore grows on demand and only reaches the
+     * full chunk size for a file that actually has that much data.
+     */
+    private const val INITIAL_BUFFER_BYTES = 256 * 1024
 
     /**
      * AES-256-GCM adds a 12-byte nonce and a 16-byte tag; a one-byte chunk is
@@ -106,14 +118,12 @@ internal object ChunkedEncryptedFile {
         DataOutputStream(target.outputStream().buffered()).use { output ->
             output.writeInt(magic)
             output.writeInt(version)
-            val buffer = ByteArray(chunkSize)
+            val reader = ChunkReader(input, chunkSize)
             if (parallelism == 1) {
-                while (true) {
-                    val count = readChunk(input, buffer)
-                    if (count == 0) break
-                    val chunk = EncryptedChunk(index, crypto.encrypt(frameOf(index, buffer, count)))
+                while (reader.next()) {
+                    val chunk = EncryptedChunk(index, crypto.encrypt(frameOf(index, reader.bytes, reader.count)))
                     writeFrame(output, chunk)
-                    totalBytes += count
+                    totalBytes += reader.count
                     index++
                 }
             } else {
@@ -121,17 +131,15 @@ internal object ChunkedEncryptedFile {
                 try {
                     val pending = ArrayDeque<Future<EncryptedChunk>>()
                     var written = 0
-                    while (true) {
-                        val count = readChunk(input, buffer)
-                        if (count == 0) break
+                    while (reader.next()) {
                         val chunkIndex = index
                         // Copy out of the reused buffer before handing the chunk
                         // to another thread.
-                        val frame = frameOf(chunkIndex, buffer, count)
+                        val frame = frameOf(chunkIndex, reader.bytes, reader.count)
                         pending.addLast(
                             pool.submit(Callable { EncryptedChunk(chunkIndex, crypto.encrypt(frame)) }),
                         )
-                        totalBytes += count
+                        totalBytes += reader.count
                         index++
                         // Bounded pipeline: draining the oldest future before
                         // reading again caps the outstanding plaintext/ciphertext.
@@ -449,20 +457,47 @@ internal object ChunkedEncryptedFile {
     private fun maxEncryptedChunkSize(chunkSize: Int): Int =
         chunkSize + Int.SIZE_BYTES + 29
 
-    private fun readChunk(input: InputStream, buffer: ByteArray): Int {
-        var count = 0
-        while (count < buffer.size) {
-            val read = input.read(buffer, count, buffer.size - count)
-            if (read < 0) break
-            if (read == 0) {
-                val single = input.read()
-                if (single < 0) break
-                buffer[count++] = single.toByte()
-            } else {
-                count += read
+    /**
+     * Reads plaintext chunks of at most [chunkSize] bytes, growing the buffer as
+     * the payload demands.
+     *
+     * A chunk is "full" only when the buffer reached [chunkSize]; a short read
+     * that filled the buffer at a smaller capacity means the stream may still
+     * have data, so the buffer doubles and the same chunk continues. That keeps
+     * the on-disk chunk boundaries identical to a fixed-size buffer while a
+     * 200 KB image is written from a 256 KB buffer instead of a 10 MiB one.
+     */
+    private class ChunkReader(private val input: InputStream, private val chunkSize: Int) {
+
+        var bytes: ByteArray = ByteArray(minOf(INITIAL_BUFFER_BYTES, chunkSize).coerceAtLeast(1))
+            private set
+
+        var count: Int = 0
+            private set
+
+        /** True while a chunk is available in [bytes]/[count]; false at end of stream. */
+        fun next(): Boolean {
+            count = 0
+            while (true) {
+                while (count < bytes.size) {
+                    val read = input.read(bytes, count, bytes.size - count)
+                    if (read < 0) {
+                        // End of stream: whatever was read so far is the last chunk.
+                        return count > 0
+                    }
+                    if (read == 0) {
+                        val single = input.read()
+                        if (single < 0) return count > 0
+                        bytes[count++] = single.toByte()
+                    } else {
+                        count += read
+                    }
+                }
+                // Buffer is full: a full-size chunk is complete, otherwise grow.
+                if (bytes.size == chunkSize) return true
+                bytes = bytes.copyOf(minOf(bytes.size * 2, chunkSize))
             }
         }
-        return count
     }
 
     private class EncryptedChunk(val index: Int, val payload: ByteArray)

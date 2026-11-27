@@ -122,11 +122,25 @@ class AlbumRepository(
     fun copyDecrypted(ref: String, output: OutputStream): Long? = when (val parsed = MediaRef.parse(ref)) {
         null -> null
         is MediaRef.Media -> runCatching { media.copyDecrypted(parsed.id, output) }.getOrNull()
-        is MediaRef.LegacyImage -> images.load(parsed.token)?.let { bytes ->
+        is MediaRef.LegacyImage -> copyLegacyImage(parsed.token, output)
+        is MediaRef.File -> runCatching { attachments?.copyDecrypted(parsed.id, output) }.getOrNull()
+    }
+
+    /**
+     * Streams one legacy image.
+     *
+     * Images are chunked frames since ADR-067, so they stream like media. Only an
+     * implementation without streaming falls back to [ImageStore.load]: anything
+     * else may already have written bytes, and retrying would duplicate them.
+     */
+    private fun copyLegacyImage(token: String, output: OutputStream): Long? {
+        val streamed = runCatching { images.copyDecrypted(token, output) }
+        if (streamed.isSuccess) return streamed.getOrNull()
+        if (streamed.exceptionOrNull() !is UnsupportedOperationException) return null
+        return images.load(token)?.let { bytes ->
             output.write(bytes)
             bytes.size.toLong()
         }
-        is MediaRef.File -> runCatching { attachments?.copyDecrypted(parsed.id, output) }.getOrNull()
     }
 
     fun delete(ref: String): Boolean = when (val parsed = MediaRef.parse(ref)) {

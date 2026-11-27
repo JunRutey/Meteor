@@ -8,6 +8,8 @@ import java.io.DataOutputStream
 import java.io.File
 import java.io.InputStream
 import java.io.OutputStream
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.time.Instant
 import java.util.UUID
 
@@ -44,6 +46,15 @@ interface AttachmentStore {
     fun copyDecrypted(id: String, output: OutputStream): Long
 
     /**
+     * Streams authenticated plaintext from [offsetBytes] (a plaintext offset).
+     *
+     * Added under R2 as an additive, defaulted method: an implementation that
+     * cannot stream keeps compiling, and callers fall back to [copyDecrypted].
+     */
+    fun openDecrypted(id: String, offsetBytes: Long = 0L): InputStream =
+        throw UnsupportedOperationException("streaming decryption is not supported")
+
+    /**
      * Deletes the attachment data and sidecars.
      *
      * This is irreversible; callers should confirm the user's intent first.
@@ -53,12 +64,38 @@ interface AttachmentStore {
     fun delete(id: String): Boolean
 }
 
+/**
+ * Chunked-encrypted attachment store under `数字遗产/附件/<owner>/`.
+ *
+ * Payloads are written with the **same** framing and the **same** key as media
+ * (ADR-067, extending ADR-063): format version 3, 10 MiB chunks, encrypted with
+ * the in-process media data key, so a large attachment is encrypted and
+ * decrypted by the same code path and the same parallel workers a video uses.
+ * The metadata sidecar and the extracted text stay on the Keystore key, exactly
+ * like the media sidecars.
+ *
+ * Reads pick the key from the payload's header version, so attachments written
+ * before ADR-067 (v1, 1 MiB, Keystore key) remain readable with no migration.
+ */
 class EncryptedAttachmentStore(
     rootDir: File,
     private val crypto: FileCrypto,
+    /**
+     * Key for the attachment payload itself (ADR-067). Defaults to [crypto] so
+     * existing callers and tests keep the pre-ADR-067 single-key behaviour.
+     */
+    private val mediaKeyCrypto: FileCrypto = crypto,
 ) : AttachmentStore {
 
     private val attachmentsDir = File(rootDir, "${StorageLayout.LEGACY}/${StorageLayout.ATTACHMENTS}")
+
+    /**
+     * Reads pick the payload key from the format version: v3 files were written
+     * with [mediaKeyCrypto], older v1/v2 files with [crypto].
+     */
+    private val cryptoFor: (Int) -> FileCrypto = { version ->
+        if (version >= ChunkedEncryptedFile.FORMAT_VERSION_MEDIA_KEY) mediaKeyCrypto else crypto
+    }
 
     override fun save(
         input: InputStream,
@@ -164,18 +201,29 @@ class EncryptedAttachmentStore(
         val dataFile = File(metadataFile.parentFile, "$id$ATTACHMENT_DATA_SUFFIX")
         check(dataFile.isFile) { "encrypted attachment is missing" }
 
-        // Attachments keep the v1 1 MiB format and the Keystore key (ADR-062,
-        // ADR-063): they never use the media data key and stay sequential.
+        // Same framing and key as media (ADR-067); the version dispatch keeps
+        // pre-ADR-067 attachments (v1, Keystore key) readable.
         val stats = ChunkedEncryptedFile.copyDecrypted(
             source = dataFile,
             magic = DATA_MAGIC,
-            cryptoFor = { crypto },
+            cryptoFor = cryptoFor,
             output = output,
+            parallelism = PARALLELISM,
         )
         check(stats.chunkCount == metadata.chunkCount && stats.sizeBytes == metadata.attachment.sizeBytes) {
             "attachment size does not match metadata"
         }
         return stats.sizeBytes
+    }
+
+    override fun openDecrypted(id: String, offsetBytes: Long): InputStream {
+        require(ATTACHMENT_ID_PATTERN.matches(id)) { "illegal attachment id" }
+        val metadataFile = findMetadata(id) ?: error("attachment not found")
+        val metadata = decodeMetadata(metadataFile)
+        require(offsetBytes in 0..metadata.attachment.sizeBytes) { "offset outside attachment" }
+        val dataFile = File(metadataFile.parentFile, "$id$ATTACHMENT_DATA_SUFFIX")
+        check(dataFile.isFile) { "encrypted attachment is missing" }
+        return ChunkedEncryptedFile.openDecrypted(dataFile, DATA_MAGIC, cryptoFor, offsetBytes)
     }
 
     override fun delete(id: String): Boolean {
@@ -189,7 +237,17 @@ class EncryptedAttachmentStore(
         return removed
     }
 
-    internal fun restorePayload(id: String, personId: String?, input: InputStream) {
+    /**
+     * Rewrites only the payload, returning the chunk count it was written with.
+     *
+     * The caller must persist that count into the metadata sidecar once the whole
+     * archive is imported ([rewriteChunkCount]): a pre-ADR-067 backup carries a
+     * sidecar describing 1 MiB chunks, while this build writes 10 MiB ones, and
+     * [copyDecrypted] refuses a payload whose chunk count disagrees with the
+     * sidecar. The rewrite cannot happen here because the sidecar entry of the
+     * archive is imported by the caller as a separate, independent step.
+     */
+    internal fun restorePayload(id: String, personId: String?, input: InputStream): Int {
         require(ATTACHMENT_ID_PATTERN.matches(id)) { "illegal attachment id" }
         require(personId == null || StorageLayout.PERSON_ID_PATTERN.matches(personId)) {
             "illegal person_id: $personId"
@@ -202,7 +260,7 @@ class EncryptedAttachmentStore(
         val previous = File(ownerDir, "$id$DATA_BACKUP_SUFFIX")
         var previousMoved = false
         try {
-            writeEncryptedChunks(input, temporary)
+            val payload = writeEncryptedChunks(input, temporary)
             if (target.exists()) {
                 check(!previous.exists() && target.renameTo(previous)) {
                     "cannot preserve existing attachment"
@@ -211,6 +269,7 @@ class EncryptedAttachmentStore(
             }
             check(temporary.renameTo(target)) { "cannot restore encrypted attachment" }
             if (previousMoved) previous.delete()
+            return payload.chunkCount
         } catch (failure: Exception) {
             temporary.delete()
             if (previousMoved && previous.exists()) previous.renameTo(target)
@@ -218,8 +277,61 @@ class EncryptedAttachmentStore(
         }
     }
 
+    /**
+     * Re-stamps the sidecar's chunk count after a restore rewrote the payload.
+     *
+     * Without this, a backup taken before ADR-067 would restore into an
+     * attachment whose sidecar still claims the old 1 MiB framing and whose
+     * payload is 10 MiB framed — [copyDecrypted] rejects that, so the file would
+     * be permanently unreadable. A missing or unreadable sidecar is left alone:
+     * the payload is already on disk and must not be dropped for it.
+     */
+    internal fun rewriteChunkCount(id: String, chunkCount: Int) {
+        if (!ATTACHMENT_ID_PATTERN.matches(id) || chunkCount < 0) return
+        val metadataFile = findMetadata(id) ?: return
+        val details = runCatching { decodeMetadata(metadataFile) }.getOrNull() ?: return
+        if (details.chunkCount == chunkCount) return
+        val updated = encodeMetadata(
+            attachment = details.attachment,
+            chunkCount = chunkCount,
+            hasIndexedText = details.hasIndexedText,
+        )
+        val temporary = File(metadataFile.parentFile, "$id$METADATA_TEMP_SUFFIX")
+        try {
+            temporary.writeBytes(crypto.encrypt(updated))
+            // The sidecar already exists, so the replace must overwrite it
+            // atomically rather than rely on rename semantics per platform.
+            replaceAtomically(temporary, metadataFile)
+        } finally {
+            if (temporary.exists()) temporary.delete()
+        }
+    }
+
+    /** Atomic on the same filesystem; the non-atomic move is the fallback. */
+    private fun replaceAtomically(source: File, destination: File) {
+        try {
+            Files.move(
+                source.toPath(),
+                destination.toPath(),
+                StandardCopyOption.REPLACE_EXISTING,
+                StandardCopyOption.ATOMIC_MOVE,
+            )
+        } catch (_: Exception) {
+            Files.move(source.toPath(), destination.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        }
+    }
+
     private fun writeEncryptedChunks(input: InputStream, target: File): PayloadStats {
-        val stats = ChunkedEncryptedFile.write(input, target, DATA_MAGIC, crypto)
+        // Media framing and media key (ADR-067): 10 MiB chunks, two encryption
+        // workers. A large imported file now costs what a large video costs.
+        val stats = ChunkedEncryptedFile.write(
+            input = input,
+            target = target,
+            magic = DATA_MAGIC,
+            crypto = mediaKeyCrypto,
+            version = ChunkedEncryptedFile.FORMAT_VERSION_MEDIA_KEY,
+            parallelism = PARALLELISM,
+        )
         return PayloadStats(sizeBytes = stats.sizeBytes, chunkCount = stats.chunkCount)
     }
 
@@ -339,6 +451,14 @@ class EncryptedAttachmentStore(
         private const val DATA_MAGIC = 0x4D415454
         private const val METADATA_MAGIC = 0x4D414D44
         private const val FORMAT_VERSION = ChunkedEncryptedFile.FORMAT_VERSION
+
+        /**
+         * Payload chunks encrypted/decrypted concurrently (ADR-067), the same
+         * value media uses (ADR-063): two workers hide the per-chunk AES latency
+         * without doubling the ~10 MiB block buffers in memory.
+         */
+        private const val PARALLELISM = 2
+
         private const val MAX_INDEXED_TEXT_BYTES = 2 * 1024 * 1024
         private const val METADATA_SUFFIX = ".meta.enc"
         private const val TEXT_SUFFIX = ".text.enc"
