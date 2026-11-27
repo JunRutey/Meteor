@@ -149,13 +149,14 @@ interface MediaStore {
  * Layout mirrors [EncryptedAttachmentStore] — `数字遗产/媒体/<owner>/<id>.data.enc`
  * (chunk frames), `<id>.meta.enc` (encrypted metadata), `<id>.thumb.enc` (optional
  * encrypted PNG) — so a large video is streamed chunk by chunk and never held in
- * memory, while the attachment store's own format stays untouched.
+ * memory.
  *
  * Media payloads are written as format version 3 with [mediaKeyCrypto], a random
  * data key wrapped by the Keystore key (ADR-063), so chunks can be encrypted in
- * parallel inside this process. The metadata sidecar and the thumbnail keep using
- * [crypto]. Reads pick the key from the payload's version, so v1/v2 media written
- * before ADR-063 stays readable.
+ * parallel inside this process. Attachments and images were moved onto the same
+ * framing and key by ADR-067; this store needed no change for that. The metadata
+ * sidecar and the thumbnail keep using [crypto]. Reads pick the key from the
+ * payload's version, so v1/v2 media written before ADR-063 stays readable.
  */
 class EncryptedMediaStore(
     rootDir: File,
@@ -228,8 +229,8 @@ class EncryptedMediaStore(
                 magic = DATA_MAGIC,
                 crypto = mediaKeyCrypto,
                 // Media uses the media data key with 10 MiB chunks and two
-                // encryption workers (ADR-062, ADR-063); attachments keep the
-                // 1 MiB format and the Keystore key.
+                // encryption workers (ADR-062, ADR-063). Attachments and images
+                // share that framing and key (ADR-067); only the magic differs.
                 version = ChunkedEncryptedFile.FORMAT_VERSION_MEDIA_KEY,
                 parallelism = PARALLELISM,
             )

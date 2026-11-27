@@ -136,7 +136,8 @@ object AppModule {
         @ApplicationContext context: Context,
         fileCrypto: FileCrypto,
         timeModule: TimeModule,
-    ): StorageRouter = PrivateStorageRouter(context, fileCrypto, timeModule)
+        @MediaKeyCrypto mediaKeyCrypto: FileCrypto,
+    ): StorageRouter = PrivateStorageRouter(context, fileCrypto, timeModule, mediaKeyCrypto)
 
     @Provides
     @Singleton
@@ -173,14 +174,17 @@ object AppModule {
         router = storageRouter,
     )
 
+    /** Legacy images now use the unified payload format (ADR-067). */
     @Provides
     @Singleton
     fun provideImageStore(
         @ApplicationContext context: Context,
         fileCrypto: FileCrypto,
+        @MediaKeyCrypto mediaKeyCrypto: FileCrypto,
     ): ImageStore = EncryptedImageStore(
         rootDir = File(context.filesDir, StorageLayout.ROOT_NAME),
         crypto = fileCrypto,
+        mediaKeyCrypto = mediaKeyCrypto,
     )
 
     @Provides
@@ -364,14 +368,17 @@ object AppModule {
         router = storageRouter,
     )
 
+    /** Attachments now use the unified payload format too (ADR-067). */
     @Provides
     @Singleton
     fun provideAttachmentStore(
         @ApplicationContext context: Context,
         crypto: FileCrypto,
+        @MediaKeyCrypto mediaKeyCrypto: FileCrypto,
     ): AttachmentStore = EncryptedAttachmentStore(
         rootDir = File(context.filesDir, StorageLayout.ROOT_NAME),
         crypto = crypto,
+        mediaKeyCrypto = mediaKeyCrypto,
     )
 
     /** Unified media storage for images, video and audio (ADR-052, ADR-063). */

@@ -1,6 +1,7 @@
 # ADR-063 · 媒体二级密钥与并行加解密
 
-> 状态：已采纳。关联：[ADR-052](ADR-052-media-album-hub.md)（媒体存储）、
+> 状态：已采纳；**适用范围已由 [ADR-067](ADR-067-unified-binary-payload-encryption.md)
+> 扩展到附件与图片**（见文末「修订」）。关联：[ADR-052](ADR-052-media-album-hub.md)（媒体存储）、
 > [ADR-058](ADR-058-large-media-key-cache-and-streaming-playback.md)（密钥缓存与流式播放）、
 > [ADR-062](ADR-062-media-chunk-size-10mb.md)（媒体 10 MiB 分块）、
 > [ADR-040](ADR-040-backup-coverage.md)（备份范围）。
@@ -142,3 +143,18 @@ int 0
 - 单测覆盖：`MediaKeyStoreTest`（首次生成/复用/幂等预热/损坏不重建/并发只生成一次）、
   `ChunkedEncryptedFileTest`（v1/v2/v3 读取、并行写入与并行解密顺序、异常解包、尾部校验）、
   `EncryptedMediaStoreTest`（媒体载荷用 MK、边车仍用 Keystore 密钥、默认参数兼容）。
+
+## 七、修订（ADR-067）
+
+本 ADR 原先把 MK 的适用范围**限定为媒体**，附件与旧版图片继续用 Keystore 主密钥。
+[ADR-067](ADR-067-unified-binary-payload-encryption.md) 已把这一限制取消：
+
+- 附件载荷改为 v3 分块帧 + MK（10 MiB、2 线程并行），不再是 v1 1 MiB 串行；
+- 旧版图片由整文件密文改为 v3 分块帧 + MK（magic `IMAG`）；
+- 媒体载荷的格式与实现**不变**，`EncryptedMediaStore` 一行未改。
+
+本 ADR §二/§三 里「仅新媒体文件用 MK，日记、心情、人物档案、附件、旧图片继续用
+Keystore 密钥」的表述以 ADR-067 为准。仍然不变的边界是：**派生小文件**
+（元数据边车、缩略图、抽取文本）与**全部文本内容**（记录正文、AI 会话、凭据、
+出生日期、设置快照）继续由 Keystore 主密钥保护，理由见 ADR-067 §三.2。
+

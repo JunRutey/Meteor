@@ -160,7 +160,7 @@ filesDir/
 │   │   └── 日记/<yyyy>/<yyyy-MM-dd>.md ← 日记正文
 │   ├── 数字遗产/                      ← LEGACY
 │   │   ├── 聊天记录/<person_id>/<yyyy-MM-dd>.md
-│   │   ├── 图片/<owner>/<uuid>.enc     ← 旧版整文件加密图片
+│   │   ├── 图片/<owner>/<uuid>.enc     ← 编辑器插图；v3 分块帧（ADR-067），旧整文件密文仍可读
 │   │   ├── 附件/<owner>/<id>.{data,meta,text}.enc
 │   │   ├── 媒体/<owner>/<id>.{data,meta,thumb}.enc  ← ADR-052 起的新媒体
 │   │   ├── 数字人格/<person_id>/persona.md
@@ -169,7 +169,7 @@ filesDir/
 │       ├── backup-settings.json       ← 加密设置快照（ADR-040）
 │       └── media-manifest.json        ← 仅存在于导出 zip 内（§7）
 ├── logs/meteor-<yyyy-MM-dd>.log
-├── media_key.bin                      ← 二级媒体密钥的 Keystore 包裹体
+├── media_key.bin                      ← 媒体数据密钥的 Keystore 包裹体（ADR-063）
 └── bak/meteor-<yyyyMMdd-HHmmss>.zip   ← 滚动快照
 ```
 
@@ -227,8 +227,10 @@ source: user
 图片、媒体、附件、AI 会话、出生日期、设置快照都**没有** frontmatter——它们的归属由目录决定，
 文件名是随机 token，路径本身不泄漏内容。
 
-**旧版图片**（`ImageStore`，`meteor://image/<token>`）：
-`数字遗产/图片/<owner>/<uuid>.enc`，整文件 AES-GCM，无元数据侧车。
+**图片**（`ImageStore`，`meteor://image/<token>`，ADR-067）：
+`数字遗产/图片/<owner>/<uuid>.enc`，**v3 分块帧**（magic `0x494D4147`（`"IMAG"`）），
+无元数据侧车。读取先嗅探前 4 字节：`IMAG` 走分块帧并按版本选密钥，否则按旧版整文件
+AES-GCM 密文用 Keystore 主密钥解。写入用同目录 `.part` 临时文件后原子改名。
 
 **媒体**（`MediaStore`，ADR-052，`meteor://media/<id>`）：
 `数字遗产/媒体/<owner>/` 下三件套
@@ -241,9 +243,13 @@ source: user
 
 写入用 `.data.part` / `.meta.part` / `.thumb.part` 临时文件后 rename。
 
-**附件**（`AttachmentStore`，`meteor://file/<id>`）：
-`数字遗产/附件/<owner>/` 下 `<id>.data.enc`（magic `"MATT"`）、
+**附件**（`AttachmentStore`，`meteor://file/<id>`，ADR-067）：
+`数字遗产/附件/<owner>/` 下 `<id>.data.enc`（magic `"MATT"`，**v3 分块帧**）、
 `<id>.meta.enc`（magic `"MAMD"`）、`<id>.text.enc`（导入时抽取的文本，上限 2 MiB）。
+
+**载荷与派生文件的密钥边界**（ADR-067）：三类载荷（`data.enc` 与图片 `.enc`）都用
+**媒体数据密钥** + v3 分块帧；**派生小文件**（`.meta.enc`、`.thumb.enc`、`.text.enc`）
+与全部文本内容继续用 **Keystore 主密钥**。理由见 [ADR-067 §三.2](adr/ADR-067-unified-binary-payload-encryption.md)。
 
 ### §5.3 分块加密帧
 
@@ -255,14 +261,17 @@ repeat: int encryptedSize | AES-GCM(int chunkIndex | chunkBytes)
 int 0                     ← 结束标记
 ```
 
-| version | 分块大小 | 密钥 |
-|---|---|---|
-| 1 | 1 MiB | Keystore 主密钥 |
-| 2 | 10 MiB | Keystore 主密钥 |
-| 3 | 10 MiB | 媒体二级密钥（§6.3） |
+| version | 分块大小 | 密钥 | 写入方 |
+|---|---|---|---|
+| 1 | 1 MiB | Keystore 主密钥 | 旧附件（只读） |
+| 2 | 10 MiB | Keystore 主密钥 | 旧媒体（只读） |
+| 3 | 10 MiB | 媒体二级密钥（§6.1） | 媒体、附件、图片 |
 
 `MIN_ENCRYPTED_CHUNK_SIZE = 29`（1 字节 nonce 长度 + 12 nonce + 16 tag）。
 读取时必须同时支持 v1/v2/v3——**新增版本号可以，改旧版本语义不行**。
+
+**读缓冲按需增长**（ADR-067）：逻辑分块大小由版本决定，但写入侧缓冲从 256 KiB 起翻倍，
+最多到逻辑大小。小载荷（一张插图）不会预留整块 10 MiB，而大文件的分块边界与固定缓冲完全一致。
 
 ### §5.4 密文信封
 
@@ -289,16 +298,21 @@ int 0                     ← 结束标记
 ```
 Android Keystore（不可导出）
 └── meteor_file_key（AES-256-GCM）      ← KeystoreKeyStore.DEFAULT_ALIAS
-    ├── 直接加密：记录正文、图片、附件、AI 会话、出生日期、设置快照
+    ├── 直接加密：记录正文、AI 会话、出生日期、设置快照
+    ├── 直接加密：媒体/附件的派生小文件（.meta.enc、.thumb.enc、.text.enc）
     └── 包裹 media_key.bin（32 字节随机密钥）  ← MediaKeyStore
-        └── 加密：v3 格式的媒体分块
+        └── 加密：媒体、附件、图片的载荷（v3 分块帧，ADR-067）
 ```
 
-二级媒体密钥（ADR-063）的意义：媒体量大、分块多，用非 Keystore 密钥可并行加解密，
-避免每次分块都走 Keystore 往返。
+二级媒体密钥（ADR-063）的意义：二进制载荷量大、分块多，用非 Keystore 密钥可并行加解密，
+避免每次分块都走 Keystore 往返。[ADR-067](adr/ADR-067-unified-binary-payload-encryption.md)
+把它的适用范围从「仅媒体」扩展到**全部二进制载荷**（媒体、附件、旧版图片）。
+
+**派生小文件与文本内容不走 MK**：边车和缩略图很小，并行无收益；更重要的是，相册要列条目
+就得先解边车，若边车也用 MK，`media_key.bin` 损坏会让整个相册连条目都列不出来。
 
 **`MediaKeyStore.key()` 遇到损坏的密钥文件会抛 `IllegalStateException`，绝不重新生成**——
-重新生成会让所有既有媒体永久无法解密。
+重新生成会让所有既有载荷永久无法解密。
 
 ### §6.2 命名空间隔离
 
@@ -321,6 +335,7 @@ Android Keystore（不可导出）
 | `KeyStoreSecretStore.get` | 任意 | 返回 `null`，**从不抛** |
 | `AppLock.unlock` | **必须主线程** | 返回 `false`，绝不静默放行 |
 | `MediaKeyStore.key` | 任意，线程安全 | 损坏时抛异常，绝不重生成 |
+| 媒体/附件/图片的 `copyDecrypted` | 调用方决定，阻塞 | 找不到载荷时抛异常；`load` 类方法返回 `null` |
 
 **应用锁是身份门禁，不是加密边界**：文件密钥不绑定生物识别，应用锁只决定谁能看到界面。
 没有可用生物识别时回退到锁屏 PIN/图案/密码；两者都没有时应用锁无法开启。
@@ -405,6 +420,8 @@ API Key、应用锁、禁止截屏、AI 同意状态。它们要么是本机凭�
 - `AiModule.chatStreaming` —— 带默认体。
 - `IndexUpdater` —— 新增独立接口，而非改 `IndexModule`。
 - `MediaStore.findByHash` / `restore` / `openDecrypted` —— 带默认实现的新增方法。
+- `ImageStore.copyDecrypted` / `restore`、`AttachmentStore.openDecrypted` —— 带默认实现的
+  新增方法（ADR-067），七个冻结接口的签名一个字符未动。
 
 ### §8.3 R8 与持久化枚举名
 
@@ -493,6 +510,8 @@ AI 图片路径与编辑器插图共用同一组上限，所以同一张照片�
 - 按内容哈希全局去重（`findByHash`），同一文件只存一份。
 - 大文件先写占位卡片，不阻塞编辑。
 - 文件格式升级后，旧客户端读新版媒体会**明确报错**，不会静默出错。
+- 附件与图片的载荷用**同一套**分块帧与密钥（ADR-067），所以大文件导入的代价一致；
+  派生小文件（边车、缩略图、抽取文本）仍是整文件 Keystore 加密。
 
 ---
 
@@ -747,6 +766,24 @@ interface MediaStore {                        // 冻结的既有签名 + 带默�
     fun loadThumbnail(id: String): ByteArray?
     fun delete(id: String): Boolean
     fun restore(id: String, meta: MediaMetaInput, input: InputStream, thumbnailPng: ByteArray? = null): StoredMedia? = null
+}
+
+interface ImageStore {                        // 带默认值的新增方法（ADR-067）
+    fun save(bytes: ByteArray, personId: String?, at: Instant = Instant.now()): String
+    fun load(token: String): ByteArray?
+    fun copyDecrypted(token: String, output: OutputStream): Long   // 默认抛 UnsupportedOperationException
+    fun list(): List<StoredImage>
+    fun restore(token: String, bytes: ByteArray): String? = null
+    fun delete(token: String): Boolean
+}
+
+interface AttachmentStore {                   // 带默认值的新增方法（ADR-067）
+    fun save(input: InputStream, fileName: String, mimeType: String, personId: String?, indexedText: String? = null): StoredAttachment
+    fun list(personId: String? = null): List<StoredAttachment>
+    fun readIndexedText(id: String): String?
+    fun copyDecrypted(id: String, output: OutputStream): Long
+    fun openDecrypted(id: String, offsetBytes: Long = 0L): InputStream   // 默认抛 UnsupportedOperationException
+    fun delete(id: String): Boolean
 }
 
 class AlbumRepository(media: MediaStore, images: ImageStore, attachments: AttachmentStore? = null) {

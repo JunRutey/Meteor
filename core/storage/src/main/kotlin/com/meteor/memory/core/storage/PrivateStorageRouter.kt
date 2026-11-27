@@ -27,10 +27,16 @@ class PrivateStorageRouter(
     private val context: Context,
     private val crypto: FileCrypto,
     private val time: TimeModule,
+    /**
+     * Payload key for images written by this build (ADR-067). Defaults to
+     * [crypto] so a router built without it keeps the pre-ADR-067 behaviour.
+     */
+    mediaKeyCrypto: FileCrypto = crypto,
 ) : StorageRouter {
 
     private val layout = StorageLayout(File(context.filesDir, StorageLayout.ROOT_NAME))
-    private val attachmentStore = EncryptedAttachmentStore(layout.rootDir(), crypto)
+    private val attachmentStore = EncryptedAttachmentStore(layout.rootDir(), crypto, mediaKeyCrypto)
+    private val imageStore = EncryptedImageStore(layout.rootDir(), crypto, mediaKeyCrypto)
 
     override fun route(personId: String?, type: RecordType, date: LocalDate): File =
         layout.fileFor(personId, type, date)
@@ -72,14 +78,28 @@ class PrivateStorageRouter(
         val stream = context.contentResolver.openInputStream(zipUri)
             ?: throw StorageException("cannot open backup archive")
 
-        stream.use { raw ->
-            ZipInputStream(raw).use { zip ->
-                var entry: ZipEntry? = zip.nextEntry
-                while (entry != null) {
-                    if (!entry.isDirectory) importEntry(root, entry, zip)
-                    zip.closeEntry()
-                    entry = zip.nextEntry
+        // Attachment id → chunk count of the payload this import wrote. Local to
+        // the call (never a field) so two imports cannot corrupt each other, and
+        // flushed only once the zip is exhausted: the sidecar entry can arrive
+        // before its payload, so re-stamping inline would race the entry order.
+        val restoredChunkCounts = LinkedHashMap<String, Int>()
+        try {
+            stream.use { raw ->
+                ZipInputStream(raw).use { zip ->
+                    var entry: ZipEntry? = zip.nextEntry
+                    while (entry != null) {
+                        if (!entry.isDirectory) importEntry(root, entry, zip, restoredChunkCounts)
+                        zip.closeEntry()
+                        entry = zip.nextEntry
+                    }
                 }
+            }
+        } finally {
+            // Also on a failed import: whatever payloads already reached the disk
+            // must not be left with a sidecar that disagrees with them. One bad
+            // re-stamp must not hide the original failure either.
+            restoredChunkCounts.forEach { (id, chunkCount) ->
+                runCatching { attachmentStore.rewriteChunkCount(id, chunkCount) }
             }
         }
         Unit
@@ -98,14 +118,29 @@ class PrivateStorageRouter(
             val entryName = "${root.name}/$relative"
             zip.putNextEntry(ZipEntry(entryName))
             val attachmentPayload = attachmentPayload(relative)
-            if (attachmentPayload != null) {
-                attachmentStore.copyDecrypted(attachmentPayload.id, zip)
-            } else {
-                zip.write(plaintextOf(child))
+            val imageToken = imageToken(relative)
+            when {
+                attachmentPayload != null -> attachmentStore.copyDecrypted(attachmentPayload.id, zip)
+                // An image written after ADR-067 is a chunked frame, which the
+                // whole-file decrypt in plaintextOf() cannot open.
+                imageToken != null -> zip.write(imagePlaintext(imageToken, child))
+                else -> zip.write(plaintextOf(child))
             }
             zip.closeEntry()
         }
     }
+
+    /**
+     * Decrypted bytes of one stored image.
+     *
+     * Buffered on purpose: an unreadable image used to be copied through as raw
+     * bytes rather than aborting the whole export, so the failure has to be
+     * detected before anything reaches the zip. Images are small (the editor
+     * compresses to a 1568 px longest edge), so this costs no more than the
+     * whole-file read it replaces.
+     */
+    private fun imagePlaintext(token: String, file: File): ByteArray =
+        imageStore.load(token) ?: plaintextOf(file)
 
     /** Readable Markdown for records, decrypted bytes for media, raw bytes otherwise. */
     private fun plaintextOf(file: File): ByteArray {
@@ -123,7 +158,12 @@ class PrivateStorageRouter(
 
     // --- import ------------------------------------------------------------
 
-    private fun importEntry(root: File, entry: ZipEntry, input: InputStream) {
+    private fun importEntry(
+        root: File,
+        entry: ZipEntry,
+        input: InputStream,
+        restoredChunkCounts: MutableMap<String, Int>,
+    ) {
         val relative = safeRelativePath(entry.name) ?: throw StorageException("illegal entry: ${entry.name}")
         val target = File(root, relative)
 
@@ -135,7 +175,9 @@ class PrivateStorageRouter(
         target.parentFile?.mkdirs()
         val attachmentPayload = attachmentPayload(relative)
         if (attachmentPayload != null) {
-            attachmentStore.restorePayload(
+            // The payload is re-framed with this build's chunk size, so the
+            // sidecar's chunk count is re-stamped after the whole zip is read.
+            restoredChunkCounts[attachmentPayload.id] = attachmentStore.restorePayload(
                 id = attachmentPayload.id,
                 personId = attachmentPayload.personId,
                 input = input,
@@ -152,8 +194,44 @@ class PrivateStorageRouter(
                 return
             }
         }
-        // Media and anything unrecognised: re-encrypt whole bytes with this device's key.
+        // An image re-enters through the image store so it lands as a chunked
+        // frame under the key this build uses, and its token still resolves
+        // (ADR-067). The bytes in the archive are already plaintext. A store that
+        // cannot honour the fixed token returns null, and the fallback below then
+        // keeps the image rather than dropping it.
+        val imageToken = imageToken(relative)
+        val restored = imageToken?.let { token ->
+            runCatching { imageStore.restore(token, bytes) }.getOrNull()
+        }
+        if (restored != null) return
+        // Anything else unrecognised: re-encrypt whole bytes with this device's key.
         target.writeBytes(crypto.encrypt(bytes))
+    }
+
+    /**
+     * Archive-relative path of a stored image, or null when the entry is not one.
+     *
+     * Mirrors [EncryptedImageStore]: exactly `数字遗产/图片/<owner>/<file>.enc`.
+     */
+    private fun imageToken(relative: String): String? {
+        val parts = relative.split('/')
+        if (parts.size != IMAGE_PATH_SEGMENTS ||
+            parts[0] != StorageLayout.LEGACY ||
+            parts[1] != StorageLayout.IMAGES
+        ) {
+            return null
+        }
+        val owner = parts[2]
+        if (owner != EncryptedImageStore.SELF_DIR && !StorageLayout.PERSON_ID_PATTERN.matches(owner)) {
+            return null
+        }
+        val fileName = parts[3]
+        if (fileName.length <= EncryptedImageStore.EXTENSION.length ||
+            !fileName.endsWith(EncryptedImageStore.EXTENSION)
+        ) {
+            return null
+        }
+        return relative
     }
 
     private fun attachmentPayload(relative: String): AttachmentPayload? {
@@ -199,5 +277,8 @@ class PrivateStorageRouter(
         const val ATTACHMENT_PATH_SEGMENTS = 4
         const val ATTACHMENT_DATA_SUFFIX = ".data.enc"
         val ATTACHMENT_DATA_FILE_PATTERN = Regex("^[a-f0-9]{32}\\.data\\.enc$")
+
+        /** `数字遗产 / 图片 / <owner> / <file>.enc`, mirroring `EncryptedImageStore`. */
+        const val IMAGE_PATH_SEGMENTS = 4
     }
 }

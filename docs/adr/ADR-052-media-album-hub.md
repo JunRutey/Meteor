@@ -46,7 +46,8 @@
   `数字遗产/媒体/<owner>/<id>.data.enc`（分块密文）、`<id>.meta.enc`（加密元数据）、
   `<id>.thumb.enc`（可选加密 PNG 缩略图）。`owner` 为 `_self` 或 person_id。
 - **旧图片零迁移**：`数字遗产/图片/**` 与 `meteor://image/<token>` 原样兼容，进相册时按
-  文件 mtime 兜底排序、无缩略图时懒生成。
+  文件 mtime 兜底排序、无缩略图时懒生成。新写入的图片改用统一分块帧（ADR-067），
+  读取端按魔数分流，旧整文件密文继续可读。
 - **Markdown 引用**：新媒体统一 `![alt](meteor://media/<32hex id>)`，渲染端按存储的 kind
   决定图片 / 视频 / 音频块；旧 `meteor://image/...` 照旧。
 
