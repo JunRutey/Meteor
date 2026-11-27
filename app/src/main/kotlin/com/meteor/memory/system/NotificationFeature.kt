@@ -18,6 +18,25 @@ interface NotificationFeature {
     fun showUpdateDownload(progress: UpdateNotificationProgress)
     fun showUpdateReady(versionName: String)
     fun hideUpdateNotification()
+
+    /**
+     * 每日一问 reminder (ADR-068): one notification per (question, reminder
+     * instant), carrying the two snooze actions.
+     *
+     * [trigger] is passed through purely as identity: it must match one of the
+     * question's pending reminders so the controller can consume exactly that
+     * instant, and it is also encoded in the action buttons' data URIs.
+     */
+    fun showQuestionReminder(questionId: String, questionText: String, trigger: java.time.Instant)
+
+    /**
+     * Dismisses the reminder for [questionId].
+     *
+     * Only needs the question id because a question has at most one visible
+     * reminder at a time (the earliest pending instant), and the notification id
+     * is derived from it.
+     */
+    fun hideQuestionReminder(questionId: String)
 }
 
 /**

@@ -1,5 +1,6 @@
 package com.meteor.memory.ui.gallery
 
+import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -7,13 +8,16 @@ import androidx.lifecycle.viewModelScope
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.AlbumRepository
 import com.meteor.memory.core.storage.AlbumSortMode
+import com.meteor.memory.core.storage.MediaStore
 import com.meteor.memory.feature.gallery.GalleryDay
 import com.meteor.memory.feature.gallery.GalleryFilter
 import com.meteor.memory.feature.gallery.GallerySortMode
+import com.meteor.memory.feature.media.MediaImporter
 import com.meteor.memory.feature.settings.SettingsRepository
 import com.meteor.memory.ui.attachments.AttachmentImportCoordinator
 import com.meteor.memory.ui.attachments.AttachmentImportSummary
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,7 +39,9 @@ class GalleryViewModel @Inject constructor(
     private val albumRepository: AlbumRepository,
     private val settingsRepository: SettingsRepository,
     private val importCoordinator: AttachmentImportCoordinator,
+    private val mediaStore: MediaStore,
     private val appLog: AppLog,
+    @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
     private val filterDate: LocalDate? =
@@ -65,6 +71,18 @@ class GalleryViewModel @Inject constructor(
 
     private val _importSummary = MutableStateFlow<AttachmentImportSummary?>(null)
     val importSummary: StateFlow<AttachmentImportSummary?> = _importSummary.asStateFlow()
+
+    /** True while the device media picker's selection is being encrypted in. */
+    private val _addingMedia = MutableStateFlow(false)
+    val addingMedia: StateFlow<Boolean> = _addingMedia.asStateFlow()
+
+    /** Done / total of the running media import; null when nothing is running. */
+    private val _addMediaProgress = MutableStateFlow<Pair<Int, Int>?>(null)
+    val addMediaProgress: StateFlow<Pair<Int, Int>?> = _addMediaProgress.asStateFlow()
+
+    /** Imported / failed of the last media import; null until one finished. */
+    private val _addMediaSummary = MutableStateFlow<Pair<Int, Int>?>(null)
+    val addMediaSummary: StateFlow<Pair<Int, Int>?> = _addMediaSummary.asStateFlow()
 
     private var refreshInProgress = false
     private var refreshPending = false
@@ -143,6 +161,65 @@ class GalleryViewModel @Inject constructor(
     /** Clears the last import result once the banner was shown. */
     fun clearImportSummary() {
         _importSummary.value = null
+    }
+
+    /**
+     * Imports device media (images / video / audio) into the archive (ADR-068).
+     *
+     * This is the album's own 「添加媒体」 entry: the files come from the system
+     * picker and land unowned (`personId = null`), the same ownership the old
+     * calendar 「存张记忆」 used. [MediaImporter] already skips a file whose hash is
+     * in the archive, so re-picking a photo is not a duplicate.
+     *
+     * **Serial on purpose**: several large videos imported at once fight for IO
+     * and for the media payload key, and the progress banner could not say how
+     * far along a parallel batch is. One at a time also keeps peak memory at one
+     * file. [MediaImporter.import] returns null per unreadable/unwanted file
+     * instead of throwing, so one rejection does not abandon the rest of the batch.
+     */
+    fun importMedia(uris: List<Uri>) {
+        if (uris.isEmpty() || _addingMedia.value) return
+        viewModelScope.launch {
+            _addingMedia.value = true
+            _addMediaSummary.value = null
+            _addMediaProgress.value = 0 to uris.size
+            var imported = 0
+            var failed = 0
+            val completed = try {
+                withContext(Dispatchers.IO) {
+                    val importer = MediaImporter(context.contentResolver, mediaStore)
+                    for ((index, uri) in uris.withIndex()) {
+                        val stored = runCatching { importer.import(uri, personId = null) }
+                            .onFailure { appLog.warn(TAG, "media import failed: $uri", it) }
+                            .getOrNull()
+                        if (stored != null) imported++ else failed++
+                        _addMediaProgress.value = (index + 1) to uris.size
+                    }
+                }
+                true
+            } catch (cancelled: CancellationException) {
+                // 页面被销毁时 viewModelScope 一起取消：批量导入到此为止，
+                // 不再对外报告一个没跑完的结果。
+                throw cancelled
+            } catch (error: Exception) {
+                appLog.warn(TAG, "media import batch failed", error)
+                false
+            } finally {
+                _addingMedia.value = false
+                _addMediaProgress.value = null
+            }
+
+            if (completed) {
+                _addMediaSummary.value = imported to failed
+                appLog.info(TAG, "media import finished: $imported ok, $failed failed")
+            }
+            refresh()
+        }
+    }
+
+    /** Clears the last media-import result once the banner was dismissed. */
+    fun clearAddMediaSummary() {
+        _addMediaSummary.value = null
     }
 
     fun refresh() {

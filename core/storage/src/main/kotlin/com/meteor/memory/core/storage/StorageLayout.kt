@@ -41,6 +41,15 @@ class StorageLayout(private val root: File) {
         File(root, "$LEGACY/$IMAGES/${requirePerson(personId)}")
 
     /**
+     * 每日一问 store (ADR-068): one encrypted JSON file per question.
+     *
+     * It sits beside the record trees rather than inside them because a question
+     * is not a `Document`: it has no frontmatter and never enters the search
+     * index. `.bin` files are skipped by [RecordScanner], which only reads `.md`.
+     */
+    fun questionsDir(): File = File(root, QUESTIONS)
+
+    /**
      * Birth date ciphertext lives beside the self profile so a plaintext export
      * includes it (ADR-040). It keeps the `.bin` suffix: [RecordScanner] only
      * treats `.md` files as records, so this file is never parsed as one.
@@ -81,6 +90,9 @@ class StorageLayout(private val root: File) {
         const val TIMELINE = "时光轴"
         const val MOOD = "心情"
         const val DIARY = "日记"
+
+        /** 每日一问 (ADR-068): encrypted JSON per question, never a record file. */
+        const val QUESTIONS = "每日一问"
 
         /** Encrypted birth profile stored next to the self profile (ADR-040). */
         const val BIRTH_PROFILE = "birth_profile.bin"

@@ -70,6 +70,7 @@ dependencies {
     implementation(project(":feature-people"))
     implementation(project(":feature-gallery"))
     implementation(project(":feature-media"))
+    implementation(project(":feature-question"))
     implementation(project(":feature-ai"))
     implementation(project(":core-backup"))
     implementation(project(":core-storage"))

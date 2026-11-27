@@ -14,6 +14,7 @@ app feature-editor
 app feature-people
 app feature-gallery
 app feature-media
+app feature-question
 app feature-ai
 app core-backup
 app core-storage
@@ -33,6 +34,7 @@ feature-media core-storage
 feature-gallery feature-media
 feature-editor feature-media
 feature-people feature-media
+feature-question feature-editor
 core-backup core-storage
 core-backup core-crypto
 core-index core-storage

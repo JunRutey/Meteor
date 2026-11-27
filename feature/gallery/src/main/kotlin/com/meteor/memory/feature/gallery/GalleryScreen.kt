@@ -131,6 +131,16 @@ fun GalleryScreen(
     importProgress: Pair<Int, Int>? = null,
     importSummary: FileImportSummary? = null,
     onDismissImportSummary: () -> Unit = {},
+    /**
+     * 打开设备媒体选择器（图片 / 视频 / 音频），导入走统一的 MediaStore 底层（ADR-068）。
+     * null 隐藏入口：还没有这一能力，或者宿主不希望相册能导入。
+     */
+    onAddMedia: (() -> Unit)? = null,
+    addingMedia: Boolean = false,
+    addMediaProgress: Pair<Int, Int>? = null,
+    /** 上一次媒体导入的结果：成功 / 失败条数。null 表示没有可显示的结果。 */
+    addMediaSummary: Pair<Int, Int>? = null,
+    onDismissAddMediaSummary: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var selection by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -148,6 +158,8 @@ fun GalleryScreen(
             onBack = onBack,
             onImportFile = onImportFile,
             importingFile = importingFile,
+            onAddMedia = onAddMedia,
+            addingMedia = addingMedia,
         )
 
         FilterChips(filter = filter, onFilterChange = onFilterChange)
@@ -158,6 +170,15 @@ fun GalleryScreen(
             summary = importSummary,
             onDismiss = onDismissImportSummary,
         )
+
+        val mediaBanner = mediaStatusBanner(addingMedia, addMediaProgress, addMediaSummary)
+        if (mediaBanner != null) {
+            StatusCard(
+                text = mediaBanner.text,
+                error = mediaBanner.error,
+                onDismiss = if (addingMedia) null else onDismissAddMediaSummary,
+            )
+        }
 
         when {
             loading -> PlaceholderCard(text = stringResource(R.string.gallery_loading))
@@ -273,6 +294,8 @@ private fun GalleryHeader(
     onBack: () -> Unit,
     onImportFile: (() -> Unit)?,
     importingFile: Boolean,
+    onAddMedia: (() -> Unit)?,
+    addingMedia: Boolean,
 ) {
     val backLabel = stringResource(R.string.gallery_back)
     var sortMenuExpanded by remember { mutableStateOf(false) }
@@ -310,26 +333,52 @@ private fun GalleryHeader(
                 )
             }
         }
-        if (onImportFile != null) {
-            val importLabel = stringResource(
-                if (importingFile) R.string.gallery_importing_file else R.string.gallery_import_file,
-            )
-            Box(
-                modifier = Modifier
-                    .heightIn(min = 40.dp)
-                    .clickable(enabled = !importingFile, onClick = onImportFile)
-                    .padding(horizontal = 10.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = importLabel,
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (importingFile) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.primary
-                    },
-                )
+        if (onAddMedia != null || onImportFile != null) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (onAddMedia != null) {
+                    val addLabel = stringResource(
+                        if (addingMedia) R.string.gallery_adding_media else R.string.gallery_add_media,
+                    )
+                    Box(
+                        modifier = Modifier
+                            .heightIn(min = 40.dp)
+                            .clickable(enabled = !addingMedia, onClick = onAddMedia)
+                            .padding(horizontal = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = addLabel,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (addingMedia) {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            },
+                        )
+                    }
+                }
+                if (onImportFile != null) {
+                    val importLabel = stringResource(
+                        if (importingFile) R.string.gallery_importing_file else R.string.gallery_import_file,
+                    )
+                    Box(
+                        modifier = Modifier
+                            .heightIn(min = 40.dp)
+                            .clickable(enabled = !importingFile, onClick = onImportFile)
+                            .padding(horizontal = 8.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = importLabel,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = if (importingFile) {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            },
+                        )
+                    }
+                }
             }
         }
         Box {
@@ -435,6 +484,51 @@ private fun FilterChip(
             },
         )
     }
+}
+
+/**
+ * A ready-to-render banner: already-localized text plus whether it reports a
+ * failure. Lets the file import and the media import share [StatusCard]
+ * without either one owning the other's state shape.
+ */
+private data class StatusBanner(val text: String, val error: Boolean)
+
+/**
+ * Progress or outcome of a MediaStore import (ADR-068), or null when there is
+ * nothing to show.
+ *
+ * Kept separate from [ImportStatus] because a media import and a document
+ * import can be in flight or unacknowledged at the same time; each keeps its
+ * own banner instead of overwriting the other's message.
+ */
+@Composable
+private fun mediaStatusBanner(
+    adding: Boolean,
+    progress: Pair<Int, Int>?,
+    summary: Pair<Int, Int>?,
+): StatusBanner? {
+    if (adding) {
+        val (done, total) = progress ?: (0 to 0)
+        return StatusBanner(
+            text = stringResource(R.string.gallery_add_media_progress, done, total),
+            error = false,
+        )
+    }
+    if (summary == null) return null
+    val (imported, failed) = summary
+    if (imported > 0) {
+        return StatusBanner(
+            text = stringResource(R.string.gallery_add_media_summary, imported, failed),
+            error = false,
+        )
+    }
+    if (failed > 0) {
+        return StatusBanner(
+            text = stringResource(R.string.gallery_add_media_failed),
+            error = true,
+        )
+    }
+    return null
 }
 
 /**

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 每日一问（ADR-068）：首页「存张记忆」被它替换。 -->
+    <string name="question_title">每日一问</string>
+    <string name="question_back">返回</string>
+    <string name="question_hint">想到一个问题，先记下来</string>
+    <string name="question_composer_placeholder">今天你想到什么问题？先写下来，到点我再问你。</string>
+    <string name="question_save">保存问题</string>
+    <string name="question_saving">保存中…</string>
+    <string name="question_save_failed">保存失败，请重试。</string>
+    <string name="question_empty_draft">先写下一个问题。</string>
+    <string name="question_empty">还没有问题。想到什么就先写下来，明天我会提醒你回答。</string>
+    <string name="question_open_badge">待回答</string>
+    <string name="question_answered_badge">已回答</string>
+    <string name="question_answer_count">已回答 %1$d 次</string>
+    <string name="question_created_at">提问于 %1$s</string>
+    <string name="question_answered_at">回答于 %1$s</string>
+    <string name="question_next_reminder">下次提醒 %1$s</string>
+    <string name="question_no_reminder">没有待提醒</string>
+
+    <!-- 提醒时间 -->
+    <string name="question_reminder_section">提醒时间</string>
+    <string name="question_reminder_default">明天同一时刻</string>
+    <string name="question_reminder_add_default">加一个「明天同一时刻」</string>
+    <string name="question_reminder_add_custom">选择日期与时间…</string>
+    <string name="question_reminder_remove">删除这条提醒</string>
+    <string name="question_reminder_expired">已过期</string>
+    <string name="question_reminder_limit">最多可以设置 %1$d 个提醒。</string>
+    <string name="question_reminder_future_only">提醒时间必须晚于现在。</string>
+    <string name="question_date_picker_title">选择提醒日期</string>
+    <string name="question_time_picker_title">选择提醒时间</string>
+    <string name="question_picker_confirm">确定</string>
+    <string name="question_picker_cancel">取消</string>
+
+    <!-- 回答 -->
+    <string name="question_answer_section">我的回答</string>
+    <string name="question_answer_placeholder">现在，回答你之前写下的问题。</string>
+    <string name="question_answer_action">回答</string>
+    <string name="question_answer_again">再回答一次</string>
+    <string name="question_answer_save">保存回答</string>
+    <string name="question_answer_saving">保存中…</string>
+    <string name="question_answer_failed">保存回答失败，请重试。</string>
+    <string name="question_answer_empty">先写下你的回答。</string>
+    <string name="question_preview">预览</string>
+    <string name="question_edit">编辑</string>
+
+    <!-- 删除与返回确认 -->
+    <string name="question_delete">删除问题</string>
+    <string name="question_deleting">删除中…</string>
+    <string name="question_delete_confirm_title">删除这个问题？</string>
+    <string name="question_delete_confirm_body">问题与它的全部回答都会被永久删除，待提醒也会一并取消。</string>
+    <string name="question_delete_confirm_action">删除</string>
+    <string name="question_delete_cancel">取消</string>
+    <string name="question_delete_failed">删除失败，请重试。</string>
+    <string name="question_unsaved_title">放弃这次回答？</string>
+    <string name="question_unsaved_body">返回后，还没保存的回答会丢失。</string>
+    <string name="question_unsaved_discard">放弃</string>
+    <string name="question_unsaved_keep">继续写</string>
+
+    <string name="question_load_failed">读取问题失败，请重试。</string>
+    <string name="question_only_local">仅保存在本机</string>
+    <string name="question_char_count">%1$d 字</string>
+</resources>

@@ -1,6 +1,7 @@
 package com.meteor.memory
 
 import android.content.ComponentCallbacks2
+import android.content.Intent
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.compose.setContent
@@ -10,7 +11,9 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.feature.settings.SettingsRepository
+import com.meteor.memory.system.AndroidNotificationFeature
 import com.meteor.memory.ui.MeteorRoot
+import com.meteor.memory.ui.question.QuestionOpenRequest
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.catch
@@ -31,6 +34,19 @@ class MainActivity : FragmentActivity() {
 
     @Inject
     lateinit var settingsRepository: SettingsRepository
+
+    /**
+     * Receives "open this question" taps from a 每日一问 reminder notification
+     * (ADR-068).
+     *
+     * The notification cannot navigate on its own: it is delivered by the system
+     * while this activity may be dead or already showing another screen. So the
+     * tap is turned into a pending request here — in both `onCreate` (cold start
+     * from the notification) and `onNewIntent` (already running) — and the
+     * navigation graph consumes it once it exists.
+     */
+    @Inject
+    lateinit var questionOpenRequest: QuestionOpenRequest
 
     /**
      * Set once [MeteorRoot] has resolved the lock preference and the onboarding
@@ -57,6 +73,11 @@ class MainActivity : FragmentActivity() {
         }
 
         super.onCreate(savedInstanceState)
+
+        // Cold start from a 每日一问 reminder (ADR-068). Handled before setContent
+        // so the first composition already sees the pending request and opens the
+        // question instead of flashing the calendar and then navigating.
+        handleNotificationIntent(intent)
 
         // Edge-to-edge in one place (ADR-024): the app draws behind the bars and
         // MeteorRoot pads by the insets. Without this the client still believes the
@@ -106,6 +127,39 @@ class MainActivity : FragmentActivity() {
     override fun onStart() {
         super.onStart()
         appLog.info(LIFECYCLE_TAG, "activity started")
+    }
+
+    /**
+     * The app is already running and the person tapped a reminder notification.
+     *
+     * `launchMode` is the default, so the notification's intent arrives here as a
+     * *new* intent on the existing instance (it carries
+     * `FLAG_ACTIVITY_SINGLE_TOP`). Not handling this would make a tap do nothing
+     * whenever Meteor happened to be in the foreground or background stack.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // Keep Activity#getIntent() truthful for the next recreation.
+        setIntent(intent)
+        handleNotificationIntent(intent)
+    }
+
+    /**
+     * Turns an "open question" action into a pending navigation request.
+     *
+     * Anything else — the launcher intent, the update download notification — is
+     * ignored here so this stays a single narrow branch rather than a routing
+     * table.
+     */
+    private fun handleNotificationIntent(intent: Intent?) {
+        if (intent?.action != AndroidNotificationFeature.ACTION_OPEN_QUESTION) return
+        val questionId = intent.getStringExtra(AndroidNotificationFeature.EXTRA_QUESTION_ID)
+        if (questionId.isNullOrBlank()) {
+            appLog.warn(TAG, "reminder tap without a question id")
+            return
+        }
+        appLog.info(TAG, "reminder tap opened question")
+        questionOpenRequest.request(questionId)
     }
 
     override fun onStop() {
