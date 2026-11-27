@@ -106,6 +106,13 @@ fun MarkdownField(
     onFocusChanged: (Boolean) -> Unit = {},
     /** 日记页把「预览」放进页头胶囊时传 false，工具栏只留插入类动作。 */
     showPreviewAction: Boolean = true,
+    /**
+     * 为 true 时工具栏显示图片入口（旧版单图按钮或三合一插入）。
+     *
+     * 每日一问的回答编辑器暂时没有宿主可用的媒体导入链路，传 false 隐藏这个
+     * 按了不会有反应的按钮；默认 true 保持日记 / 人物编辑页不变。
+     */
+    showImageAction: Boolean = true,
     /** Writes the description (alt text) of one image reference. */
     onImageCaptionChanged: (String, String) -> Unit = { _, _ -> },
     /**
@@ -270,6 +277,7 @@ fun MarkdownField(
             onImage = onPickImage,
             onTogglePreview = onPreviewToggle,
             showPreviewAction = showPreviewAction,
+            showImageAction = showImageAction,
             onBold = { toggleFormat(InlineFormat.Bold) },
             onColor = { hex -> toggleFormat(InlineFormat.Color(hex)) },
             activeFormat = activeFormat,

@@ -8,6 +8,7 @@ import com.meteor.memory.R
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.QuestionStore
 import com.meteor.memory.core.storage.StoredQuestion
+import com.meteor.memory.feature.editor.MarkdownEditing
 import com.meteor.memory.feature.question.AnswerRow
 import com.meteor.memory.feature.question.QuestionDetailUi
 import com.meteor.memory.feature.question.QuestionFormat
@@ -33,8 +34,8 @@ import javax.inject.Inject
  * 每日一问详情页（ADR-068）。
  *
  * 两条规则由这里唯一掌握，屏幕不参与判断：
- * 1. **未回答的问题进入即编辑，已回答的问题进入即阅读**。初值由 [load] 依
- *    `isAnswered` 决定，所以「该显示哪个界面」只有一个所有者。
+ * 1. **详情永远先阅读**，点底部「回答 / 再回答一次」才进编辑；不再按「有没有回答过」
+ *    自动切换形态。这样从列表点进来、从通知点进来，看到的是同一个页面。
  * 2. **回答可以有很多次**，每次都是新的 [AnswerRow]；保存回答后不再催问，
  *    待提醒被清空（用户已经回答过了）。
  */
@@ -72,9 +73,9 @@ class QuestionDetailViewModel @Inject constructor(
     /**
      * 重读档案。
      *
-     * 首读时 `editing = !isAnswered` —— 这是本功能的中心规则。之后的读取
-     * （`RefreshOnResume`、保存回答后）保留用户当前的编辑状态与草稿，否则
-     * 「点开回答、切出去再回来」会把没写完的编辑器关掉。
+     * 读取只刷新数据，不决定「编辑还是阅读」：详情页永远先阅读，编辑由用户按
+     * 底部的回答按钮进入。这样切出去再回来不会把没写完的编辑器关掉，也不会
+     * 因为某个问题刚被答过就把人从阅读页弹进编辑器。
      */
     fun load() {
         if (questionId.isBlank()) {
@@ -122,6 +123,35 @@ class QuestionDetailViewModel @Inject constructor(
     /** 「回答」/「再回答一次」：空白编辑器，焦点回到正文。 */
     fun startAnswer() {
         _state.update { it.copy(editing = true, previewing = false, draft = "", saved = false) }
+    }
+
+    /**
+     * 退出回答编辑（取消）：回到阅读形态，丢弃未保存的草稿。
+     *
+     * 屏幕在有草稿时先弹确认，所以这里不需要再问一遍；保存过的问题文件不受
+     * 影响，只是本次回答作废。
+     */
+    fun cancelAnswer() {
+        _state.update {
+            it.copy(editing = false, previewing = false, draft = "", saved = false)
+        }
+    }
+
+    /**
+     * 在回答里插入一个 Markdown 链接。
+     *
+     * 回答编辑器的工具栏由 `feature-editor` 提供，链接对话框确认后回调这里。
+     * 和日记一样把插入动作交给宿主，编辑器本身不持有正文。
+     */
+    fun insertLink(target: String, label: String?) {
+        if (target.isBlank()) return
+        _state.update {
+            it.copy(
+                draft = MarkdownEditing.appendLink(it.draft, target, label),
+                saved = false,
+                error = null,
+            )
+        }
     }
 
     /**
@@ -218,16 +248,7 @@ class QuestionDetailViewModel @Inject constructor(
         }
     }
 
-    /** 加一条「明天同一时刻」，并立刻写盘 + 重排闹钟。 */
-    fun addDefaultReminder() {
-        val now = ZonedDateTime.now()
-        val current = question?.reminders ?: return
-        val next = QuestionSchedule.addDefault(current, now)
-        if (next == current) return
-        persistReminders(next)
-    }
-
-    /** 加一条自定义提醒；时刻不合法时见 [QuestionListViewModel.addCustomReminder] 的取舍说明。 */
+    /** 加一条自定义提醒；时刻不合法时见 [QuestionListViewModel] 的取舍说明。 */
     fun addCustomReminder(pick: ReminderPick) {
         val now = ZonedDateTime.now()
         val current = question?.reminders ?: return
@@ -275,8 +296,9 @@ class QuestionDetailViewModel @Inject constructor(
     /**
      * 记录 + 当前临时字段 → 展示状态。
      *
-     * [previous] 提供这个页面自己拥有的东西（草稿、编辑/预览、错误、正在删除）；
-     * 其余一切来自档案。`loading` 只在首读时决定 `editing`，见 [load]。
+     * [previous] 提供这个页面自己拥有的东西（草稿、编辑 / 预览、错误、正在删除）；
+     * 其余一切来自档案。读取**不**切换编辑形态：`editing` 只由用户按「回答」与
+     * 「取消」改变，草稿也绝不在这里被覆盖。
      */
     private fun render(question: StoredQuestion, previous: QuestionDetailUi): QuestionDetailUi {
         val now = ZonedDateTime.now()
@@ -291,15 +313,6 @@ class QuestionDetailViewModel @Inject constructor(
                     text = answer.text,
                     answeredAtLabel = QuestionFormat.stamp(answer.answeredAt, now),
                 )
-            },
-            // 只在「第一次成功读到、且用户还没写东西」时决定进编辑还是进阅读：
-            // `loading` 覆盖首次进入，`!previous.exists` 覆盖「先读失败、重试成功」。
-            // 其余情况保留用户当前的选择，这样切走再回来不会把没写完的编辑器关掉，
-            // 也绝不覆盖非空草稿。
-            editing = if ((previous.loading || !previous.exists) && previous.draft.isEmpty()) {
-                !question.isAnswered
-            } else {
-                previous.editing
             },
             // 读到档案就说明上一次的失败过去了（例如重试加载或重试删提醒成功）。
             error = null,

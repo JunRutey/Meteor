@@ -65,6 +65,7 @@ import com.meteor.memory.feature.people.PeopleRow
 import com.meteor.memory.feature.people.PersonDetailScreen
 import com.meteor.memory.feature.people.PersonEditScreen
 import com.meteor.memory.feature.people.PersonRecordRow
+import com.meteor.memory.feature.question.QuestionComposeScreen
 import com.meteor.memory.feature.question.QuestionDetailScreen
 import com.meteor.memory.feature.question.QuestionListScreen
 import com.meteor.memory.feature.media.MediaPickerScreen
@@ -104,6 +105,7 @@ import com.meteor.memory.ui.log.LogActions
 import com.meteor.memory.ui.people.PeopleViewModel
 import com.meteor.memory.ui.people.PersonDetailViewModel
 import com.meteor.memory.ui.people.PersonEditViewModel
+import com.meteor.memory.ui.question.QuestionComposeViewModel
 import com.meteor.memory.ui.question.QuestionDetailViewModel
 import com.meteor.memory.ui.question.QuestionListViewModel
 import com.meteor.memory.ui.question.QuestionOpenEntryPoint
@@ -162,8 +164,9 @@ private const val ROUTE_GALLERY = "gallery?date={date}"
 private const val ROUTE_IMAGE = "gallery/{token}"
 private const val ROUTE_AI = "ai?personId={personId}"
 private const val ROUTE_PERSONA = "ai/persona/{personId}"
-// 每日一问（ADR-068）：列表与单条详情。
+// 每日一问（ADR-068）：列表、独立提问页与单条详情。
 private const val ROUTE_QUESTIONS = "questions"
+private const val ROUTE_QUESTION_NEW = "questions/new"
 private const val ROUTE_QUESTION = "questions/{questionId}"
 
 /** Read-only preview of the diary written for [date]. */
@@ -184,6 +187,7 @@ private val MAIN_FADE_ROUTES = setOf(
     ROUTE_PEOPLE,
     ROUTE_AI,
     ROUTE_QUESTIONS,
+    ROUTE_QUESTION_NEW,
     ROUTE_QUESTION,
 )
 
@@ -397,24 +401,40 @@ fun MeteorNavHost(
             )
         }
 
-        // 每日一问（ADR-068）：列表页 + 单条详情页。两者都在主淡入淡出路由集合里。
+        // 每日一问（ADR-068 / ADR-069）：列表、独立提问页、单条详情。
         composable(ROUTE_QUESTIONS) {
             val viewModel: QuestionListViewModel = hiltViewModel()
             val rows by viewModel.rows.collectAsStateWithLifecycle()
-            val composer by viewModel.composer.collectAsStateWithLifecycle()
 
             RefreshOnResume { viewModel.refresh() }
 
             QuestionListScreen(
                 rows = rows,
-                composer = composer,
-                onDraftChange = viewModel::onDraftChange,
-                onAddDefaultReminder = viewModel::addDefaultReminder,
-                onAddCustomReminder = viewModel::addCustomReminder,
-                onRemoveReminder = viewModel::removeReminder,
-                onSubmit = viewModel::submit,
+                onCompose = { navController.navigate(ROUTE_QUESTION_NEW) },
                 onOpen = { id -> navController.navigate(questionRoute(id)) },
                 onDelete = viewModel::delete,
+                onBack = { navController.popBackStack() },
+                animationsEnabled = animationsEnabled,
+            )
+        }
+
+        composable(ROUTE_QUESTION_NEW) { entry ->
+            val viewModel: QuestionComposeViewModel = hiltViewModel()
+            val state by viewModel.state.collectAsStateWithLifecycle()
+
+            QuestionComposeScreen(
+                state = state,
+                onDraftChange = viewModel::onDraftChange,
+                onAddReminder = viewModel::addReminder,
+                onRemoveReminder = viewModel::removeReminder,
+                onSave = {
+                    viewModel.submit {
+                        // 只在这一页仍是栈顶时退回：保存回调迟到时不能把别人顶掉。
+                        if (navController.currentBackStackEntry?.id == entry.id) {
+                            navController.popBackStack()
+                        }
+                    }
+                },
                 onBack = { navController.popBackStack() },
                 animationsEnabled = animationsEnabled,
             )
@@ -436,10 +456,11 @@ fun MeteorNavHost(
                 onDraftChange = viewModel::onDraftChange,
                 onTogglePreview = viewModel::togglePreview,
                 onStartAnswer = viewModel::startAnswer,
+                onCancelAnswer = viewModel::cancelAnswer,
                 onSaveAnswer = viewModel::saveAnswer,
-                onAddDefaultReminder = viewModel::addDefaultReminder,
-                onAddCustomReminder = viewModel::addCustomReminder,
+                onAddReminder = viewModel::addCustomReminder,
                 onRemoveReminder = viewModel::removeReminder,
+                onInsertLink = viewModel::insertLink,
                 // 删除成功才弹栈，且只在用户仍停在这一页时弹：迟到的回调不能把
                 // 别人 (或上一页) 顶掉。
                 onDelete = { onDeleted ->
@@ -448,6 +469,7 @@ fun MeteorNavHost(
                     }
                 },
                 onBack = { navController.popBackStack() },
+                animationsEnabled = animationsEnabled,
             )
         }
 

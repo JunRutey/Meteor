@@ -924,7 +924,7 @@ feature 的 Composable 一律通过参数接收状态、通过回调向上报告
 | `feature-media` | `MediaHost`、`ProvideMediaHost`、`MediaThumb`、`VideoPlayerCard`、`AudioPlayerCard`、`MediaPickerScreen`、`MediaStreamDataSource` | 一个 `MediaHost` 实例并包住整棵树 |
 | `feature-gallery` | `GalleryScreen`、`MediaViewerScreen`、`GalleryKind`/`GallerySortMode`/`GalleryFilter`/`GalleryItem` | 已排好序的 `GalleryDay` 列表；删除只发意图；`onAddMedia` 由宿主打开媒体选择器 |
 | `feature-people` | `PeopleListScreen`、`PersonDetailScreen`、`PersonEditScreen`、`PeopleTagLibrary` | `availableTags`、标签持久化、媒体路由 |
-| `feature-question` | `QuestionListScreen`、`QuestionDetailScreen`、`QuestionRow`/`QuestionDetailUi`/`ReminderRow`/`AnswerRow`/`ReminderPick`、`QuestionFormat`、`QuestionSchedule` | 已格式化的展示模型（时间标签由宿主算好）、`.delete` 只发意图、保存/删除须在写盘后才回调 |
+| `feature-question` | `QuestionListScreen`、`QuestionComposeScreen`、`QuestionDetailScreen`、`QuestionRow`/`QuestionDetailUi`/`ReminderRow`/`AnswerRow`/`ReminderPick`、`QuestionFormat`、`QuestionSchedule` | 已格式化的展示模型（时间标签由宿主算好）、`.delete` 只发意图、保存/删除须在写盘后才回调；提问草稿由 `:app` 的 `QuestionComposeViewModel` 持有 |
 | `feature-ai` | `AiModule`、`MeteorAiModule`、`AiScreen`、`AiSettingsScreen`、`AiProtocol`、`ArchiveTools` | `AiConfig`、对话记录、朗读、工具批准决策 |
 
 `feature-media` 的播放与缩略图组件通过 `LocalMediaHost` 拿档案句柄

@@ -1,8 +1,6 @@
 package com.meteor.memory.feature.question
 
 import java.time.Instant
-import java.time.LocalDate
-import java.time.LocalTime
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
 
@@ -67,10 +65,9 @@ data class QuestionComposerState(
 /**
  * State of one question's detail page.
  *
- * [editing] carries the feature's central rule: **an unanswered question opens
- * straight into the editor; an answered one opens on its answers.** It is set by
- * the view model when the record loads, not by the screen, so the decision has
- * exactly one owner.
+ * [editing] is owned by the view model: the page always opens in reading mode,
+ * and only the explicit answer action (or its cancel) flips it. The screen never
+ * decides the mode from "has answers".
  */
 data class QuestionDetailUi(
     val id: String,
@@ -137,14 +134,6 @@ object QuestionFormat {
             else -> stamp(instant, now)
         }
     }
-
-    /** Local date of [instant] in the device zone, used to seed the date picker. */
-    fun localDate(instant: Instant, now: ZonedDateTime): LocalDate =
-        instant.atZone(now.zone).toLocalDate()
-
-    /** Local time of [instant], used to seed the time picker. */
-    fun localTime(instant: Instant, now: ZonedDateTime): LocalTime =
-        instant.atZone(now.zone).toLocalTime()
 
     // Fixed Chinese patterns rather than locale-derived ones: the default
     // `values/` resource set is Chinese (archive §17.1), and a locale-formatted

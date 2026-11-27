@@ -35,6 +35,8 @@ dependencies {
     implementation(libs.compose.ui)
     implementation(libs.compose.material3)
     implementation(libs.compose.animation)
+    // 回答编辑页与提问页需要拦截系统返回键（有未保存草稿时先确认）。
+    implementation(libs.androidx.activity.compose)
 
     testImplementation(libs.junit)
 }

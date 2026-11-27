@@ -61,6 +61,8 @@ fun EditorToolbar(
     onTogglePreview: () -> Unit,
     modifier: Modifier = Modifier,
     showPreviewAction: Boolean = true,
+    /** False hides the image entry entirely (a host without a media import path). */
+    showImageAction: Boolean = true,
     onBold: () -> Unit = {},
     onColor: (String) -> Unit = { },
     colors: List<String> = MarkdownInlineFormat.COLORS,
@@ -120,27 +122,29 @@ fun EditorToolbar(
                 onClick = onLink,
             ) { LinkIcon() }
 
-            if (onPickMedia == null) {
-                val imageLabel = stringResource(R.string.editor_image)
-                ToolbarAction(
-                    label = imageLabel,
-                    enabled = !isPreviewing,
-                    onClick = onImage,
-                ) { ImageIcon() }
-            } else {
-                // Three insert actions do not fit beside link/bold/colour/preview
-                // on a 360dp screen, so they live in a second row of the same
-                // card — the shape the colour palette already established. The
-                // row keeps the toolbar height stable and nothing scrolls away.
-                val insertLabel = stringResource(R.string.editor_insert_media)
-                ToolbarAction(
-                    label = insertLabel,
-                    enabled = !isPreviewing && !mediaInserting,
-                    onClick = {
-                        paletteOpen = false
-                        mediaOpen = !mediaOpen
-                    },
-                ) { InsertMediaIcon() }
+            if (showImageAction) {
+                if (onPickMedia == null) {
+                    val imageLabel = stringResource(R.string.editor_image)
+                    ToolbarAction(
+                        label = imageLabel,
+                        enabled = !isPreviewing,
+                        onClick = onImage,
+                    ) { ImageIcon() }
+                } else {
+                    // Three insert actions do not fit beside link/bold/colour/preview
+                    // on a 360dp screen, so they live in a second row of the same
+                    // card — the shape the colour palette already established. The
+                    // row keeps the toolbar height stable and nothing scrolls away.
+                    val insertLabel = stringResource(R.string.editor_insert_media)
+                    ToolbarAction(
+                        label = insertLabel,
+                        enabled = !isPreviewing && !mediaInserting,
+                        onClick = {
+                            paletteOpen = false
+                            mediaOpen = !mediaOpen
+                        },
+                    ) { InsertMediaIcon() }
+                }
             }
 
             val boldLabel = stringResource(R.string.editor_fmt_bold)
