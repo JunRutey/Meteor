@@ -16,16 +16,14 @@
     <string name="calendar_view_diary">查看当天日记</string>
     <string name="calendar_backfill_diary">补写日记</string>
     <string name="calendar_record_now">记录当下</string>
-    <string name="calendar_view_day_images">查看当天图片</string>
     <string name="calendar_open_search">搜索</string>
     <string name="calendar_open_ai">AI 对话</string>
     <string name="calendar_open_gallery">相册</string>
     <string name="calendar_quick_album_hint">图片 · 视频 · 文件</string>
     <string name="calendar_quick_people_hint">人物档案</string>
     <string name="calendar_open_people">人际关系</string>
-    <!-- 每日一问（ADR-068）：首页快捷入口，取代原来的「存张记忆」 -->
+    <!-- 每日一问（ADR-068）：日卡片左下角的按钮，取代原来的「查看当天图片」。 -->
     <string name="calendar_open_questions">每日一问</string>
-    <string name="calendar_quick_questions_hint">写下并回答</string>
 
     <string-array name="calendar_future_encouragements">
         <item>时间正沿着星河向前，愿每一个此刻都有迹可循。</item>

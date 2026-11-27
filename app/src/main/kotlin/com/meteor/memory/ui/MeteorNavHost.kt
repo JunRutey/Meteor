@@ -382,7 +382,6 @@ fun MeteorNavHost(
                         onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
                         onOpenDiary = { date -> navController.navigate(diaryViewRoute(date)) },
                         onEditDiary = { date -> navController.navigate("$ROUTE_DIARY_EDIT/$date") },
-                        onOpenImages = { date -> navController.navigate("gallery?date=$date") },
                         onOpenSearch = { navController.navigate(ROUTE_SEARCH) },
                         onOpenAi = if (aiEnabled) {
                             { navController.navigate("ai") }

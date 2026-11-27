@@ -75,7 +75,7 @@ fun Mood.emoji(): String = when (this) {
  * 日历仍然手写（ADR-017）：格子只有几十个，手写比引入日历库更可控。
  * 一天最多选 [Mood.MAX_PER_DAY] 个心情：点一次选中，再点一次取消（ADR-035）。
  * 视觉以设计稿 `docs/design/home.html` 为准：52dp 圆角日格、淡蓝统计条、
- * 20dp 圆角卡片、44dp 胶囊按钮与三宫格快捷入口。
+ * 20dp 圆角卡片、44dp 胶囊按钮与两宫格快捷入口。
  */
 @Composable
 fun CalendarScreen(
@@ -92,12 +92,11 @@ fun CalendarScreen(
     onOpenSettings: () -> Unit,
     onOpenDiary: (LocalDate) -> Unit,
     onEditDiary: (LocalDate) -> Unit,
-    onOpenImages: (LocalDate) -> Unit,
     onOpenSearch: () -> Unit,
     onOpenAi: (() -> Unit)?,
     /**
-     * 每日一问（ADR-068）：选中的那天不再提供「存张记忆」——从设备导入图片、
-     * 视频、音频统一收进相册，这个位置让给提问入口。
+     * 每日一问（ADR-068）：占的是日卡片左下角原来的「查看当天图片」。
+     * 看某天的图片走相册，不再从日历直达。
      */
     onOpenQuestions: () -> Unit,
     /**
@@ -160,12 +159,11 @@ fun CalendarScreen(
                     onRightClick = {
                         if (date in diaryDates) onOpenDiary(date) else onEditDiary(date)
                     },
-                    onLeftClick = { onOpenImages(date) },
+                    onLeftClick = onOpenQuestions,
                 )
             }
 
             QuickActions(
-                onOpenQuestions = onOpenQuestions,
                 onOpenAlbum = onOpenAlbum,
                 onOpenPeople = onOpenPeople,
             )
@@ -596,9 +594,9 @@ private fun DayCard(
                 textAlign = TextAlign.Center,
             )
 
-            // 左按钮固定为「查看当天图片」：当天有没有图都不再问，导入入口
-            // 已经从首页挪到相册（ADR-068）。
-            val leftLabel = R.string.calendar_view_day_images
+            // 左按钮固定为「每日一问」（ADR-068）：这个位置原来叫「存张记忆」/
+            // 「查看当天图片」，现在让给提问入口；看某天的图片请从相册进。
+            val leftLabel = R.string.calendar_open_questions
             val rightLabel = when {
                 hasDiary -> R.string.calendar_view_diary
                 date == today -> R.string.calendar_record_now
@@ -643,16 +641,15 @@ private fun DayCard(
 }
 
 /**
- * Bottom quick entries (ADR-060, ADR-068). The album hub owns photos, video,
- * audio and the imported-record list, so the old "gallery" and "notes" tiles
- * collapsed into one entry; 每日一问 sits in front of them.
+ * Bottom quick entries (ADR-060). The album hub owns photos, video, audio and
+ * the imported-record list, so the old "gallery" and "notes" tiles collapsed
+ * into one entry: two balanced cards with the icon in a tinted square.
  *
- * Three tiles share one row, so the gaps and the internal padding are tighter
- * than the two-tile layout used to be — otherwise the hints wrap.
+ * 每日一问 is not a third tile here: it sits on the day card's left button
+ * (ADR-068).
  */
 @Composable
 private fun QuickActions(
-    onOpenQuestions: () -> Unit,
     onOpenAlbum: () -> Unit,
     onOpenPeople: () -> Unit,
 ) {
@@ -660,14 +657,8 @@ private fun QuickActions(
         modifier = Modifier
             .fillMaxWidth()
             .padding(start = 16.dp, end = 16.dp, top = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        QuickActionTile(
-            label = stringResource(R.string.calendar_open_questions),
-            hint = stringResource(R.string.calendar_quick_questions_hint),
-            onClick = onOpenQuestions,
-            modifier = Modifier.weight(1f),
-        ) { QuestionsGlyph() }
         QuickActionTile(
             label = stringResource(R.string.calendar_open_gallery),
             hint = stringResource(R.string.calendar_quick_album_hint),
@@ -699,7 +690,7 @@ private fun QuickActionTile(
             .background(MaterialTheme.colorScheme.surface, shape)
             .border(BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant), shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp),
+            .padding(horizontal = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -870,83 +861,6 @@ private fun AlbumGlyph() {
             path = hills,
             color = tint,
             style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round),
-        )
-    }
-}
-
-/**
- * 每日一问 glyph (ADR-068): a question mark inside a speech bubble.
- *
- * The mark is a single path — hook plus stem — so it stays legible at 22dp
- * without depending on a font glyph.
- */
-@Composable
-private fun QuestionsGlyph() {
-    val tint = MaterialTheme.colorScheme.primary
-    Canvas(Modifier.size(22.dp)) {
-        val stroke = 1.8.dp.toPx()
-        val unit = size.width / 24f
-        // Bubble outline with a tail at the bottom-left.
-        val bubble = Path().apply {
-            moveTo(7f * unit, 3.5f * unit)
-            lineTo(17f * unit, 3.5f * unit)
-            cubicTo(
-                19f * unit, 3.5f * unit,
-                20.5f * unit, 5f * unit,
-                20.5f * unit, 7f * unit,
-            )
-            lineTo(20.5f * unit, 13f * unit)
-            cubicTo(
-                20.5f * unit, 15f * unit,
-                19f * unit, 16.5f * unit,
-                17f * unit, 16.5f * unit,
-            )
-            lineTo(11f * unit, 16.5f * unit)
-            lineTo(7.5f * unit, 20f * unit)
-            lineTo(7.5f * unit, 16.5f * unit)
-            lineTo(7f * unit, 16.5f * unit)
-            cubicTo(
-                5f * unit, 16.5f * unit,
-                3.5f * unit, 15f * unit,
-                3.5f * unit, 13f * unit,
-            )
-            lineTo(3.5f * unit, 7f * unit)
-            cubicTo(
-                3.5f * unit, 5f * unit,
-                5f * unit, 3.5f * unit,
-                7f * unit, 3.5f * unit,
-            )
-            close()
-        }
-        drawPath(
-            path = bubble,
-            color = tint,
-            style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round),
-        )
-        // Question mark: the hook, then the stem dot below it.
-        val hook = Path().apply {
-            moveTo(9.2f * unit, 8f * unit)
-            cubicTo(
-                9.2f * unit, 6.4f * unit,
-                10.4f * unit, 5.6f * unit,
-                12f * unit, 5.6f * unit,
-            )
-            cubicTo(
-                13.6f * unit, 5.6f * unit,
-                14.8f * unit, 6.5f * unit,
-                14.8f * unit, 8f * unit,
-            )
-            cubicTo(
-                14.8f * unit, 10f * unit,
-                12f * unit, 10.2f * unit,
-                12f * unit, 12.4f * unit,
-            )
-        }
-        drawPath(path = hook, color = tint, style = Stroke(width = stroke, cap = StrokeCap.Round))
-        drawCircle(
-            color = tint,
-            radius = 0.95f * unit,
-            center = Offset(12f * unit, 14.4f * unit),
         )
     }
 }
