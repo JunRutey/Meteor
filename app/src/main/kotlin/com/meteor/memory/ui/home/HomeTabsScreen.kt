@@ -216,6 +216,7 @@ fun HomeTabsScreen(
                 onDrawerConfigChanged = onDrawerConfigChanged,
                 contentBottomInset = contentBottomInset,
                 seamlessTop = drawerFullscreen,
+                animationsEnabled = animationsEnabled,
             )
         }
     }
