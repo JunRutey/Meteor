@@ -16,11 +16,15 @@ class SettingsSnapshotCodecTest {
         dynamicColor = true,
         animationsEnabled = false,
         fontScale = FontScale.LARGE,
+        hideStatusBar = true,
         verboseLogging = true,
         autoBackupEnabled = false,
         backupRetention = 12,
         autoCheckForUpdates = false,
         notificationsEnabled = false,
+        diaryReminderEnabled = false,
+        questionReminderEnabled = false,
+        updateNotificationEnabled = false,
         peopleTags = setOf("friend", "colleague"),
         aiEnabled = true,
         aiProvider = "deepseek",
@@ -55,6 +59,11 @@ class SettingsSnapshotCodecTest {
 
         assertEquals(DarkMode.DARK, decoded.darkMode)
         assertTrue(decoded.notificationsEnabled)
+        // The new fine-grained switches default on so an upgrade keeps the
+        // reminders the old build already sent.
+        assertTrue(decoded.diaryReminderEnabled)
+        assertTrue(decoded.questionReminderEnabled)
+        assertTrue(decoded.updateNotificationEnabled)
     }
 
     @Test

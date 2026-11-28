@@ -62,6 +62,7 @@ fun SettingsScreen(
     onDarkModeChanged: (DarkMode) -> Unit,
     onDynamicColorChanged: (Boolean) -> Unit,
     onAnimationsChanged: (Boolean) -> Unit,
+    onHideStatusBarChanged: (Boolean) -> Unit,
     onAppLockChanged: (Boolean) -> Unit,
     onScreenshotProtectionChanged: (Boolean) -> Unit,
     onMediaPickerModeChanged: (MediaPickerMode) -> Unit,
@@ -72,19 +73,19 @@ fun SettingsScreen(
     onAutoCheckForUpdatesChanged: (Boolean) -> Unit,
     updateStatusText: String,
     updateBusy: Boolean,
-    /** Version shown by the update rows: the pending release, or the current one when none. */
+    /** Version shown by the install row: the pending release, or the current one when none. */
     updateVersionName: String,
-    updateAvailable: Boolean,
     updateCanInstall: Boolean,
     onCheckUpdates: () -> Unit,
-    /** Downloads the release the dialog announced (ADR-072); requires [updateAvailable]. */
-    onDownloadUpdate: () -> Unit,
     onInstallUpdate: () -> Unit,
     logSizeBytes: Long,
     notificationsAllowed: Boolean,
     canScheduleExactAlarms: Boolean,
     notificationPermissionDenied: Boolean,
     onNotificationsEnabledChanged: (Boolean) -> Unit,
+    onDiaryReminderEnabledChanged: (Boolean) -> Unit,
+    onQuestionReminderEnabledChanged: (Boolean) -> Unit,
+    onUpdateNotificationEnabledChanged: (Boolean) -> Unit,
     onOpenExactAlarmSettings: () -> Unit,
     onOpenNotificationSettings: () -> Unit,
     onDismissNotificationPermissionDenied: () -> Unit,
@@ -141,6 +142,13 @@ fun SettingsScreen(
                     subtitle = stringResource(R.string.settings_animations_desc),
                     checked = settings.animationsEnabled,
                     onCheckedChange = onAnimationsChanged,
+                )
+                Hairline()
+                ToggleRow(
+                    title = stringResource(R.string.settings_hide_status_bar),
+                    subtitle = stringResource(R.string.settings_hide_status_bar_desc),
+                    checked = settings.hideStatusBar,
+                    onCheckedChange = onHideStatusBarChanged,
                 )
             }
 
@@ -205,10 +213,16 @@ fun SettingsScreen(
             SettingsSection(title = stringResource(R.string.settings_section_notifications)) {
                 NotificationSettingsSection(
                     enabled = settings.notificationsEnabled,
+                    diaryReminderEnabled = settings.diaryReminderEnabled,
+                    questionReminderEnabled = settings.questionReminderEnabled,
+                    updateNotificationEnabled = settings.updateNotificationEnabled,
                     notificationsAllowed = notificationsAllowed,
                     canScheduleExactAlarms = canScheduleExactAlarms,
                     permissionDenied = notificationPermissionDenied,
                     onEnabledChange = onNotificationsEnabledChanged,
+                    onDiaryReminderEnabledChanged = onDiaryReminderEnabledChanged,
+                    onQuestionReminderEnabledChanged = onQuestionReminderEnabledChanged,
+                    onUpdateNotificationEnabledChanged = onUpdateNotificationEnabledChanged,
                     onOpenExactAlarmSettings = onOpenExactAlarmSettings,
                     onOpenNotificationSettings = onOpenNotificationSettings,
                     onDismissPermissionDenied = onDismissNotificationPermissionDenied,
@@ -243,23 +257,6 @@ fun SettingsScreen(
                         onClick = onCheckUpdates,
                         enabled = !updateBusy,
                     )
-                }
-                if (updateAvailable) {
-                    Hairline()
-                    SettingsRow {
-                        TitleBlock(
-                            title = stringResource(R.string.settings_update_available_title),
-                            subtitle = stringResource(R.string.settings_update_available_body, updateVersionName),
-                        )
-                        Button(
-                            onClick = onDownloadUpdate,
-                            modifier = Modifier.height(48.dp),
-                            shape = RoundedCornerShape(24.dp),
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                        ) {
-                            Text(text = stringResource(R.string.settings_update_download), fontSize = 15.sp)
-                        }
-                    }
                 }
                 if (updateCanInstall) {
                     Hairline()
@@ -461,10 +458,15 @@ private fun ToggleRow(
     subtitle: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
 ) {
     SettingsRow {
         TitleBlock(title = title, subtitle = subtitle)
-        MeteorSwitch(checked = checked, onCheckedChange = onCheckedChange)
+        MeteorSwitch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
+        )
     }
 }
 
@@ -483,10 +485,15 @@ private fun ChevronRow(
 }
 
 @Composable
-private fun MeteorSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+private fun MeteorSwitch(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
+) {
     Switch(
         checked = checked,
         onCheckedChange = onCheckedChange,
+        enabled = enabled,
         colors = SwitchDefaults.colors(
             checkedThumbColor = Color.White,
             checkedTrackColor = MaterialTheme.colorScheme.primary,
@@ -590,10 +597,16 @@ private fun ChevronIcon(previous: Boolean, tint: Color) {
 @Composable
 private fun NotificationSettingsSection(
     enabled: Boolean,
+    diaryReminderEnabled: Boolean,
+    questionReminderEnabled: Boolean,
+    updateNotificationEnabled: Boolean,
     notificationsAllowed: Boolean,
     canScheduleExactAlarms: Boolean,
     permissionDenied: Boolean,
     onEnabledChange: (Boolean) -> Unit,
+    onDiaryReminderEnabledChanged: (Boolean) -> Unit,
+    onQuestionReminderEnabledChanged: (Boolean) -> Unit,
+    onUpdateNotificationEnabledChanged: (Boolean) -> Unit,
     onOpenExactAlarmSettings: () -> Unit,
     onOpenNotificationSettings: () -> Unit,
     onDismissPermissionDenied: () -> Unit,
@@ -603,6 +616,32 @@ private fun NotificationSettingsSection(
         subtitle = stringResource(R.string.settings_notifications_desc),
         checked = enabled,
         onCheckedChange = onEnabledChange,
+    )
+    Hairline()
+    // The fine-grained rows stay visible while the master is off, disabled:
+    // that keeps the hierarchy legible instead of making three rows vanish.
+    ToggleRow(
+        title = stringResource(R.string.settings_diary_reminder),
+        subtitle = stringResource(R.string.settings_diary_reminder_desc),
+        checked = diaryReminderEnabled,
+        onCheckedChange = onDiaryReminderEnabledChanged,
+        enabled = enabled,
+    )
+    Hairline()
+    ToggleRow(
+        title = stringResource(R.string.settings_question_reminder),
+        subtitle = stringResource(R.string.settings_question_reminder_desc),
+        checked = questionReminderEnabled,
+        onCheckedChange = onQuestionReminderEnabledChanged,
+        enabled = enabled,
+    )
+    Hairline()
+    ToggleRow(
+        title = stringResource(R.string.settings_update_notification),
+        subtitle = stringResource(R.string.settings_update_notification_desc),
+        checked = updateNotificationEnabled,
+        onCheckedChange = onUpdateNotificationEnabledChanged,
+        enabled = enabled,
     )
 
     if (enabled) {

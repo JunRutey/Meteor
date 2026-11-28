@@ -22,11 +22,15 @@ object SettingsSnapshotCodec {
         put(KEY_DYNAMIC_COLOR, settings.dynamicColor)
         put(KEY_ANIMATIONS, settings.animationsEnabled)
         put(KEY_FONT_SCALE, settings.fontScale.name)
+        put(KEY_HIDE_STATUS_BAR, settings.hideStatusBar)
         put(KEY_VERBOSE_LOGGING, settings.verboseLogging)
         put(KEY_AUTO_BACKUP, settings.autoBackupEnabled)
         put(KEY_BACKUP_RETENTION, settings.backupRetention)
         put(KEY_AUTO_CHECK_FOR_UPDATES, settings.autoCheckForUpdates)
         put(KEY_NOTIFICATIONS_ENABLED, settings.notificationsEnabled)
+        put(KEY_DIARY_REMINDER_ENABLED, settings.diaryReminderEnabled)
+        put(KEY_QUESTION_REMINDER_ENABLED, settings.questionReminderEnabled)
+        put(KEY_UPDATE_NOTIFICATION_ENABLED, settings.updateNotificationEnabled)
         put(KEY_PEOPLE_TAGS, JSONArray(settings.peopleTags.sorted()))
         put(KEY_AI_ENABLED, settings.aiEnabled)
         put(KEY_AI_PROVIDER, settings.aiProvider)
@@ -55,11 +59,18 @@ object SettingsSnapshotCodec {
             dynamicColor = root.optBoolean(KEY_DYNAMIC_COLOR, defaults.dynamicColor),
             animationsEnabled = root.optBoolean(KEY_ANIMATIONS, defaults.animationsEnabled),
             fontScale = enumOrDefault(root.optString(KEY_FONT_SCALE), defaults.fontScale),
+            hideStatusBar = root.optBoolean(KEY_HIDE_STATUS_BAR, defaults.hideStatusBar),
             verboseLogging = root.optBoolean(KEY_VERBOSE_LOGGING, defaults.verboseLogging),
             autoBackupEnabled = root.optBoolean(KEY_AUTO_BACKUP, defaults.autoBackupEnabled),
             backupRetention = root.optInt(KEY_BACKUP_RETENTION, defaults.backupRetention),
             autoCheckForUpdates = root.optBoolean(KEY_AUTO_CHECK_FOR_UPDATES, defaults.autoCheckForUpdates),
             notificationsEnabled = root.optBoolean(KEY_NOTIFICATIONS_ENABLED, defaults.notificationsEnabled),
+            diaryReminderEnabled =
+                root.optBoolean(KEY_DIARY_REMINDER_ENABLED, defaults.diaryReminderEnabled),
+            questionReminderEnabled =
+                root.optBoolean(KEY_QUESTION_REMINDER_ENABLED, defaults.questionReminderEnabled),
+            updateNotificationEnabled =
+                root.optBoolean(KEY_UPDATE_NOTIFICATION_ENABLED, defaults.updateNotificationEnabled),
             peopleTags = root.optJSONArray(KEY_PEOPLE_TAGS).toStringSet(),
             aiEnabled = root.optBoolean(KEY_AI_ENABLED, defaults.aiEnabled),
             aiProvider = root.optString(KEY_AI_PROVIDER, defaults.aiProvider),
@@ -105,11 +116,15 @@ object SettingsSnapshotCodec {
     private const val KEY_DYNAMIC_COLOR = "dynamicColor"
     private const val KEY_ANIMATIONS = "animationsEnabled"
     private const val KEY_FONT_SCALE = "fontScale"
+    private const val KEY_HIDE_STATUS_BAR = "hideStatusBar"
     private const val KEY_VERBOSE_LOGGING = "verboseLogging"
     private const val KEY_AUTO_BACKUP = "autoBackupEnabled"
     private const val KEY_BACKUP_RETENTION = "backupRetention"
     private const val KEY_AUTO_CHECK_FOR_UPDATES = "autoCheckForUpdates"
     private const val KEY_NOTIFICATIONS_ENABLED = "notificationsEnabled"
+    private const val KEY_DIARY_REMINDER_ENABLED = "diaryReminderEnabled"
+    private const val KEY_QUESTION_REMINDER_ENABLED = "questionReminderEnabled"
+    private const val KEY_UPDATE_NOTIFICATION_ENABLED = "updateNotificationEnabled"
     private const val KEY_PEOPLE_TAGS = "peopleTags"
     private const val KEY_AI_ENABLED = "aiEnabled"
     private const val KEY_AI_PROVIDER = "aiProvider"

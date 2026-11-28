@@ -101,6 +101,25 @@ class RootViewModel @Inject constructor(
     private val _updatePrompt = MutableStateFlow<UpdatePrompt?>(null)
     val updatePrompt: StateFlow<UpdatePrompt?> = _updatePrompt.asStateFlow()
 
+    /**
+     * The foreground download dialog (1.7.1). Non-null only while the download
+     * was accepted from the prompt and has not yet been sent to the background:
+     * dismissing it, leaving the app or finishing the download all clear it.
+     */
+    private val _updateDownload = MutableStateFlow<UpdateDownloadProgress?>(null)
+    val updateDownload: StateFlow<UpdateDownloadProgress?> = _updateDownload.asStateFlow()
+
+    /**
+     * True once this download was handed over to the notification. It is reset
+     * when a new download starts, so a later check can show the dialog again.
+     */
+    @Volatile
+    private var downloadDialogDismissed: Boolean = false
+
+    /** Whether the activity is started; only then may the dialog auto-install. */
+    @Volatile
+    private var appForeground: Boolean = false
+
     /** Guards against re-locking while a biometric check is in flight. */
     @Volatile
     private var unlocking: Boolean = false
@@ -187,12 +206,25 @@ class RootViewModel @Inject constructor(
         }
 
         // Update prompts are shell-level (ADR-072): any check landing on a new
-        // version asks here, unless that exact version was skipped before or
-        // already answered in this session.
+        // version asks here. A manual check always asks; the automatic launch
+        // check stays quiet for a version it already prompted about.
         viewModelScope.launch {
             updateService.state.collect { state ->
-                if (state is UpdateState.Available) {
-                    askAboutUpdate(state.versionName)
+                when (state) {
+                    is UpdateState.Available ->
+                        askAboutUpdate(state.versionName, state.manual, state.notes)
+                    is UpdateState.Downloading -> updateDownloadProgress(state)
+                    is UpdateState.ReadyToInstall -> finishForegroundDownload(state.versionName)
+                    is UpdateState.Failed -> {
+                        // A failed download has no progress to show and no
+                        // ready notification to fall back on; close both
+                        // dialogs so the person is not left with a dead bar.
+                        _updateDownload.value = null
+                        _updatePrompt.value = null
+                    }
+
+                    is UpdateState.InstallPermissionRequired -> _updateDownload.value = null
+                    else -> Unit
                 }
             }
         }
@@ -322,6 +354,16 @@ class RootViewModel @Inject constructor(
      * requires a fresh biometric check instead of reusing the session shortcut.
      */
     fun onEnterBackground() {
+        appForeground = false
+        // Leaving the app turns the foreground progress dialog into the live
+        // notification. It deliberately does not come back on return: the
+        // download was handed over, and the notification is now the surface.
+        if (_updateDownload.value != null) {
+            appLog.info(UPDATE_TAG, "app backgrounded, download progress moved to notification")
+            downloadDialogDismissed = true
+            _updateDownload.value = null
+        }
+
         // A BiometricPrompt can push the activity to STOPPED; never re-lock
         // while a check is already in flight or the prompt would loop.
         if (unlocking) return
@@ -399,6 +441,7 @@ class RootViewModel @Inject constructor(
      * process lifetime.
      */
     fun onReturnToForeground() {
+        appForeground = true
         val since = backgroundSince
         backgroundSince = 0L
         systemTransitionUntil = 0L
@@ -455,24 +498,72 @@ class RootViewModel @Inject constructor(
      * (ADR-072). A manual re-check that finds the same release therefore lands
      * on the settings row instead of interrupting with the dialog again.
      */
-    private suspend fun askAboutUpdate(versionName: String) {
-        if (versionName == lastPromptedVersion) return
+    private suspend fun askAboutUpdate(versionName: String, manual: Boolean, notes: String) {
+        // The automatic launch check asks once per process; a manual 「检查更新」
+        // must be able to bring the dialog back after 「稍后再说」, otherwise the
+        // only visible path would be a parked settings row.
+        if (!manual && versionName == lastPromptedVersion) return
         lastPromptedVersion = versionName
         val skipped = runCatching { settingsRepository.skippedUpdateVersion() }.getOrNull()
         if (versionName == skipped) {
             appLog.info(UPDATE_TAG, "version $versionName is skipped, no prompt")
             return
         }
-        appLog.info(UPDATE_TAG, "asking about update $versionName")
-        _updatePrompt.value = UpdatePrompt(versionName)
+        appLog.info(UPDATE_TAG, "asking about update $versionName (manual=$manual)")
+        _updatePrompt.value = UpdatePrompt(versionName, notes)
     }
 
-    /** 「立即更新」: closes the dialog and hands the download to the service. */
+    /** 「立即更新」: keeps the dialog open as a foreground progress bar. */
     fun acceptUpdatePrompt() {
         val prompt = _updatePrompt.value ?: return
         _updatePrompt.value = null
+        downloadDialogDismissed = false
+        _updateDownload.value = UpdateDownloadProgress(
+            versionName = prompt.versionName,
+            downloadedBytes = 0,
+            totalBytes = 0,
+        )
         appLog.info(UPDATE_TAG, "update to ${prompt.versionName} accepted")
         viewModelScope.launch { updateService.startDownload() }
+    }
+
+    private fun updateDownloadProgress(state: UpdateState.Downloading) {
+        // The dialog only exists for a download the person started from the
+        // prompt. Once it was sent to the notification (back press / leaving
+        // the app) it must stay there, so returning does not pop it again.
+        if (downloadDialogDismissed || !appForeground) return
+        val current = _updateDownload.value ?: return
+        _updateDownload.value = current.copy(
+            versionName = state.versionName,
+            downloadedBytes = state.downloadedBytes,
+            totalBytes = state.totalBytes,
+        )
+    }
+
+    /**
+     * The download finished while the progress dialog was still in front.
+     * That is the one case that opens the system installer automatically; if
+     * the person already sent the download to the notification, the ready
+     * notification (and the settings install row) remains the entry point.
+     */
+    private fun finishForegroundDownload(versionName: String) {
+        val visible = _updateDownload.value ?: return
+        if (downloadDialogDismissed || !appForeground) return
+        _updateDownload.value = null
+        downloadDialogDismissed = true
+        appLog.info(UPDATE_TAG, "foreground download finished for $versionName, opening installer")
+        updateService.installDownloadedUpdate()
+    }
+
+    /**
+     * 「后台下载」/ back / leaving the app: the dialog disappears and the live
+     * notification (already posted by the service) becomes the only surface.
+     */
+    fun dismissDownloadProgressToNotification() {
+        if (_updateDownload.value == null) return
+        appLog.info(UPDATE_TAG, "download handed to the background notification")
+        downloadDialogDismissed = true
+        _updateDownload.value = null
     }
 
     /** 「稍后再说」and outside-tap: ask again the next time a check finds it. */
@@ -574,6 +665,27 @@ class RootViewModel @Inject constructor(
 }
 
 /** One pending "a new version exists" question, held until the dialog answers it. */
-data class UpdatePrompt(val versionName: String)
+data class UpdatePrompt(
+    val versionName: String,
+    /** GitHub release body, shown in a fixed scrollable area of the dialog. */
+    val notes: String = "",
+)
+
+/**
+ * Foreground download numbers. [totalBytes] is 0 while the source has not
+ * announced a size, in which case the dialog shows an indeterminate bar.
+ */
+data class UpdateDownloadProgress(
+    val versionName: String,
+    val downloadedBytes: Long,
+    val totalBytes: Long,
+) {
+    val percent: Int
+        get() = if (totalBytes > 0) {
+            ((downloadedBytes.coerceAtLeast(0) * 100) / totalBytes).toInt().coerceIn(0, 100)
+        } else {
+            0
+        }
+}
 
 enum class OnboardingGate { LOADING, REQUIRED, COMPLETE, FAILED }

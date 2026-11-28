@@ -30,6 +30,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             animationsEnabled = prefs[KEY_ANIMATIONS] ?: true,
             fontScale = prefs[KEY_FONT_SCALE]?.let { runCatching { FontScale.valueOf(it) }.getOrNull() }
                 ?: FontScale.SYSTEM,
+            hideStatusBar = prefs[KEY_HIDE_STATUS_BAR] ?: false,
             appLockEnabled = appLockEnabled,
             // The app lock used to enable screen protection as a side effect.
             // Until the independent switch is set explicitly, keep that
@@ -46,6 +47,9 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             notificationsEnabled = prefs[KEY_NOTIFICATIONS_ENABLED]
                 ?: prefs[KEY_DIARY_REMINDER_ENABLED]
                 ?: true,
+            diaryReminderEnabled = prefs[KEY_DIARY_REMINDER_SWITCH] ?: true,
+            questionReminderEnabled = prefs[KEY_QUESTION_REMINDER_ENABLED] ?: true,
+            updateNotificationEnabled = prefs[KEY_UPDATE_NOTIFICATION_ENABLED] ?: true,
             aiEnabled = prefs[KEY_AI_ENABLED] ?: false,
             aiConsentAccepted = prefs[KEY_AI_CONSENT] ?: false,
             aiProvider = prefs[KEY_AI_PROVIDER] ?: AppSettings.DEFAULT_AI_PROVIDER,
@@ -83,6 +87,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
 
     suspend fun setFontScale(scale: FontScale) = store.edit { it[KEY_FONT_SCALE] = scale.name }
 
+    suspend fun setHideStatusBar(enabled: Boolean) = store.edit { it[KEY_HIDE_STATUS_BAR] = enabled }
+
     suspend fun setAppLockEnabled(enabled: Boolean) = store.edit { it[KEY_APP_LOCK] = enabled }
 
     suspend fun setScreenshotProtectionEnabled(enabled: Boolean) =
@@ -95,6 +101,15 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
 
     suspend fun setNotificationsEnabled(enabled: Boolean) =
         store.edit { it[KEY_NOTIFICATIONS_ENABLED] = enabled }
+
+    suspend fun setDiaryReminderEnabled(enabled: Boolean) =
+        store.edit { it[KEY_DIARY_REMINDER_SWITCH] = enabled }
+
+    suspend fun setQuestionReminderEnabled(enabled: Boolean) =
+        store.edit { it[KEY_QUESTION_REMINDER_ENABLED] = enabled }
+
+    suspend fun setUpdateNotificationEnabled(enabled: Boolean) =
+        store.edit { it[KEY_UPDATE_NOTIFICATION_ENABLED] = enabled }
 
     /** Local date of the last posted daily reminder; avoids a duplicate after a restart. */
     suspend fun reminderLastSentDate(): LocalDate? =
@@ -284,11 +299,15 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         prefs[KEY_DYNAMIC_COLOR] = snapshot.dynamicColor
         prefs[KEY_ANIMATIONS] = snapshot.animationsEnabled
         prefs[KEY_FONT_SCALE] = snapshot.fontScale.name
+        prefs[KEY_HIDE_STATUS_BAR] = snapshot.hideStatusBar
         prefs[KEY_VERBOSE_LOGGING] = snapshot.verboseLogging
         prefs[KEY_AUTO_BACKUP] = snapshot.autoBackupEnabled
         prefs[KEY_BACKUP_RETENTION] = snapshot.backupRetention.coerceIn(1, 30)
         prefs[KEY_AUTO_CHECK_FOR_UPDATES] = snapshot.autoCheckForUpdates
         prefs[KEY_NOTIFICATIONS_ENABLED] = snapshot.notificationsEnabled
+        prefs[KEY_DIARY_REMINDER_SWITCH] = snapshot.diaryReminderEnabled
+        prefs[KEY_QUESTION_REMINDER_ENABLED] = snapshot.questionReminderEnabled
+        prefs[KEY_UPDATE_NOTIFICATION_ENABLED] = snapshot.updateNotificationEnabled
         prefs[KEY_AI_ENABLED] = snapshot.aiEnabled
         prefs[KEY_AI_PROVIDER] = snapshot.aiProvider
             .takeIf { it == AppSettings.DEFAULT_AI_PROVIDER }
@@ -318,6 +337,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val KEY_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         val KEY_ANIMATIONS = booleanPreferencesKey("animations_enabled")
         val KEY_FONT_SCALE = stringPreferencesKey("font_scale")
+        val KEY_HIDE_STATUS_BAR = booleanPreferencesKey("hide_status_bar")
         val KEY_APP_LOCK = booleanPreferencesKey("app_lock_enabled")
         val KEY_SCREENSHOT_PROTECTION = booleanPreferencesKey("screenshot_protection_enabled")
         val KEY_VERBOSE_LOGGING = booleanPreferencesKey("verbose_logging")
@@ -325,6 +345,10 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val KEY_BACKUP_RETENTION = intPreferencesKey("backup_retention")
         val KEY_AUTO_CHECK_FOR_UPDATES = booleanPreferencesKey("auto_check_for_updates")
         val KEY_DIARY_REMINDER_ENABLED = booleanPreferencesKey("diary_reminder_enabled")
+        /** 1.7.3 sub-switch; distinct from the legacy [KEY_DIARY_REMINDER_ENABLED]. */
+        val KEY_DIARY_REMINDER_SWITCH = booleanPreferencesKey("diary_reminder_switch_enabled")
+        val KEY_QUESTION_REMINDER_ENABLED = booleanPreferencesKey("question_reminder_enabled")
+        val KEY_UPDATE_NOTIFICATION_ENABLED = booleanPreferencesKey("update_notification_enabled")
         val KEY_NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
         val KEY_REMINDER_LAST_SENT_DATE = stringPreferencesKey("reminder_last_sent_local_date")
         val KEY_SKIPPED_UPDATE_VERSION = stringPreferencesKey("update_skipped_version")

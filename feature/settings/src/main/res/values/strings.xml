@@ -25,9 +25,7 @@
     <string name="settings_install_update">安装更新</string>
     <string name="settings_update_install_note">安装时需允许 Meteor 安装未知来源应用</string>
     <string name="settings_update_note_short">打开应用时检查新版，发现后弹窗询问</string>
-    <string name="settings_update_available_title">发现新版本</string>
-    <string name="settings_update_available_body">Meteor %1$s 可以更新，确认后开始下载</string>
-    <string name="settings_update_download">下载更新</string>
+    <string name="settings_update_available_body">Meteor %1$s 可以更新，点击「检查更新」重新弹窗</string>
     <string name="settings_update_error_checksum">更新包校验失败，已停止安装，请稍后重试。</string>
     <string name="settings_update_ready_title">新版本已就绪</string>
     <string name="settings_update_ready_body">Meteor %1$s 已下载，点击安装更新</string>
@@ -43,7 +41,13 @@
     <string name="settings_update_error_download">下载更新失败，请重试。</string>
     <string name="settings_update_error_install">无法打开系统安装器，请稍后重试。</string>
     <string name="settings_notifications_enabled">通知总开关</string>
-    <string name="settings_notifications_desc">同时控制更新下载进度与每日 20:00–21:00 随机写日记提醒</string>
+    <string name="settings_diary_reminder">日记提醒</string>
+    <string name="settings_diary_reminder_desc">每天 20:00–21:00 随机提醒一次写日记，默认悬浮显示并播放系统通知铃声。</string>
+    <string name="settings_question_reminder">问题提醒</string>
+    <string name="settings_question_reminder_desc">每日一问到点提醒，默认悬浮显示并播放系统通知铃声；可单独关闭而保留日记提醒。</string>
+    <string name="settings_update_notification">更新下载通知</string>
+    <string name="settings_update_notification_desc">显示更新下载进度与「已下载」通知，不播放声音。</string>
+    <string name="settings_notifications_desc">总开关关闭时所有提醒静音；下方可分别控制日记、问题与更新通知。</string>
     <string name="settings_notifications_unavailable">系统通知权限或通知渠道未开启，通知暂时无法显示。</string>
     <string name="settings_open_notification_settings">打开通知设置</string>
     <string name="settings_exact_alarm_unavailable">精确闹钟未授权，提醒会以非精确方式触发，可能晚于 21:00。</string>
@@ -64,6 +68,8 @@
 
     <string name="settings_dynamic_color">动态取色</string>
     <string name="settings_dynamic_color_desc">跟随壁纸生成配色（Android 12 及以上）</string>
+    <string name="settings_hide_status_bar">隐藏状态栏</string>
+    <string name="settings_hide_status_bar_desc">全屏显示内容，隐藏顶部的时间、电量与通知图标；从屏幕顶部下滑可临时查看。</string>
     <string name="settings_animations">界面动画</string>
     <string name="settings_animations_desc">页面切换、图库选择等过渡动画</string>
 

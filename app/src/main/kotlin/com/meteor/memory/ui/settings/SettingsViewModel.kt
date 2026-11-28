@@ -124,6 +124,13 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setHideStatusBar(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setHideStatusBar(enabled)
+            appLog.info(TAG, "hide status bar=$enabled")
+        }
+    }
+
     /**
      * Never persists "on" when the system has nothing to verify the person
      * against: the next cold start would otherwise sit at a gate nobody can
@@ -175,6 +182,30 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setDiaryReminderEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setDiaryReminderEnabled(enabled)
+            notificationFeature.syncReminder()
+            appLog.info(TAG, "diary reminder enabled=$enabled")
+        }
+    }
+
+    fun setQuestionReminderEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setQuestionReminderEnabled(enabled)
+            notificationFeature.syncReminder()
+            appLog.info(TAG, "question reminder enabled=$enabled")
+        }
+    }
+
+    fun setUpdateNotificationEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setUpdateNotificationEnabled(enabled)
+            notificationFeature.syncReminder()
+            appLog.info(TAG, "update notification enabled=$enabled")
+        }
+    }
+
     fun refreshNotificationPermissions() {
         _notificationsAllowed.value = notificationFeature.canPostDailyReminder()
         _canScheduleExactAlarms.value = notificationFeature.canScheduleExactAlarms()
@@ -212,13 +243,7 @@ class SettingsViewModel @Inject constructor(
      */
     fun checkForUpdates() {
         appLog.info(TAG, "manual update check")
-        updateService.checkForUpdate()
-    }
-
-    /** The settings 「下载更新」 button on the available-version row. */
-    fun downloadUpdate() {
-        appLog.info(TAG, "download update requested from settings")
-        updateService.startDownload()
+        updateService.checkForUpdate(manual = true)
     }
 
     fun installUpdate() {

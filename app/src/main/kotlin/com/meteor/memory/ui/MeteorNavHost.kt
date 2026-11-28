@@ -1072,6 +1072,7 @@ fun MeteorNavHost(
                 onDarkModeChanged = viewModel::setDarkMode,
                 onDynamicColorChanged = viewModel::setDynamicColor,
                 onAnimationsChanged = viewModel::setAnimationsEnabled,
+                onHideStatusBarChanged = viewModel::setHideStatusBar,
                 onAppLockChanged = viewModel::setAppLockEnabled,
                 appLockUnavailable = appLockUnavailable,
                 onDismissAppLockUnavailable = viewModel::dismissAppLockUnavailable,
@@ -1086,11 +1087,9 @@ fun MeteorNavHost(
                 updateStatusText = updateStatusText(updateState),
                 updateBusy = updateState is UpdateState.Checking || updateState is UpdateState.Downloading,
                 updateVersionName = pendingUpdateVersion(updateState, versionName),
-                updateAvailable = updateState is UpdateState.Available,
                 updateCanInstall = updateState is UpdateState.ReadyToInstall ||
                     updateState is UpdateState.InstallPermissionRequired,
                 onCheckUpdates = viewModel::checkForUpdates,
-                onDownloadUpdate = viewModel::downloadUpdate,
                 onInstallUpdate = viewModel::installUpdate,
                 logSizeBytes = logSizeBytes,
                 notificationsAllowed = notificationsAllowed,
@@ -1112,6 +1111,9 @@ fun MeteorNavHost(
                         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                     }
                 },
+                onDiaryReminderEnabledChanged = viewModel::setDiaryReminderEnabled,
+                onQuestionReminderEnabledChanged = viewModel::setQuestionReminderEnabled,
+                onUpdateNotificationEnabledChanged = viewModel::setUpdateNotificationEnabled,
                 onOpenExactAlarmSettings = viewModel::openExactAlarmSettings,
                 onOpenNotificationSettings = viewModel::openNotificationSettings,
                 onDismissNotificationPermissionDenied = { notificationPermissionDenied = false },

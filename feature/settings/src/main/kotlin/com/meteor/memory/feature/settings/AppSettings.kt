@@ -12,6 +12,13 @@ data class AppSettings(
     val dynamicColor: Boolean = false,
     val animationsEnabled: Boolean = true,
     val fontScale: FontScale = FontScale.SYSTEM,
+    /**
+     * Draws the app edge-to-edge without the system status bar (1.7.2).
+     *
+     * Off by default so an upgrade keeps the familiar system chrome; when on,
+     * the bar can still be revealed temporarily with a swipe from the top.
+     */
+    val hideStatusBar: Boolean = false,
     val appLockEnabled: Boolean = false,
     /**
      * Blocks system screenshots and screen recording with `FLAG_SECURE`; the
@@ -37,6 +44,16 @@ data class AppSettings(
      * installs that explicitly toggled it.
      */
     val notificationsEnabled: Boolean = true,
+    /**
+     * In-app fine-grained switches under [notificationsEnabled] (1.7.3).
+     *
+     * The master switch still mutes everything; these let one reminder be
+     * silenced without giving up the others. All three default to on so an
+     * upgrade keeps the reminders the app already sent.
+     */
+    val diaryReminderEnabled: Boolean = true,
+    val questionReminderEnabled: Boolean = true,
+    val updateNotificationEnabled: Boolean = true,
     /**
      * AI entry point (ADR-027). Off by default: a fresh install must not ship a
      * networked feature that is already on. Nothing leaves the device unless

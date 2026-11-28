@@ -1,5 +1,8 @@
 package com.meteor.memory.ui
 
+import android.app.Activity
+import android.content.Context
+import android.view.View
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -15,11 +18,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -52,6 +60,7 @@ fun MeteorRoot(versionName: String, onContentReady: () -> Unit = {}) {
     val noDeviceCredential by viewModel.noDeviceCredential.collectAsStateWithLifecycle()
     val onboardingGate by viewModel.onboardingGate.collectAsStateWithLifecycle()
     val updatePrompt by viewModel.updatePrompt.collectAsStateWithLifecycle()
+    val updateDownload by viewModel.updateDownload.collectAsStateWithLifecycle()
 
     // Cold-start splash hand-over (ADR-038). The system splash may leave only
     // once the shell knows whether to show the lock gate or the onboarding
@@ -79,6 +88,11 @@ fun MeteorRoot(versionName: String, onContentReady: () -> Unit = {}) {
         FontScale.LARGE -> 1.15f
     }
 
+    val view = LocalView.current
+    val windowContext = LocalContext.current
+    val hideStatusBar = settings.hideStatusBar
+    val currentHideStatusBar = rememberUpdatedState(hideStatusBar)
+
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -92,18 +106,33 @@ fun MeteorRoot(versionName: String, onContentReady: () -> Unit = {}) {
                 Lifecycle.Event.ON_START -> {
                     viewModel.onReturnToForeground()
                     viewModel.refreshLockAvailability()
+                    applyStatusBarVisibility(windowContext, view, currentHideStatusBar.value)
                 }
                 // Some OEM share sheets are dialogs, so they only pause us and
                 // never produce ON_STOP; coming back then only produces ON_RESUME.
                 // Both events call the same idempotent handler, which is what
                 // closes the "own system screen" window in that case.
-                Lifecycle.Event.ON_RESUME -> viewModel.onReturnToForeground()
+                Lifecycle.Event.ON_RESUME -> {
+                    viewModel.onReturnToForeground()
+                    // Some shells restore status-bar visibility when the window
+                    // regains focus; re-apply the preference on every resume.
+                    applyStatusBarVisibility(windowContext, view, currentHideStatusBar.value)
+                }
 
                 else -> Unit
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // 「隐藏状态栏」is a window-level preference, so it is applied once here
+    // instead of every screen asking for the inset controller. A LaunchedEffect
+    // keyed by the preference (not a SideEffect) is what keeps a transient swipe
+    // reveal usable: showing the bar changes the insets, which recomposes, and a
+    // SideEffect would immediately hide it again.
+    LaunchedEffect(hideStatusBar, view, windowContext) {
+        applyStatusBarVisibility(windowContext, view, hideStatusBar)
     }
 
     MeteorTheme(
@@ -162,9 +191,16 @@ fun MeteorRoot(versionName: String, onContentReady: () -> Unit = {}) {
                             updatePrompt?.let { prompt ->
                                 UpdatePromptDialog(
                                     versionName = prompt.versionName,
+                                    notes = prompt.notes,
                                     onDownload = viewModel::acceptUpdatePrompt,
                                     onLater = viewModel::dismissUpdatePrompt,
                                     onSkip = viewModel::skipUpdatePrompt,
+                                )
+                            }
+                            updateDownload?.let { progress ->
+                                UpdateProgressDialog(
+                                    progress = progress,
+                                    onDismiss = viewModel::dismissDownloadProgressToNotification,
                                 )
                             }
                         }
@@ -175,6 +211,23 @@ fun MeteorRoot(versionName: String, onContentReady: () -> Unit = {}) {
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Applies the 「隐藏状态栏」 preference to the current window. Kept outside the
+ * composable so both the immediate effect and the start/resume fallback share
+ * one implementation.
+ */
+private fun applyStatusBarVisibility(context: Context, view: View, hidden: Boolean) {
+    val window = (context as? Activity)?.window ?: return
+    WindowCompat.getInsetsController(window, view).apply {
+        systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        if (hidden) {
+            hide(WindowInsetsCompat.Type.statusBars())
+        } else {
+            show(WindowInsetsCompat.Type.statusBars())
         }
     }
 }
