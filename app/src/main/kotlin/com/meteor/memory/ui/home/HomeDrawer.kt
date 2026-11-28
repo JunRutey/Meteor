@@ -4,8 +4,8 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.MutableTransitionState
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.MutableTransitionState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -169,13 +169,13 @@ internal fun HomeDrawer(
     // closing the whole drawer.
     BackHandler(enabled = reorder.sorting) { reorder.finishSorting() }
 
-    val shape = RoundedCornerShape(
+    val panelShape = RoundedCornerShape(
         topEnd = if (seamlessTop) 0.dp else 24.dp,
         bottomEnd = 24.dp,
     )
     Surface(
         modifier = modifier.width(300.dp).fillMaxHeight(),
-        shape = shape,
+        shape = panelShape,
         color = MaterialTheme.colorScheme.surface,
         shadowElevation = if (seamlessTop) 0.dp else 12.dp,
     ) {
