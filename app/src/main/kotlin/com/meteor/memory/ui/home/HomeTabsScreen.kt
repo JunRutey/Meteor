@@ -108,13 +108,17 @@ fun HomeTabsScreen(
                 if (bounds != windowBounds) windowBounds = bounds
             },
     ) {
+        // The panel starts where this box starts (below the status bar when it is
+        // visible, at the window top when it is hidden) and must end at the real
+        // window bottom. So its height is "window height minus the top gap" with
+        // no vertical offset: the node is taller than its parent by exactly the
+        // navigation-bar gap, and only that bottom part is drawn outside the
+        // parent. Content gets the bottom gap back as padding.
         val overlayWidth = with(density) { view.width.toDp() }
-        val overlayHeight = with(density) { view.height.toDp() }
+        val overlayHeight = with(density) {
+            (view.height - windowBounds.top).coerceAtLeast(0f).toDp()
+        }
         val overlayOffsetX = with(density) { (-windowBounds.left).toDp() }
-        val overlayOffsetY = with(density) { (-windowBounds.top).toDp() }
-        // The panel covers the system bars, so its content has to keep clear of
-        // them; both amounts are measured, not re-derived from insets.
-        val contentTopInset = with(density) { windowBounds.top.toDp() }
         val contentBottomInset = with(density) {
             (view.height - windowBounds.bottom).coerceAtLeast(0f).toDp()
         }
@@ -151,7 +155,7 @@ fun HomeTabsScreen(
             visible = drawerOpen,
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .offset(x = overlayOffsetX, y = overlayOffsetY)
+                .offset(x = overlayOffsetX)
                 .requiredSize(overlayWidth, overlayHeight),
             enter = if (animationsEnabled) {
                 fadeIn(MotionTokens.enter())
@@ -180,7 +184,7 @@ fun HomeTabsScreen(
             visible = drawerOpen,
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .offset(x = overlayOffsetX, y = overlayOffsetY)
+                .offset(x = overlayOffsetX)
                 .requiredSize(overlayWidth, overlayHeight),
             enter = if (animationsEnabled) {
                 slideInHorizontally(animationSpec = MotionTokens.enter()) { -it } +
@@ -207,7 +211,6 @@ fun HomeTabsScreen(
                 drawerOrder = drawerOrder,
                 drawerVisibleItems = drawerVisibleItems,
                 onDrawerConfigChanged = onDrawerConfigChanged,
-                contentTopInset = contentTopInset,
                 contentBottomInset = contentBottomInset,
                 seamlessTop = drawerFullscreen,
             )
