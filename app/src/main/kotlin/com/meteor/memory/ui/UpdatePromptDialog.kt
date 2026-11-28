@@ -43,7 +43,7 @@ internal fun UpdatePromptDialog(
         title = { Text(text = stringResource(R.string.update_prompt_title, versionName)) },
         text = {
             Column {
-                Text(text = stringResource(R.string.update_prompt_body))
+                Text(text = stringResource(R.string.update_prompt_body, versionName))
                 // Fixed-height scroll area: a long release note must not turn
                 // the confirmation into a full-screen wall of text, and the
                 // dialog must stay short enough to keep all three answers

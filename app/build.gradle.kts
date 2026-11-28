@@ -14,8 +14,8 @@ android {
         applicationId = "com.meteor.memory"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
-        versionCode = 42
-        versionName = "1.7.3"
+        versionCode = 43
+        versionName = "1.7.4"
     }
 
     buildFeatures {

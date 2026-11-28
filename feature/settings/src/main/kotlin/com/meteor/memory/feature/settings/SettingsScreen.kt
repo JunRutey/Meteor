@@ -1,6 +1,5 @@
 package com.meteor.memory.feature.settings
 
-import android.os.Build
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,13 +24,19 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -60,13 +65,11 @@ fun SettingsScreen(
     settings: AppSettings,
     versionName: String,
     onDarkModeChanged: (DarkMode) -> Unit,
-    onDynamicColorChanged: (Boolean) -> Unit,
-    onAnimationsChanged: (Boolean) -> Unit,
-    onHideStatusBarChanged: (Boolean) -> Unit,
     onAppLockChanged: (Boolean) -> Unit,
     onScreenshotProtectionChanged: (Boolean) -> Unit,
     onMediaPickerModeChanged: (MediaPickerMode) -> Unit,
     onVerboseLoggingChanged: (Boolean) -> Unit,
+    onOpenAppearanceSettings: () -> Unit,
     onOpenAbout: () -> Unit,
     onOpenDonate: () -> Unit,
     onOpenBirthDate: () -> Unit,
@@ -79,14 +82,9 @@ fun SettingsScreen(
     onCheckUpdates: () -> Unit,
     onInstallUpdate: () -> Unit,
     logSizeBytes: Long,
-    notificationsAllowed: Boolean,
-    canScheduleExactAlarms: Boolean,
     notificationPermissionDenied: Boolean,
     onNotificationsEnabledChanged: (Boolean) -> Unit,
-    onDiaryReminderEnabledChanged: (Boolean) -> Unit,
-    onQuestionReminderEnabledChanged: (Boolean) -> Unit,
-    onUpdateNotificationEnabledChanged: (Boolean) -> Unit,
-    onOpenExactAlarmSettings: () -> Unit,
+    onOpenNotificationDetail: () -> Unit,
     onOpenNotificationSettings: () -> Unit,
     onDismissNotificationPermissionDenied: () -> Unit,
     modifier: Modifier = Modifier,
@@ -100,8 +98,14 @@ fun SettingsScreen(
     onDismissAppLockUnavailable: () -> Unit = {},
     onOpenSecuritySettings: () -> Unit = {},
 ) {
+    var showThemeDialog by rememberSaveable { mutableStateOf(false) }
+    var showMediaDialog by rememberSaveable { mutableStateOf(false) }
+
     Column(modifier = modifier.fillMaxSize()) {
-        SettingsHeader(onBack = onBack)
+        SettingsHeader(
+            onBack = onBack,
+            title = stringResource(R.string.settings_title),
+        )
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -109,46 +113,16 @@ fun SettingsScreen(
                 .padding(bottom = 28.dp),
         ) {
             SettingsSection(title = stringResource(R.string.settings_section_appearance)) {
-                SettingsRow {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        RowLabel(text = stringResource(R.string.settings_dark_mode))
-                        SegmentedChoice(
-                            options = listOf(
-                                DarkMode.FOLLOW_SYSTEM to stringResource(R.string.settings_dark_follow_system),
-                                DarkMode.DARK to stringResource(R.string.settings_dark_dark),
-                                DarkMode.LIGHT to stringResource(R.string.settings_dark_light),
-                            ),
-                            selected = settings.darkMode,
-                            onSelect = onDarkModeChanged,
-                        )
-                    }
-                }
-                Hairline()
-
-                // Dynamic colour is an Android 12+ capability; older releases fall back
-                // to the built-in palette, so the switch would be a lie there.
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    ToggleRow(
-                        title = stringResource(R.string.settings_dynamic_color),
-                        subtitle = stringResource(R.string.settings_dynamic_color_desc),
-                        checked = settings.dynamicColor,
-                        onCheckedChange = onDynamicColorChanged,
-                    )
-                    Hairline()
-                }
-
-                ToggleRow(
-                    title = stringResource(R.string.settings_animations),
-                    subtitle = stringResource(R.string.settings_animations_desc),
-                    checked = settings.animationsEnabled,
-                    onCheckedChange = onAnimationsChanged,
+                ChevronRow(
+                    title = stringResource(R.string.settings_dark_mode),
+                    subtitle = themeLabel(settings.darkMode),
+                    onClick = { showThemeDialog = true },
                 )
                 Hairline()
-                ToggleRow(
-                    title = stringResource(R.string.settings_hide_status_bar),
-                    subtitle = stringResource(R.string.settings_hide_status_bar_desc),
-                    checked = settings.hideStatusBar,
-                    onCheckedChange = onHideStatusBarChanged,
+                ChevronRow(
+                    title = stringResource(R.string.settings_more_appearance),
+                    subtitle = stringResource(R.string.settings_more_appearance_desc),
+                    onClick = onOpenAppearanceSettings,
                 )
             }
 
@@ -163,27 +137,11 @@ fun SettingsScreen(
             // Which picker the editors open (ADR-059). The in-app picker keeps
             // source metadata, which the album's "by source date" ordering needs.
             SettingsSection(title = stringResource(R.string.settings_section_media)) {
-                SettingsRow {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        RowLabel(text = stringResource(R.string.settings_media_picker))
-                        SegmentedChoice(
-                            options = listOf(
-                                MediaPickerMode.IN_APP to
-                                    stringResource(R.string.settings_media_picker_in_app),
-                                MediaPickerMode.SYSTEM to
-                                    stringResource(R.string.settings_media_picker_system),
-                            ),
-                            selected = settings.mediaPickerMode,
-                            onSelect = onMediaPickerModeChanged,
-                        )
-                        Text(
-                            text = stringResource(R.string.settings_media_picker_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 8.dp),
-                        )
-                    }
-                }
+                ChevronRow(
+                    title = stringResource(R.string.settings_media_picker),
+                    subtitle = mediaPickerLabel(settings.mediaPickerMode),
+                    onClick = { showMediaDialog = true },
+                )
             }
 
             SettingsSection(title = stringResource(R.string.settings_section_security)) {
@@ -211,21 +169,17 @@ fun SettingsScreen(
             }
 
             SettingsSection(title = stringResource(R.string.settings_section_notifications)) {
-                NotificationSettingsSection(
-                    enabled = settings.notificationsEnabled,
-                    diaryReminderEnabled = settings.diaryReminderEnabled,
-                    questionReminderEnabled = settings.questionReminderEnabled,
-                    updateNotificationEnabled = settings.updateNotificationEnabled,
-                    notificationsAllowed = notificationsAllowed,
-                    canScheduleExactAlarms = canScheduleExactAlarms,
-                    permissionDenied = notificationPermissionDenied,
-                    onEnabledChange = onNotificationsEnabledChanged,
-                    onDiaryReminderEnabledChanged = onDiaryReminderEnabledChanged,
-                    onQuestionReminderEnabledChanged = onQuestionReminderEnabledChanged,
-                    onUpdateNotificationEnabledChanged = onUpdateNotificationEnabledChanged,
-                    onOpenExactAlarmSettings = onOpenExactAlarmSettings,
-                    onOpenNotificationSettings = onOpenNotificationSettings,
-                    onDismissPermissionDenied = onDismissNotificationPermissionDenied,
+                ToggleRow(
+                    title = stringResource(R.string.settings_notifications_enabled),
+                    subtitle = stringResource(R.string.settings_notifications_desc),
+                    checked = settings.notificationsEnabled,
+                    onCheckedChange = onNotificationsEnabledChanged,
+                )
+                Hairline()
+                ChevronRow(
+                    title = stringResource(R.string.settings_more_notifications),
+                    subtitle = stringResource(R.string.settings_more_notifications_desc),
+                    onClick = onOpenNotificationDetail,
                 )
             }
 
@@ -319,6 +273,76 @@ fun SettingsScreen(
         }
     }
 
+    if (showThemeDialog) {
+        ChoiceDialog(
+            title = stringResource(R.string.settings_dark_mode),
+            options = listOf(
+                ChoiceOption(
+                    value = DarkMode.FOLLOW_SYSTEM,
+                    label = stringResource(R.string.settings_dark_follow_system),
+                    description = stringResource(R.string.settings_dark_follow_system_desc),
+                ),
+                ChoiceOption(
+                    value = DarkMode.DARK,
+                    label = stringResource(R.string.settings_dark_dark),
+                    description = stringResource(R.string.settings_dark_dark_desc),
+                ),
+                ChoiceOption(
+                    value = DarkMode.LIGHT,
+                    label = stringResource(R.string.settings_dark_light),
+                    description = stringResource(R.string.settings_dark_light_desc),
+                ),
+            ),
+            selected = settings.darkMode,
+            onSelect = onDarkModeChanged,
+            onDismiss = { showThemeDialog = false },
+        )
+    }
+
+    if (showMediaDialog) {
+        ChoiceDialog(
+            title = stringResource(R.string.settings_media_picker),
+            options = listOf(
+                ChoiceOption(
+                    value = MediaPickerMode.IN_APP,
+                    label = stringResource(R.string.settings_media_picker_in_app),
+                    description = stringResource(R.string.settings_media_picker_in_app_desc),
+                ),
+                ChoiceOption(
+                    value = MediaPickerMode.SYSTEM,
+                    label = stringResource(R.string.settings_media_picker_system),
+                    description = stringResource(R.string.settings_media_picker_system_desc),
+                ),
+            ),
+            selected = settings.mediaPickerMode,
+            onSelect = onMediaPickerModeChanged,
+            onDismiss = { showMediaDialog = false },
+        )
+    }
+
+    if (notificationPermissionDenied) {
+        AlertDialog(
+            onDismissRequest = onDismissNotificationPermissionDenied,
+            title = { Text(text = stringResource(R.string.settings_notification_permission_denied_title)) },
+            text = { Text(text = stringResource(R.string.settings_notification_permission_denied_body)) },
+            confirmButton = {
+                TextButton(onClick = onDismissNotificationPermissionDenied) {
+                    Text(text = stringResource(R.string.settings_notification_permission_dismiss))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        onDismissNotificationPermissionDenied()
+                        onOpenNotificationSettings()
+                    },
+                ) {
+                    Text(text = stringResource(R.string.settings_open_notification_settings))
+                }
+            },
+        )
+    }
+
     // Shown when the switch was refused: the app lock delegates to the system
     // and a device with no credential at all could never pass its own gate.
     if (appLockUnavailable) {
@@ -346,7 +370,10 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun SettingsHeader(onBack: () -> Unit) {
+internal fun SettingsHeader(
+    onBack: () -> Unit,
+    title: String,
+) {
     Row(
         modifier = Modifier.fillMaxWidth().height(56.dp).padding(end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -360,7 +387,7 @@ private fun SettingsHeader(onBack: () -> Unit) {
             ChevronIcon(previous = true, tint = MaterialTheme.colorScheme.onSurface)
         }
         Text(
-            text = stringResource(R.string.settings_title),
+            text = title,
             fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold,
             color = MaterialTheme.colorScheme.onSurface,
@@ -369,7 +396,7 @@ private fun SettingsHeader(onBack: () -> Unit) {
 }
 
 @Composable
-private fun SettingsSection(
+internal fun SettingsSection(
     title: String,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -397,7 +424,7 @@ private fun SettingsSection(
 }
 
 @Composable
-private fun Hairline() {
+internal fun Hairline() {
     Box(
         Modifier
             .fillMaxWidth()
@@ -407,7 +434,7 @@ private fun Hairline() {
 }
 
 @Composable
-private fun SettingsRow(
+internal fun SettingsRow(
     onClick: (() -> Unit)? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
@@ -453,7 +480,7 @@ private fun RowLabel(text: String) {
 }
 
 @Composable
-private fun ToggleRow(
+internal fun ToggleRow(
     title: String,
     subtitle: String,
     checked: Boolean,
@@ -505,46 +532,88 @@ private fun MeteorSwitch(
     )
 }
 
+/** One option in the popup selection block. */
+internal data class ChoiceOption<T>(
+    val value: T,
+    val label: String,
+    val description: String? = null,
+)
+
+/**
+ * Popup choice used by 主题 and 文件选择器 instead of inline segmented buttons.
+ * It follows the delete-person confirmation pattern: a compact AlertDialog with
+ * a single-select list and a cancel action, so the settings page stays quiet.
+ */
 @Composable
-private fun <T> SegmentedChoice(
-    options: List<Pair<T, String>>,
+internal fun <T> ChoiceDialog(
+    title: String,
+    options: List<ChoiceOption<T>>,
     selected: T,
     onSelect: (T) -> Unit,
+    onDismiss: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        options.forEach { (value, label) ->
-            val isSelected = value == selected
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .height(40.dp)
-                    .background(
-                        color = if (isSelected) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.surfaceVariant
-                        },
-                        shape = RoundedCornerShape(20.dp),
-                    )
-                    .clickable { onSelect(value) },
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = label,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = if (isSelected) {
-                        MaterialTheme.colorScheme.onPrimary
-                    } else {
-                        MaterialTheme.colorScheme.secondary
-                    },
-                )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = title) },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                options.forEachIndexed { index, option ->
+                    if (index > 0) Hairline()
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable {
+                                onSelect(option.value)
+                                onDismiss()
+                            }
+                            .padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+                            Text(
+                                text = option.label,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            option.description?.let { description ->
+                                Text(
+                                    text = description,
+                                    modifier = Modifier.padding(top = 2.dp),
+                                    fontSize = 13.sp,
+                                    lineHeight = 18.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        RadioButton(
+                            selected = selected == option.value,
+                            onClick = null,
+                        )
+                    }
+                }
             }
-        }
-    }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.settings_choice_cancel))
+            }
+        },
+    )
+}
+
+@Composable
+private fun themeLabel(mode: DarkMode): String = when (mode) {
+    DarkMode.FOLLOW_SYSTEM -> stringResource(R.string.settings_dark_follow_system)
+    DarkMode.DARK -> stringResource(R.string.settings_dark_dark)
+    DarkMode.LIGHT -> stringResource(R.string.settings_dark_light)
+}
+
+@Composable
+private fun mediaPickerLabel(mode: MediaPickerMode): String = when (mode) {
+    MediaPickerMode.IN_APP -> stringResource(R.string.settings_media_picker_in_app)
+    MediaPickerMode.SYSTEM -> stringResource(R.string.settings_media_picker_system)
 }
 
 @Composable
@@ -590,118 +659,6 @@ private fun ChevronIcon(previous: Boolean, tint: Color) {
             path = path,
             color = tint,
             style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round),
-        )
-    }
-}
-
-@Composable
-private fun NotificationSettingsSection(
-    enabled: Boolean,
-    diaryReminderEnabled: Boolean,
-    questionReminderEnabled: Boolean,
-    updateNotificationEnabled: Boolean,
-    notificationsAllowed: Boolean,
-    canScheduleExactAlarms: Boolean,
-    permissionDenied: Boolean,
-    onEnabledChange: (Boolean) -> Unit,
-    onDiaryReminderEnabledChanged: (Boolean) -> Unit,
-    onQuestionReminderEnabledChanged: (Boolean) -> Unit,
-    onUpdateNotificationEnabledChanged: (Boolean) -> Unit,
-    onOpenExactAlarmSettings: () -> Unit,
-    onOpenNotificationSettings: () -> Unit,
-    onDismissPermissionDenied: () -> Unit,
-) {
-    ToggleRow(
-        title = stringResource(R.string.settings_notifications_enabled),
-        subtitle = stringResource(R.string.settings_notifications_desc),
-        checked = enabled,
-        onCheckedChange = onEnabledChange,
-    )
-    Hairline()
-    // The fine-grained rows stay visible while the master is off, disabled:
-    // that keeps the hierarchy legible instead of making three rows vanish.
-    ToggleRow(
-        title = stringResource(R.string.settings_diary_reminder),
-        subtitle = stringResource(R.string.settings_diary_reminder_desc),
-        checked = diaryReminderEnabled,
-        onCheckedChange = onDiaryReminderEnabledChanged,
-        enabled = enabled,
-    )
-    Hairline()
-    ToggleRow(
-        title = stringResource(R.string.settings_question_reminder),
-        subtitle = stringResource(R.string.settings_question_reminder_desc),
-        checked = questionReminderEnabled,
-        onCheckedChange = onQuestionReminderEnabledChanged,
-        enabled = enabled,
-    )
-    Hairline()
-    ToggleRow(
-        title = stringResource(R.string.settings_update_notification),
-        subtitle = stringResource(R.string.settings_update_notification_desc),
-        checked = updateNotificationEnabled,
-        onCheckedChange = onUpdateNotificationEnabledChanged,
-        enabled = enabled,
-    )
-
-    if (enabled) {
-        if (!notificationsAllowed) {
-            Hairline()
-            SettingsRow {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.settings_notifications_unavailable),
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    TextButton(onClick = onOpenNotificationSettings) {
-                        Text(text = stringResource(R.string.settings_open_notification_settings))
-                    }
-                }
-            }
-        }
-
-        // Exact alarms are only surfaced when the system withholds them; the
-        // reminder still fires with inexact precision (ADR-039).
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !canScheduleExactAlarms) {
-            Hairline()
-            SettingsRow {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.settings_exact_alarm_unavailable),
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    TextButton(onClick = onOpenExactAlarmSettings) {
-                        Text(text = stringResource(R.string.settings_request_exact_alarm_settings))
-                    }
-                }
-            }
-        }
-    }
-
-    if (permissionDenied) {
-        AlertDialog(
-            onDismissRequest = onDismissPermissionDenied,
-            title = { Text(text = stringResource(R.string.settings_notification_permission_denied_title)) },
-            text = { Text(text = stringResource(R.string.settings_notification_permission_denied_body)) },
-            confirmButton = {
-                TextButton(onClick = onDismissPermissionDenied) {
-                    Text(text = stringResource(R.string.settings_notification_permission_dismiss))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        onDismissPermissionDenied()
-                        onOpenNotificationSettings()
-                    },
-                ) {
-                    Text(text = stringResource(R.string.settings_open_notification_settings))
-                }
-            },
         )
     }
 }

@@ -4,7 +4,10 @@ import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import com.meteor.memory.core.log.AppLog
@@ -25,6 +28,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -39,6 +43,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  * latency order ([UpdateSources]); whatever source serves the bytes, the file
  * is accepted only if its SHA-256 matches the digest GitHub computed at
  * upload time. A mirror can only be fast or slow, never wrong.
+ *
+ * 1.7.4 adds a second, independent gate: the downloaded APK must parse as the
+ * same package and carry the same signing certificate as the installed app.
+ * That keeps the update safe even for an old release whose GitHub asset has no
+ * digest to compare against.
  */
 class UpdateService(
     context: Context,
@@ -360,6 +369,7 @@ class UpdateService(
                 looksLikeApk(apkFile) &&
                 digestMatches(apkFile, release.sha256)
             ) {
+                verifySigner(apkFile, release)
                 appLog.info(TAG, "reused cached apk $versionName")
                 pruneOtherUpdates(updateDirectory, keep = apkFile)
                 return apkFile
@@ -431,6 +441,7 @@ class UpdateService(
             }
             partialFile = null
             verifyDigest(apkFile, release)
+            verifySigner(apkFile, release)
             appLog.info(TAG, "apk saved $versionName: $downloadedBytes bytes")
             notificationFeature.showUpdateDownload(
                 UpdateNotificationProgress(
@@ -475,6 +486,65 @@ class UpdateService(
         if (expected == null) return true
         val actual = runCatching { UpdateSources.sha256Hex(file) }.getOrNull()
         return actual != null && actual.equals(expected, ignoreCase = true)
+    }
+
+    /**
+     * Second integrity gate (1.7.4): the archive must declare this package and
+     * be signed by the same certificate as the running app.
+     *
+     * GitHub's digest is the primary check, but older releases may not carry
+     * one. Comparing the signing certificate closes that gap and also rejects
+     * a re-signed APK served by a compromised mirror even if the metadata
+     * digest was replaced too.
+     */
+    private fun verifySigner(apkFile: File, release: ReleaseMetadata) {
+        val packageManager = appContext.packageManager
+        val archive = packageManager.getPackageArchiveInfo(apkFile.absolutePath, signingFlags())
+        val installed = runCatching {
+            packageManager.getPackageInfo(appContext.packageName, signingFlags())
+        }.getOrNull()
+
+        val archiveSigners = archive?.signerDigests().orEmpty()
+        val installedSigners = installed?.signerDigests().orEmpty()
+        val samePackage = archive?.packageName == appContext.packageName
+        if (
+            !samePackage ||
+            archiveSigners.isEmpty() ||
+            installedSigners.isEmpty() ||
+            archiveSigners != installedSigners
+        ) {
+            appLog.warn(
+                TAG,
+                "apk signer verification failed for ${release.version}: " +
+                    "samePackage=$samePackage " +
+                    "archiveSigners=${archiveSigners.size} " +
+                    "installedSigners=${installedSigners.size}",
+            )
+            runCatching { apkFile.delete() }
+            throw UpdateException(UpdateError.CHECKSUM)
+        }
+        appLog.info(TAG, "apk signer verified for ${release.version}")
+    }
+
+    @Suppress("DEPRECATION")
+    private fun signingFlags(): Int =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            PackageManager.GET_SIGNING_CERTIFICATES
+        } else {
+            PackageManager.GET_SIGNATURES
+        }
+
+    private fun PackageInfo.signerDigests(): Set<String> {
+        val certificateBytes = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            signingInfo?.apkContentsSigners?.map { it.toByteArray() }.orEmpty()
+        } else {
+            @Suppress("DEPRECATION")
+            signatures?.map { it.toByteArray() }.orEmpty()
+        }
+        return certificateBytes.mapTo(LinkedHashSet()) { bytes ->
+            MessageDigest.getInstance("SHA-256").digest(bytes)
+                .joinToString("") { byte -> "%02x".format(byte.toInt() and 0xFF) }
+        }
     }
 
     private fun hostOf(url: String): String = runCatching { URL(url).host }.getOrDefault(url)

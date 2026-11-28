@@ -70,7 +70,9 @@ import com.meteor.memory.feature.question.QuestionDetailScreen
 import com.meteor.memory.feature.question.QuestionListScreen
 import com.meteor.memory.feature.media.MediaPickerScreen
 import com.meteor.memory.feature.media.PickedMedia
+import com.meteor.memory.feature.settings.AppearanceSettingsScreen
 import com.meteor.memory.feature.settings.MediaPickerMode
+import com.meteor.memory.feature.settings.NotificationSettingsScreen
 import com.meteor.memory.feature.settings.SettingsScreen
 import com.meteor.memory.feature.settings.R as SettingsR
 import com.meteor.memory.ui.about.AboutScreen
@@ -131,6 +133,8 @@ private const val ROUTE_SETTINGS = "settings"
  */
 private const val SETTINGS_ENTER_SCALE = 0.97f
 private const val ROUTE_BIRTH_DATE = "settings/birth-date"
+private const val ROUTE_SETTINGS_APPEARANCE = "settings/appearance"
+private const val ROUTE_SETTINGS_NOTIFICATIONS = "settings/notifications"
 private const val ROUTE_AI_SETTINGS = "settings/ai"
 private const val ROUTE_AI_USAGE = "settings/ai/usage"
 private const val ROUTE_DIARY_EDIT = "diary/edit"
@@ -1042,9 +1046,6 @@ fun MeteorNavHost(
             val viewModel: SettingsViewModel = hiltViewModel()
             val settings by viewModel.settings.collectAsStateWithLifecycle()
             val logSizeBytes by viewModel.logSizeBytes.collectAsStateWithLifecycle()
-            val notificationsAllowed by viewModel.notificationsAllowed
-                .collectAsStateWithLifecycle()
-            val canScheduleExactAlarms by viewModel.canScheduleExactAlarms.collectAsStateWithLifecycle()
             val updateState by viewModel.updateState.collectAsStateWithLifecycle()
             val appLockUnavailable by viewModel.appLockUnavailable.collectAsStateWithLifecycle()
             val context = LocalContext.current
@@ -1062,7 +1063,6 @@ fun MeteorNavHost(
 
             RefreshOnResume {
                 viewModel.refreshLogSize()
-                viewModel.refreshNotificationPermissions()
                 viewModel.refreshUpdateInstallPermission()
             }
 
@@ -1070,9 +1070,7 @@ fun MeteorNavHost(
                 settings = settings,
                 versionName = versionName,
                 onDarkModeChanged = viewModel::setDarkMode,
-                onDynamicColorChanged = viewModel::setDynamicColor,
-                onAnimationsChanged = viewModel::setAnimationsEnabled,
-                onHideStatusBarChanged = viewModel::setHideStatusBar,
+                onOpenAppearanceSettings = { navController.navigate(ROUTE_SETTINGS_APPEARANCE) },
                 onAppLockChanged = viewModel::setAppLockEnabled,
                 appLockUnavailable = appLockUnavailable,
                 onDismissAppLockUnavailable = viewModel::dismissAppLockUnavailable,
@@ -1092,8 +1090,6 @@ fun MeteorNavHost(
                 onCheckUpdates = viewModel::checkForUpdates,
                 onInstallUpdate = viewModel::installUpdate,
                 logSizeBytes = logSizeBytes,
-                notificationsAllowed = notificationsAllowed,
-                canScheduleExactAlarms = canScheduleExactAlarms,
                 notificationPermissionDenied = notificationPermissionDenied,
                 onNotificationsEnabledChanged = { enabled ->
                     if (!enabled) {
@@ -1111,10 +1107,9 @@ fun MeteorNavHost(
                         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                     }
                 },
-                onDiaryReminderEnabledChanged = viewModel::setDiaryReminderEnabled,
-                onQuestionReminderEnabledChanged = viewModel::setQuestionReminderEnabled,
-                onUpdateNotificationEnabledChanged = viewModel::setUpdateNotificationEnabled,
-                onOpenExactAlarmSettings = viewModel::openExactAlarmSettings,
+                onOpenNotificationDetail = {
+                    navController.navigate(ROUTE_SETTINGS_NOTIFICATIONS)
+                },
                 onOpenNotificationSettings = viewModel::openNotificationSettings,
                 onDismissNotificationPermissionDenied = { notificationPermissionDenied = false },
                 onBack = { navController.popBackStack() },
@@ -1136,6 +1131,42 @@ fun MeteorNavHost(
                         onOpenUsage = { navController.navigate(ROUTE_AI_USAGE) },
                     )
                 },
+            )
+        }
+
+        composable(ROUTE_SETTINGS_APPEARANCE) {
+            val viewModel: SettingsViewModel = hiltViewModel()
+            val settings by viewModel.settings.collectAsStateWithLifecycle()
+
+            AppearanceSettingsScreen(
+                settings = settings,
+                onDynamicColorChanged = viewModel::setDynamicColor,
+                onAnimationsChanged = viewModel::setAnimationsEnabled,
+                onHideStatusBarChanged = viewModel::setHideStatusBar,
+                onBack = { navController.popBackStack() },
+            )
+        }
+
+        composable(ROUTE_SETTINGS_NOTIFICATIONS) {
+            val viewModel: SettingsViewModel = hiltViewModel()
+            val settings by viewModel.settings.collectAsStateWithLifecycle()
+            val notificationsAllowed by viewModel.notificationsAllowed
+                .collectAsStateWithLifecycle()
+            val canScheduleExactAlarms by viewModel.canScheduleExactAlarms
+                .collectAsStateWithLifecycle()
+
+            RefreshOnResume { viewModel.refreshNotificationPermissions() }
+
+            NotificationSettingsScreen(
+                settings = settings,
+                notificationsAllowed = notificationsAllowed,
+                canScheduleExactAlarms = canScheduleExactAlarms,
+                onDiaryReminderEnabledChanged = viewModel::setDiaryReminderEnabled,
+                onQuestionReminderEnabledChanged = viewModel::setQuestionReminderEnabled,
+                onUpdateNotificationEnabledChanged = viewModel::setUpdateNotificationEnabled,
+                onOpenExactAlarmSettings = viewModel::openExactAlarmSettings,
+                onOpenNotificationSettings = viewModel::openNotificationSettings,
+                onBack = { navController.popBackStack() },
             )
         }
 
