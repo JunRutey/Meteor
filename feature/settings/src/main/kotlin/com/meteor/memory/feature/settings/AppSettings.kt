@@ -111,6 +111,14 @@ data class AppSettings(
      * hands the choice to the platform document picker.
      */
     val mediaPickerMode: MediaPickerMode = MediaPickerMode.IN_APP,
+    /**
+     * Home drawer item ids in display order. The drawer validates these against
+     * the items it knows and appends any newly added item, so an old backup or
+     * a future release never hides a feature by accident.
+     */
+    val drawerOrder: List<String> = DEFAULT_DRAWER_ORDER,
+    /** Which drawer item ids are visible; settings itself is always pinned. */
+    val drawerVisibleItems: Set<String> = DEFAULT_DRAWER_ORDER.toSet(),
 ) {
     companion object {
         const val DEFAULT_BACKUP_RETENTION = 7
@@ -118,6 +126,9 @@ data class AppSettings(
         const val DEFAULT_AI_REASONING = "auto"
         const val DEFAULT_AI_TTS_VOICE = "stella"
         const val DEFAULT_ALBUM_SORT_MODE = "IMPORT_DATE"
+
+        /** Stable ids shared with the app-level drawer model. */
+        val DEFAULT_DRAWER_ORDER = listOf("questions", "album", "people", "ai", "search")
     }
 }
 

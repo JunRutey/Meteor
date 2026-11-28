@@ -40,7 +40,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meteor.memory.R
 import com.meteor.memory.feature.calendar.R as CalendarR
-import com.meteor.memory.feature.question.R as QuestionR
 
 /**
  * 首页左侧功能抽屉（ADR-071）：点顶部「Meteor」滑出。
@@ -62,7 +61,17 @@ internal fun HomeDrawer(
     onOpenAi: (() -> Unit)?,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    drawerOrder: List<String> = DEFAULT_DRAWER_ORDER,
+    drawerVisibleItems: Set<String> = DEFAULT_DRAWER_VISIBLE_ITEMS,
 ) {
+    // Settings is not in this list on purpose: it is pinned below the scroll
+    // area and never moves, even when the person reorders or hides functions.
+    val visibleItems = normalizedDrawerOrder(drawerOrder)
+        .mapNotNull(DrawerItem::fromId)
+        .filter { item ->
+            item.id in drawerVisibleItems &&
+                (item != DrawerItem.AI || onOpenAi != null)
+        }
     val shape = RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp)
     Surface(
         modifier = modifier.width(300.dp).fillMaxHeight(),
@@ -109,44 +118,41 @@ internal fun HomeDrawer(
                 )
                 Spacer(Modifier.size(6.dp))
 
-                DrawerItem(
-                    label = stringResource(QuestionR.string.question_title),
-                    hint = stringResource(R.string.home_drawer_questions_hint),
-                    onClick = onOpenQuestions,
-                ) { QuestionGlyph() }
-                DrawerItem(
-                    label = stringResource(CalendarR.string.calendar_open_gallery),
-                    hint = stringResource(CalendarR.string.calendar_quick_album_hint),
-                    onClick = onOpenAlbum,
-                ) { AlbumGlyph() }
-                DrawerItem(
-                    label = stringResource(CalendarR.string.calendar_open_people),
-                    hint = stringResource(CalendarR.string.calendar_quick_people_hint),
-                    onClick = onOpenPeople,
-                ) { PeopleGlyph() }
-                if (onOpenAi != null) {
-                    DrawerItem(
-                        label = stringResource(CalendarR.string.calendar_open_ai),
-                        hint = stringResource(R.string.home_drawer_ai_hint),
-                        onClick = onOpenAi,
-                    ) { SparkGlyph() }
+                visibleItems.forEach { item ->
+                    DrawerRow(
+                        label = stringResource(item.labelRes),
+                        hint = stringResource(item.hintRes),
+                        onClick = {
+                            when (item) {
+                                DrawerItem.QUESTIONS -> onOpenQuestions()
+                                DrawerItem.ALBUM -> onOpenAlbum()
+                                DrawerItem.PEOPLE -> onOpenPeople()
+                                DrawerItem.AI -> onOpenAi?.invoke()
+                                DrawerItem.SEARCH -> onOpenSearch()
+                            }
+                        },
+                    ) { DrawerGlyph(item) }
                 }
-                DrawerItem(
-                    label = stringResource(CalendarR.string.calendar_open_search),
-                    hint = stringResource(R.string.home_drawer_search_hint),
-                    onClick = onOpenSearch,
-                ) { SearchGlyph() }
-
-                Spacer(Modifier.size(12.dp))
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                Spacer(Modifier.size(12.dp))
-
-                DrawerItem(
-                    label = stringResource(CalendarR.string.calendar_open_settings),
-                    hint = stringResource(R.string.home_drawer_settings_hint),
-                    onClick = onOpenSettings,
-                ) { SettingsGlyph() }
+                if (visibleItems.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.home_drawer_empty),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp),
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
+
+            // Pinned footer: settings never scrolls with the list above, so its
+            // position cannot change when items are added, hidden or reordered.
+            Spacer(Modifier.size(12.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            Spacer(Modifier.size(12.dp))
+            DrawerRow(
+                label = stringResource(CalendarR.string.calendar_open_settings),
+                hint = stringResource(R.string.home_drawer_settings_hint),
+                onClick = onOpenSettings,
+            ) { SettingsGlyph() }
 
             Text(
                 text = stringResource(R.string.home_drawer_version, versionName),
@@ -159,7 +165,7 @@ internal fun HomeDrawer(
 }
 
 @Composable
-private fun DrawerItem(
+private fun DrawerRow(
     label: String,
     hint: String,
     onClick: () -> Unit,
@@ -238,6 +244,17 @@ private fun CloseButton(onClick: () -> Unit) {
 }
 
 // --- 图标：全部用 Canvas 画，避免给 :app 引入 material-icons ----------------
+
+@Composable
+private fun DrawerGlyph(item: DrawerItem) {
+    when (item) {
+        DrawerItem.QUESTIONS -> QuestionGlyph()
+        DrawerItem.ALBUM -> AlbumGlyph()
+        DrawerItem.PEOPLE -> PeopleGlyph()
+        DrawerItem.AI -> SparkGlyph()
+        DrawerItem.SEARCH -> SearchGlyph()
+    }
+}
 
 @Composable
 private fun QuestionGlyph() {

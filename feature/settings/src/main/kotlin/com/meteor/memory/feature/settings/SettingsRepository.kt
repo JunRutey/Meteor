@@ -76,6 +76,14 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             mediaPickerMode = prefs[KEY_MEDIA_PICKER_MODE]
                 ?.let { runCatching { MediaPickerMode.valueOf(it) }.getOrNull() }
                 ?: MediaPickerMode.IN_APP,
+            drawerOrder = prefs[KEY_DRAWER_ORDER]
+                ?.split(',')
+                ?.map { it.trim() }
+                ?.filter { it.isNotEmpty() }
+                ?.takeIf { it.isNotEmpty() }
+                ?: AppSettings.DEFAULT_DRAWER_ORDER,
+            drawerVisibleItems = prefs[KEY_DRAWER_VISIBLE_ITEMS]
+                ?: AppSettings.DEFAULT_DRAWER_ORDER.toSet(),
         )
     }
 
@@ -197,6 +205,16 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     /** Chooses between the in-app picker and the platform document picker (ADR-059). */
     suspend fun setMediaPickerMode(mode: MediaPickerMode) =
         store.edit { it[KEY_MEDIA_PICKER_MODE] = mode.name }
+
+    /**
+     * One edit for both drawer choices so an order can never be persisted with
+     * a visibility set from another tap. Ids are opaque here; the drawer screen
+     * owns validation.
+     */
+    suspend fun setDrawerConfig(order: List<String>, visibleItems: Set<String>) = store.edit { prefs ->
+        prefs[KEY_DRAWER_ORDER] = order.joinToString(",")
+        prefs[KEY_DRAWER_VISIBLE_ITEMS] = visibleItems
+    }
 
     /** Adds one custom people tag to the remembered chip list; idempotent. */
     suspend fun addPeopleTag(tag: String) = store.edit { prefs ->
@@ -330,6 +348,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             .takeIf { it == "SOURCE_DATE" || it == "IMPORT_DATE" }
             ?: AppSettings.DEFAULT_ALBUM_SORT_MODE
         prefs[KEY_MEDIA_PICKER_MODE] = snapshot.mediaPickerMode.name
+        prefs[KEY_DRAWER_ORDER] = snapshot.drawerOrder.joinToString(",")
+        prefs[KEY_DRAWER_VISIBLE_ITEMS] = snapshot.drawerVisibleItems
     }
 
     private companion object {
@@ -374,6 +394,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val KEY_ONBOARDING_COMPLETED = booleanPreferencesKey("onboarding_completed")
         val KEY_ALBUM_SORT_MODE = stringPreferencesKey("album_sort_mode")
     val KEY_MEDIA_PICKER_MODE = stringPreferencesKey("media_picker_mode")
+    val KEY_DRAWER_ORDER = stringPreferencesKey("drawer_order")
+    val KEY_DRAWER_VISIBLE_ITEMS = stringSetPreferencesKey("drawer_visible_items")
         const val MAX_PEOPLE_TAGS = 32
     }
 }

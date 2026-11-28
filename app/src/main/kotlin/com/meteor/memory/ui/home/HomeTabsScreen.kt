@@ -68,6 +68,8 @@ fun HomeTabsScreen(
     lifeContent: @Composable () -> Unit,
     diaryContent: @Composable () -> Unit,
     animationsEnabled: Boolean = true,
+    drawerOrder: List<String> = DEFAULT_DRAWER_ORDER,
+    drawerVisibleItems: Set<String> = DEFAULT_DRAWER_VISIBLE_ITEMS,
     modifier: Modifier = Modifier,
 ) {
     val tabStateHolder = rememberSaveableStateHolder()
@@ -158,6 +160,8 @@ fun HomeTabsScreen(
                 onOpenSettings = { closeThen(onOpenSettings) },
                 onOpenAi = onOpenAi?.let { action -> { closeThen(action) } },
                 onClose = { drawerOpen = false },
+                drawerOrder = drawerOrder,
+                drawerVisibleItems = drawerVisibleItems,
             )
         }
     }
