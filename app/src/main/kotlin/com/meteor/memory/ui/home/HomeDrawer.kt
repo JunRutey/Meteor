@@ -75,6 +75,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -116,6 +117,9 @@ internal fun HomeDrawer(
     modifier: Modifier = Modifier,
     drawerOrder: List<String> = DEFAULT_DRAWER_ORDER,
     drawerVisibleItems: Set<String> = DEFAULT_DRAWER_VISIBLE_ITEMS,
+    /** How far the full-bleed surface escapes the host's safe-area padding. */
+    contentTopInset: Dp = 0.dp,
+    contentBottomInset: Dp = 0.dp,
     /**
      * True while the status bar is hidden: the panel is already flush with the
      * window top, so a rounded top corner plus a shadow would draw a seam
@@ -138,6 +142,7 @@ internal fun HomeDrawer(
     var manageOpen by rememberSaveable { mutableStateOf(false) }
     var draggingId by remember { mutableStateOf<String?>(null) }
     var dragDelta by remember { mutableFloatStateOf(0f) }
+    var dragStartIndex by remember { mutableStateOf(0) }
     val listState = rememberLazyListState()
 
     // Gesture callbacks outlive the composition that set them up, so they read
@@ -175,6 +180,31 @@ internal fun HomeDrawer(
         onDrawerConfigChanged(order, visibleIds)
     }
 
+    /**
+     * Maps the finger's absolute travel onto an item slot. Using the distance
+     * from the grab point (instead of accumulating per-event deltas and swapping
+     * neighbours) keeps the row glued to the finger in both directions and lets
+     * a fast drag skip several slots at once.
+     */
+    fun handleSortDrag(dy: Float) {
+        val id = draggingId ?: return
+        val displayed = latestDisplayedIds
+        if (displayed.isEmpty()) return
+        val from = displayed.indexOf(id)
+        if (from < 0) return
+        val target = (dragStartIndex + (dy / rowHeightPx).roundToInt())
+            .coerceIn(0, displayed.lastIndex)
+        if (target != from) {
+            val orderNow = latestOrder
+            val fullFrom = orderNow.indexOf(id)
+            val fullTo = orderNow.indexOf(displayed[target])
+            if (fullFrom >= 0 && fullTo >= 0) {
+                order = orderNow.moved(fullFrom, fullTo)
+            }
+        }
+        dragDelta = dy - (target - dragStartIndex) * rowHeightPx
+    }
+
     // Back leaves the reorder mode first, so a gesture can never be lost by
     // closing the whole drawer.
     BackHandler(enabled = sortMode) { finishSort() }
@@ -192,7 +222,12 @@ internal fun HomeDrawer(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 20.dp, end = 16.dp, top = 16.dp, bottom = 16.dp),
+                .padding(
+                    start = 20.dp,
+                    end = 16.dp,
+                    top = 16.dp + contentTopInset,
+                    bottom = 16.dp + contentBottomInset,
+                ),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -254,35 +289,16 @@ internal fun HomeDrawer(
                             Modifier.pointerInput(Unit) {
                                 detectDrawerSortGestures(
                                     listState = listState,
-                                    rowHeightPx = rowHeightPx,
                                     itemAtListIndex = { index ->
                                         latestDisplayedIds.getOrNull(index - 1)
                                     },
-                                    draggedId = { draggingId },
-                                    onDragStarted = { id ->
+                                    onDragStarted = { id, startIndex ->
                                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                         draggingId = id
+                                        dragStartIndex = startIndex
                                         dragDelta = 0f
                                     },
-                                    onDeltaChange = { delta -> dragDelta = delta },
-                                    onSwap = { id, direction ->
-                                        val displayed = latestDisplayedIds
-                                        val from = displayed.indexOf(id)
-                                        val to = from + direction
-                                        if (from < 0 || to !in displayed.indices) {
-                                            false
-                                        } else {
-                                            val orderNow = latestOrder
-                                            val fullFrom = orderNow.indexOf(displayed[from])
-                                            val fullTo = orderNow.indexOf(displayed[to])
-                                            if (fullFrom < 0 || fullTo < 0) {
-                                                false
-                                            } else {
-                                                order = orderNow.moved(fullFrom, fullTo)
-                                                true
-                                            }
-                                        }
-                                    },
+                                    onDragMoved = { dy -> handleSortDrag(dy) },
                                     onDragFinished = {
                                         draggingId = null
                                         dragDelta = 0f
@@ -420,46 +436,30 @@ internal fun HomeDrawer(
  * The gesture has to live on the list, not on a row: LazyColumn disposes item
  * compositions when their index changes, so a row-owned `pointerInput` was
  * cancelled on the first swap (which is why only one direction ever worked and
- * the order jumped). Here the touch is hit-tested against the current layout,
- * and every half row it crosses swaps the dragged id with its neighbour; the
- * local offset is rebased so the row stays under the finger.
+ * the order jumped). This reports the finger's absolute travel from the grab
+ * point, and the caller turns that into a target slot — symmetric for the up and
+ * down direction.
  */
 private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectDrawerSortGestures(
     listState: androidx.compose.foundation.lazy.LazyListState,
-    rowHeightPx: Float,
     itemAtListIndex: (Int) -> String?,
-    draggedId: () -> String?,
-    onDragStarted: (String) -> Unit,
-    onDeltaChange: (Float) -> Unit,
-    onSwap: (id: String, direction: Int) -> Boolean,
+    onDragStarted: (id: String, startIndex: Int) -> Unit,
+    onDragMoved: (dy: Float) -> Unit,
     onDragFinished: () -> Unit,
 ) {
-    var delta = 0f
+    var grabY = 0f
     detectDragGestures(
         onDragStart = { start ->
             val hit = listState.layoutInfo.visibleItemsInfo.firstOrNull { info ->
                 start.y >= info.offset && start.y < info.offset + info.size
             } ?: return@detectDragGestures
             val id = itemAtListIndex(hit.index) ?: return@detectDragGestures
-            delta = 0f
-            onDeltaChange(0f)
-            onDragStarted(id)
+            grabY = start.y
+            onDragStarted(id, hit.index - 1)
         },
-        onDrag = { change, amount ->
+        onDrag = { change, _ ->
             change.consume()
-            val id = draggedId() ?: return@detectDragGestures
-            delta += amount.y
-            onDeltaChange(delta)
-            val half = rowHeightPx / 2f
-            val direction = when {
-                delta > half -> 1
-                delta < -half -> -1
-                else -> 0
-            }
-            if (direction != 0 && onSwap(id, direction)) {
-                delta -= direction * rowHeightPx
-                onDeltaChange(delta)
-            }
+            onDragMoved(change.position.y - grabY)
         },
         onDragEnd = { onDragFinished() },
         onDragCancel = { onDragFinished() },
