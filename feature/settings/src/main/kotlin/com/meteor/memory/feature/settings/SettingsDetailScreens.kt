@@ -2,7 +2,9 @@ package com.meteor.memory.feature.settings
 
 import android.os.Build
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -171,8 +173,20 @@ private fun StatusActionRow(
                 lineHeight = 18.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            TextButton(onClick = onAction) {
-                Text(text = action)
+            TextButton(
+                onClick = onAction,
+                // Align the button's label with the sentence above instead of
+                // letting the default 12dp content padding indent it.
+                contentPadding = PaddingValues(0.dp),
+                modifier = Modifier
+                    .padding(top = 2.dp)
+                    .heightIn(min = 34.dp),
+            ) {
+                Text(
+                    text = action,
+                    fontSize = 14.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Medium,
+                )
             }
         }
     }
