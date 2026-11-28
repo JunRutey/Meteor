@@ -27,6 +27,19 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.atomic.AtomicBoolean
 
+/**
+ * In-app updater (ADR-072).
+ *
+ * Two phases, both user-driven: [checkForUpdate] asks GitHub which release is
+ * newest and parks the answer in [UpdateState.Available]; [startDownload] is
+ * what the update dialog / settings button calls after the person agrees to
+ * download. Nothing is downloaded without that consent.
+ *
+ * Downloads try the official GitHub URL and the built-in community mirrors in
+ * latency order ([UpdateSources]); whatever source serves the bytes, the file
+ * is accepted only if its SHA-256 matches the digest GitHub computed at
+ * upload time. A mirror can only be fast or slow, never wrong.
+ */
 class UpdateService(
     context: Context,
     currentVersionName: String,
@@ -48,16 +61,22 @@ class UpdateService(
         },
     )
     private val checkMutex = Mutex()
+    private val downloadMutex = Mutex()
     private val launchCheckStarted = AtomicBoolean(false)
+
+    /** Release found by the latest check; kept so the dialog can start its download. */
+    @Volatile
+    private var pendingRelease: ReleaseMetadata? = null
 
     @Volatile
     private var downloadedUpdate: Pair<String, File>? = null
 
     fun checkOnLaunch() {
-        if (launchCheckStarted.compareAndSet(false, true)) checkAndDownload()
+        if (launchCheckStarted.compareAndSet(false, true)) checkForUpdate()
     }
 
-    fun checkAndDownload() {
+    /** Phase one: ask GitHub for the latest release, never download anything. */
+    fun checkForUpdate() {
         scope.launch {
             if (!checkMutex.tryLock()) {
                 appLog.debug(TAG, "update check already running")
@@ -66,8 +85,10 @@ class UpdateService(
             try {
                 notificationFeature.hideUpdateNotification()
                 _state.value = UpdateState.Checking
+                pendingRelease = null
                 appLog.info(TAG, "update check started, current=$currentVersion")
                 val release = withContext(Dispatchers.IO) { fetchLatestRelease() }
+                pendingRelease = release
                 if (release.version <= currentVersion) {
                     appLog.info(TAG, "up to date, latest=${release.version}")
                     _state.value = UpdateState.UpToDate
@@ -76,15 +97,7 @@ class UpdateService(
 
                 val versionName = release.version.toString()
                 appLog.info(TAG, "update available: $versionName")
-                _state.value = UpdateState.Downloading(versionName)
-                notificationFeature.showUpdateDownload(
-                    UpdateNotificationProgress(versionName, downloadedBytes = 0, totalBytes = 0),
-                )
-                val apk = withContext(Dispatchers.IO) { downloadApk(release) }
-                downloadedUpdate = versionName to apk
-                appLog.info(TAG, "update downloaded: $versionName ${apk.length()} bytes")
-                _state.value = UpdateState.ReadyToInstall(versionName)
-                notificationFeature.showUpdateReady(versionName)
+                _state.value = UpdateState.Available(versionName)
             } catch (failure: UpdateException) {
                 appLog.warn(TAG, "update check failed: ${failure.reason}", failure.cause ?: failure)
                 notificationFeature.hideUpdateNotification()
@@ -95,6 +108,57 @@ class UpdateService(
                 _state.value = UpdateState.Failed(UpdateError.DOWNLOAD)
             } finally {
                 checkMutex.unlock()
+            }
+        }
+    }
+
+    /**
+     * Phase two: download the release announced by [checkForUpdate]. Called
+     * from the update dialog's confirm button and from settings; a download is
+     * never started by a timer or by the check itself.
+     */
+    fun startDownload() {
+        val release = pendingRelease ?: run {
+            appLog.warn(TAG, "download requested without release metadata")
+            _state.value = UpdateState.Failed(UpdateError.DOWNLOAD)
+            return
+        }
+        when (_state.value) {
+            is UpdateState.Downloading,
+            is UpdateState.ReadyToInstall,
+            is UpdateState.InstallPermissionRequired,
+            -> {
+                appLog.debug(TAG, "download already running or finished")
+                return
+            }
+            else -> Unit
+        }
+        scope.launch {
+            if (!downloadMutex.tryLock()) {
+                appLog.debug(TAG, "download already running")
+                return@launch
+            }
+            try {
+                val versionName = release.version.toString()
+                _state.value = UpdateState.Downloading(versionName)
+                notificationFeature.showUpdateDownload(
+                    UpdateNotificationProgress(versionName, downloadedBytes = 0, totalBytes = 0),
+                )
+                val apk = withContext(Dispatchers.IO) { downloadApk(release) }
+                downloadedUpdate = versionName to apk
+                appLog.info(TAG, "update downloaded: $versionName ${apk.length()} bytes")
+                _state.value = UpdateState.ReadyToInstall(versionName)
+                notificationFeature.showUpdateReady(versionName)
+            } catch (failure: UpdateException) {
+                appLog.warn(TAG, "update download failed: ${failure.reason}", failure.cause ?: failure)
+                notificationFeature.hideUpdateNotification()
+                _state.value = UpdateState.Failed(failure.reason)
+            } catch (failure: SecurityException) {
+                appLog.warn(TAG, "update download blocked by security policy", failure)
+                notificationFeature.hideUpdateNotification()
+                _state.value = UpdateState.Failed(UpdateError.DOWNLOAD)
+            } finally {
+                downloadMutex.unlock()
             }
         }
     }
@@ -166,10 +230,27 @@ class UpdateService(
         }
     }
 
+    /**
+     * Release metadata, official API first. If GitHub's API is unreachable
+     * (the usual reason being a network that cannot reach it directly), the
+     * same request is retried once through a mirror that relays the API. The
+     * response body is identical JSON, so parsing and its URL pinning are
+     * shared for both paths.
+     */
     private fun fetchLatestRelease(): ReleaseMetadata {
-        appLog.debug(TAG, "fetching latest release metadata")
+        return try {
+            fetchReleaseMetadata(LATEST_RELEASE_URL)
+        } catch (failure: UpdateException) {
+            if (failure.reason != UpdateError.NETWORK) throw failure
+            appLog.warn(TAG, "release metadata direct fetch failed, retrying via mirror")
+            fetchReleaseMetadata(UpdateSources.mirrorUrl(UpdateSources.METADATA_MIRROR_PREFIX, LATEST_RELEASE_URL))
+        }
+    }
+
+    private fun fetchReleaseMetadata(metadataUrl: String): ReleaseMetadata {
+        appLog.debug(TAG, "fetching release metadata")
         val connection = try {
-            (URL(LATEST_RELEASE_URL).openConnection() as HttpURLConnection).apply {
+            (URL(metadataUrl).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = NETWORK_TIMEOUT_MS
                 readTimeout = NETWORK_TIMEOUT_MS
@@ -197,12 +278,40 @@ class UpdateService(
         }
     }
 
-    private fun downloadApk(release: ReleaseMetadata): File {
+    /**
+     * Downloads the APK from the fastest reachable source and falls back
+     * through the rest in latency order. Every attempt is digest-verified on
+     * its own, so a corrupt or tampered mirror only costs one retry.
+     */
+    private suspend fun downloadApk(release: ReleaseMetadata): File {
+        val candidates = UpdateSources.candidatesFor(release.apkUrl)
+        val latencies = UpdateSources.probeLatencies(candidates)
+        val ranked = UpdateSources.rankedCandidates(candidates, latencies)
+        appLog.info(
+            TAG,
+            "download sources: " + ranked.mapIndexed { index, url ->
+                "$index:${hostOf(url)}=${latencies[url]?.toString() ?: "-"}ms"
+            }.joinToString(" "),
+        )
+
+        var lastFailure = UpdateException(UpdateError.DOWNLOAD)
+        for (url in ranked) {
+            try {
+                return downloadFrom(url, release)
+            } catch (failure: UpdateException) {
+                appLog.warn(TAG, "download from ${hostOf(url)} failed: ${failure.reason}")
+                lastFailure = failure
+            }
+        }
+        throw lastFailure
+    }
+
+    private fun downloadFrom(sourceUrl: String, release: ReleaseMetadata): File {
         val versionName = release.version.toString()
-        appLog.debug(TAG, "downloading apk $versionName")
+        appLog.debug(TAG, "downloading apk $versionName from ${hostOf(sourceUrl)}")
         var partialFile: File? = null
         val connection = try {
-            (URL(release.apkUrl).openConnection() as HttpURLConnection).apply {
+            (URL(sourceUrl).openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = NETWORK_TIMEOUT_MS
                 readTimeout = DOWNLOAD_READ_TIMEOUT_MS
@@ -218,9 +327,13 @@ class UpdateService(
                 appLog.warn(TAG, "apk download returned HTTP ${connection.responseCode}")
                 throw UpdateException(UpdateError.DOWNLOAD)
             }
-            val contentLength = connection.contentLengthLong
-            if (contentLength == 0L || contentLength > MAX_APK_BYTES) {
-                appLog.warn(TAG, "apk download has invalid size: $contentLength")
+            // Mirrors sometimes drop the content length; the release metadata
+            // carries the exact size, so either source of truth may drive the
+            // progress bar and the completeness check.
+            val serverLength = connection.contentLengthLong
+            val expectedSize = if (serverLength > 0) serverLength else release.sizeBytes
+            if (expectedSize == 0L || expectedSize > MAX_APK_BYTES) {
+                appLog.warn(TAG, "apk download has invalid size: $expectedSize")
                 throw UpdateException(UpdateError.DOWNLOAD)
             }
 
@@ -232,12 +345,13 @@ class UpdateService(
             val fileName = "$UPDATE_FILE_PREFIX$versionName.apk"
             val apkFile = File(updateDirectory, fileName)
             // A previous launch may have downloaded this exact release already;
-            // re-checking is cheap, re-downloading a few megabytes every start is not.
+            // re-checking is cheap, re-downloading a few megabytes every start
+            // is not. The cached file must still match GitHub's digest.
             if (
-                contentLength > 0 &&
                 apkFile.isFile &&
-                apkFile.length() == contentLength &&
-                looksLikeApk(apkFile)
+                apkFile.length() == expectedSize &&
+                looksLikeApk(apkFile) &&
+                digestMatches(apkFile, release.sha256)
             ) {
                 appLog.info(TAG, "reused cached apk $versionName")
                 pruneOtherUpdates(updateDirectory, keep = apkFile)
@@ -262,22 +376,15 @@ class UpdateService(
                         val read = input.read(buffer)
                         if (read < 0) break
                         downloadedBytes += read
-                        if (
-                            downloadedBytes > MAX_APK_BYTES ||
-                            (contentLength > 0 && downloadedBytes > contentLength)
-                        ) {
+                        if (downloadedBytes > MAX_APK_BYTES || downloadedBytes > expectedSize) {
                             throw UpdateException(UpdateError.DOWNLOAD)
                         }
                         output.write(buffer, 0, read)
 
                         // Keep the notification live without flooding the binder:
                         // one update per percent, or per chunk when the size is unknown.
-                        val percent = if (contentLength > 0) {
-                            ((downloadedBytes * 100) / contentLength).toInt()
-                        } else {
-                            -1
-                        }
-                        val report = if (contentLength > 0) {
+                        val percent = ((downloadedBytes * 100) / expectedSize).toInt()
+                        val report = if (serverLength > 0 || release.sizeBytes > 0) {
                             percent != lastPercent
                         } else {
                             downloadedBytes - lastNotifiedBytes >= PROGRESS_NOTIFY_BYTES
@@ -289,18 +396,15 @@ class UpdateService(
                                 UpdateNotificationProgress(
                                     versionName = versionName,
                                     downloadedBytes = downloadedBytes,
-                                    totalBytes = contentLength,
+                                    totalBytes = expectedSize,
                                 ),
                             )
                         }
                     }
                 }
             }
-            if (
-                downloadedBytes == 0L ||
-                (contentLength > 0 && downloadedBytes != contentLength)
-            ) {
-                appLog.warn(TAG, "apk download incomplete: $downloadedBytes/$contentLength bytes")
+            if (downloadedBytes != expectedSize) {
+                appLog.warn(TAG, "apk download incomplete: $downloadedBytes/$expectedSize bytes")
                 throw UpdateException(UpdateError.DOWNLOAD)
             }
             if (apkFile.exists() && !apkFile.delete()) {
@@ -310,12 +414,13 @@ class UpdateService(
                 throw UpdateException(UpdateError.DOWNLOAD)
             }
             partialFile = null
+            verifyDigest(apkFile, release)
             appLog.info(TAG, "apk saved $versionName: $downloadedBytes bytes")
             notificationFeature.showUpdateDownload(
                 UpdateNotificationProgress(
                     versionName = versionName,
                     downloadedBytes = downloadedBytes,
-                    totalBytes = contentLength,
+                    totalBytes = expectedSize,
                 ),
             )
             return apkFile
@@ -329,6 +434,34 @@ class UpdateService(
             connection.disconnect()
         }
     }
+
+    /**
+     * The last word on whether a downloaded file may be installed: its SHA-256
+     * must equal the digest GitHub published with the release. Runs after the
+     * rename, so a rejected file is deleted under its final name too.
+     */
+    private fun verifyDigest(apkFile: File, release: ReleaseMetadata) {
+        val expected = release.sha256 ?: run {
+            appLog.warn(TAG, "release carries no digest; relying on size validation")
+            return
+        }
+        val actual = runCatching { UpdateSources.sha256Hex(apkFile) }.getOrNull()
+        if (actual == null || !actual.equals(expected, ignoreCase = true)) {
+            appLog.warn(TAG, "apk digest mismatch: expected=$expected actual=$actual")
+            runCatching { apkFile.delete() }
+            throw UpdateException(UpdateError.CHECKSUM)
+        }
+        appLog.info(TAG, "apk digest verified")
+    }
+
+    /** Cached APKs are only reused when they still match GitHub's digest. */
+    private fun digestMatches(file: File, expected: String?): Boolean {
+        if (expected == null) return true
+        val actual = runCatching { UpdateSources.sha256Hex(file) }.getOrNull()
+        return actual != null && actual.equals(expected, ignoreCase = true)
+    }
+
+    private fun hostOf(url: String): String = runCatching { URL(url).host }.getOrDefault(url)
 
     /** The cache is ours; a half-downloaded or older release must not pile up. */
     private fun pruneOtherUpdates(directory: File, keep: File) {

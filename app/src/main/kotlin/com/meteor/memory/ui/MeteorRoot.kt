@@ -51,6 +51,7 @@ fun MeteorRoot(versionName: String, onContentReady: () -> Unit = {}) {
     val unlockFailed by viewModel.unlockFailed.collectAsStateWithLifecycle()
     val noDeviceCredential by viewModel.noDeviceCredential.collectAsStateWithLifecycle()
     val onboardingGate by viewModel.onboardingGate.collectAsStateWithLifecycle()
+    val updatePrompt by viewModel.updatePrompt.collectAsStateWithLifecycle()
 
     // Cold-start splash hand-over (ADR-038). The system splash may leave only
     // once the shell knows whether to show the lock gate or the onboarding
@@ -144,15 +145,28 @@ fun MeteorRoot(versionName: String, onContentReady: () -> Unit = {}) {
                         OnboardingGate.REQUIRED -> OnboardingFlowScreen()
                         // Media composables live deep inside the feature modules and
                         // take no store parameter (ADR-052 §4), so the archive handles
-                        // are installed once here as a CompositionLocal.
-                        OnboardingGate.COMPLETE -> ProvideMediaHost(viewModel.mediaHost) {
-                            MeteorNavHost(
-                                versionName = versionName,
-                                animationsEnabled = settings.animationsEnabled,
-                                aiEnabled = settings.aiEnabled,
-                                mediaPickerMode = settings.mediaPickerMode,
-                                onSystemScreenOpened = viewModel::beginSystemTransition,
-                            )
+                        // are installed once here as a CompositionLocal. The update
+                        // dialog (ADR-072) is a sibling on purpose: it opens its own
+                        // window, and being inside the COMPLETE branch means it can
+                        // never appear over the lock gate or the onboarding flow.
+                        OnboardingGate.COMPLETE -> {
+                            ProvideMediaHost(viewModel.mediaHost) {
+                                MeteorNavHost(
+                                    versionName = versionName,
+                                    animationsEnabled = settings.animationsEnabled,
+                                    aiEnabled = settings.aiEnabled,
+                                    mediaPickerMode = settings.mediaPickerMode,
+                                    onSystemScreenOpened = viewModel::beginSystemTransition,
+                                )
+                            }
+                            updatePrompt?.let { prompt ->
+                                UpdatePromptDialog(
+                                    versionName = prompt.versionName,
+                                    onDownload = viewModel::acceptUpdatePrompt,
+                                    onLater = viewModel::dismissUpdatePrompt,
+                                    onSkip = viewModel::skipUpdatePrompt,
+                                )
+                            }
                         }
 
                         OnboardingGate.FAILED -> OnboardingLoadFailureScreen(
