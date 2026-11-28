@@ -1072,6 +1072,7 @@ fun MeteorNavHost(
                 onDarkModeChanged = viewModel::setDarkMode,
                 onDynamicColorChanged = viewModel::setDynamicColor,
                 onAnimationsChanged = viewModel::setAnimationsEnabled,
+                onHideStatusBarChanged = viewModel::setHideStatusBar,
                 onAppLockChanged = viewModel::setAppLockEnabled,
                 appLockUnavailable = appLockUnavailable,
                 onDismissAppLockUnavailable = viewModel::dismissAppLockUnavailable,

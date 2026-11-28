@@ -62,6 +62,7 @@ fun SettingsScreen(
     onDarkModeChanged: (DarkMode) -> Unit,
     onDynamicColorChanged: (Boolean) -> Unit,
     onAnimationsChanged: (Boolean) -> Unit,
+    onHideStatusBarChanged: (Boolean) -> Unit,
     onAppLockChanged: (Boolean) -> Unit,
     onScreenshotProtectionChanged: (Boolean) -> Unit,
     onMediaPickerModeChanged: (MediaPickerMode) -> Unit,
@@ -138,6 +139,13 @@ fun SettingsScreen(
                     subtitle = stringResource(R.string.settings_animations_desc),
                     checked = settings.animationsEnabled,
                     onCheckedChange = onAnimationsChanged,
+                )
+                Hairline()
+                ToggleRow(
+                    title = stringResource(R.string.settings_hide_status_bar),
+                    subtitle = stringResource(R.string.settings_hide_status_bar_desc),
+                    checked = settings.hideStatusBar,
+                    onCheckedChange = onHideStatusBarChanged,
                 )
             }
 

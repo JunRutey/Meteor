@@ -29,7 +29,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.res.stringResource
@@ -93,14 +92,11 @@ fun LifeClockScreen(
     // painted from the scheme — otherwise the background stays blue while the
     // rest of the screen changes.
     val background = when {
-        !dynamicColor && dark -> Brush.verticalGradient(
-            listOf(scheme.background, scheme.background),
-        )
-
+        // The hand-tuned palette now paints the same clean white canvas as the
+        // rest of the app; the old morning-blue gradient was the last page that
+        // still looked like a different product.
         !dynamicColor -> Brush.verticalGradient(
-            0f to Color(0xFFECF3FB),
-            0.55f to Color(0xFFF6FAFE),
-            1f to Color(0xFFEAF2FB),
+            listOf(scheme.background, scheme.background),
         )
 
         dark -> Brush.verticalGradient(

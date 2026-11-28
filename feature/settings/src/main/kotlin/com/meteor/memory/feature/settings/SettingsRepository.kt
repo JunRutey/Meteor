@@ -30,6 +30,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
             animationsEnabled = prefs[KEY_ANIMATIONS] ?: true,
             fontScale = prefs[KEY_FONT_SCALE]?.let { runCatching { FontScale.valueOf(it) }.getOrNull() }
                 ?: FontScale.SYSTEM,
+            hideStatusBar = prefs[KEY_HIDE_STATUS_BAR] ?: false,
             appLockEnabled = appLockEnabled,
             // The app lock used to enable screen protection as a side effect.
             // Until the independent switch is set explicitly, keep that
@@ -82,6 +83,8 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     suspend fun setAnimationsEnabled(enabled: Boolean) = store.edit { it[KEY_ANIMATIONS] = enabled }
 
     suspend fun setFontScale(scale: FontScale) = store.edit { it[KEY_FONT_SCALE] = scale.name }
+
+    suspend fun setHideStatusBar(enabled: Boolean) = store.edit { it[KEY_HIDE_STATUS_BAR] = enabled }
 
     suspend fun setAppLockEnabled(enabled: Boolean) = store.edit { it[KEY_APP_LOCK] = enabled }
 
@@ -284,6 +287,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         prefs[KEY_DYNAMIC_COLOR] = snapshot.dynamicColor
         prefs[KEY_ANIMATIONS] = snapshot.animationsEnabled
         prefs[KEY_FONT_SCALE] = snapshot.fontScale.name
+        prefs[KEY_HIDE_STATUS_BAR] = snapshot.hideStatusBar
         prefs[KEY_VERBOSE_LOGGING] = snapshot.verboseLogging
         prefs[KEY_AUTO_BACKUP] = snapshot.autoBackupEnabled
         prefs[KEY_BACKUP_RETENTION] = snapshot.backupRetention.coerceIn(1, 30)
@@ -318,6 +322,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val KEY_DYNAMIC_COLOR = booleanPreferencesKey("dynamic_color")
         val KEY_ANIMATIONS = booleanPreferencesKey("animations_enabled")
         val KEY_FONT_SCALE = stringPreferencesKey("font_scale")
+        val KEY_HIDE_STATUS_BAR = booleanPreferencesKey("hide_status_bar")
         val KEY_APP_LOCK = booleanPreferencesKey("app_lock_enabled")
         val KEY_SCREENSHOT_PROTECTION = booleanPreferencesKey("screenshot_protection_enabled")
         val KEY_VERBOSE_LOGGING = booleanPreferencesKey("verbose_logging")

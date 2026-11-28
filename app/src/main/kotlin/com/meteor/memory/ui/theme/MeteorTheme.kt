@@ -50,9 +50,10 @@ val LocalDynamicColorEnabled = staticCompositionLocalOf { false }
  * grey-blue. Two deliberately mixed partners keep it from reading as one flat
  * blue: a soft teal secondary and a muted warm sand tertiary.
  *
- * Light — pale blue paper (#F6FAFE) over white cards, ink (#1B2A38),
- * desaturated blue accents (#4A6D96 / #3F7286), pale blue fills
- * (#DCE8F4 / #DFEDF1 / #EAF2FA) and a single soft hairline (#D8E5F0).
+ * Light — a clean white canvas (#FFFFFF, matching the home drawer panel),
+ * ink (#1B2A38), desaturated blue accents (#4A6D96 / #3F7286), pale blue
+ * fills (#DCE8F4 / #DFEDF1 / #EAF2FA) and a single soft hairline (#D8E5F0).
+ * Buttons keep their original accent colours; only the page background moved.
  *
  * Dark — deep blue-slate night (#111823) with the accent lifted to a soft
  * #9CB3CE so it still reads as the same hue, ink (#DFE8F1), and matching
@@ -105,7 +106,7 @@ private val MeteorLight = lightColorScheme(
     onTertiary = Color(0xFFFFFFFF),
     tertiaryContainer = Color(0xFFF7E7D6),
     onTertiaryContainer = Color(0xFF331A00),
-    background = Color(0xFFF6FAFE),
+    background = Color(0xFFFFFFFF),
     onBackground = Color(0xFF1B2A38),
     surface = Color(0xFFFFFFFF),
     onSurface = Color(0xFF1B2A38),

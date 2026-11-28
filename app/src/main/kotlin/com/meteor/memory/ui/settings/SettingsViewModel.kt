@@ -124,6 +124,13 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setHideStatusBar(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setHideStatusBar(enabled)
+            appLog.info(TAG, "hide status bar=$enabled")
+        }
+    }
+
     /**
      * Never persists "on" when the system has nothing to verify the person
      * against: the next cold start would otherwise sit at a gate nobody can

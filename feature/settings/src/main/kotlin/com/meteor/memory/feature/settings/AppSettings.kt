@@ -12,6 +12,13 @@ data class AppSettings(
     val dynamicColor: Boolean = false,
     val animationsEnabled: Boolean = true,
     val fontScale: FontScale = FontScale.SYSTEM,
+    /**
+     * Draws the app edge-to-edge without the system status bar (1.7.2).
+     *
+     * Off by default so an upgrade keeps the familiar system chrome; when on,
+     * the bar can still be revealed temporarily with a swipe from the top.
+     */
+    val hideStatusBar: Boolean = false,
     val appLockEnabled: Boolean = false,
     /**
      * Blocks system screenshots and screen recording with `FLAG_SECURE`; the

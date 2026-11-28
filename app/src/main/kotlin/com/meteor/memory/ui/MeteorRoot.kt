@@ -1,5 +1,6 @@
 package com.meteor.memory.ui
 
+import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -16,10 +17,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -105,6 +111,24 @@ fun MeteorRoot(versionName: String, onContentReady: () -> Unit = {}) {
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // 「隐藏状态栏」is a window-level preference, so it is applied once here
+    // instead of every screen asking for the inset controller. The transient
+    // swipe keeps the bar reachable when the person needs the clock or quicks.
+    val view = LocalView.current
+    val windowContext = LocalContext.current
+    SideEffect {
+        val window = (windowContext as? Activity)?.window ?: return@SideEffect
+        WindowCompat.getInsetsController(window, view).apply {
+            systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            if (settings.hideStatusBar) {
+                hide(WindowInsetsCompat.Type.statusBars())
+            } else {
+                show(WindowInsetsCompat.Type.statusBars())
+            }
+        }
     }
 
     MeteorTheme(

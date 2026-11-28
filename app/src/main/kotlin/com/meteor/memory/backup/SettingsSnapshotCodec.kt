@@ -22,6 +22,7 @@ object SettingsSnapshotCodec {
         put(KEY_DYNAMIC_COLOR, settings.dynamicColor)
         put(KEY_ANIMATIONS, settings.animationsEnabled)
         put(KEY_FONT_SCALE, settings.fontScale.name)
+        put(KEY_HIDE_STATUS_BAR, settings.hideStatusBar)
         put(KEY_VERBOSE_LOGGING, settings.verboseLogging)
         put(KEY_AUTO_BACKUP, settings.autoBackupEnabled)
         put(KEY_BACKUP_RETENTION, settings.backupRetention)
@@ -55,6 +56,7 @@ object SettingsSnapshotCodec {
             dynamicColor = root.optBoolean(KEY_DYNAMIC_COLOR, defaults.dynamicColor),
             animationsEnabled = root.optBoolean(KEY_ANIMATIONS, defaults.animationsEnabled),
             fontScale = enumOrDefault(root.optString(KEY_FONT_SCALE), defaults.fontScale),
+            hideStatusBar = root.optBoolean(KEY_HIDE_STATUS_BAR, defaults.hideStatusBar),
             verboseLogging = root.optBoolean(KEY_VERBOSE_LOGGING, defaults.verboseLogging),
             autoBackupEnabled = root.optBoolean(KEY_AUTO_BACKUP, defaults.autoBackupEnabled),
             backupRetention = root.optInt(KEY_BACKUP_RETENTION, defaults.backupRetention),
@@ -105,6 +107,7 @@ object SettingsSnapshotCodec {
     private const val KEY_DYNAMIC_COLOR = "dynamicColor"
     private const val KEY_ANIMATIONS = "animationsEnabled"
     private const val KEY_FONT_SCALE = "fontScale"
+    private const val KEY_HIDE_STATUS_BAR = "hideStatusBar"
     private const val KEY_VERBOSE_LOGGING = "verboseLogging"
     private const val KEY_AUTO_BACKUP = "autoBackupEnabled"
     private const val KEY_BACKUP_RETENTION = "backupRetention"

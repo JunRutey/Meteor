@@ -16,6 +16,7 @@ class SettingsSnapshotCodecTest {
         dynamicColor = true,
         animationsEnabled = false,
         fontScale = FontScale.LARGE,
+        hideStatusBar = true,
         verboseLogging = true,
         autoBackupEnabled = false,
         backupRetention = 12,
