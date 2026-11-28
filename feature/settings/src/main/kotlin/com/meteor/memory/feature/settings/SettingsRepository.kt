@@ -105,6 +105,28 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
     suspend fun setReminderLastSentDate(date: LocalDate) =
         store.edit { it[KEY_REMINDER_LAST_SENT_DATE] = date.toString() }
 
+    /**
+     * The release version the user told the update prompt to stop asking about
+     * (「忽略此版本」); null when nothing is skipped.
+     *
+     * Deliberately a standalone key like [reminderLastSentDate], not a field of
+     * [AppSettings]: it is a device-local UI preference with no archive meaning,
+     * so it stays out of the settings backup snapshot (ADR-040) and out of the
+     * snapshot codec. After an update is installed the skipped string no longer
+     * matches any release and simply goes stale.
+     */
+    suspend fun skippedUpdateVersion(): String? =
+        store.data.first()[KEY_SKIPPED_UPDATE_VERSION]?.takeIf { it.isNotBlank() }
+
+    /** Null or blank clears the skip so the update prompt asks again. */
+    suspend fun setSkippedUpdateVersion(version: String?) = store.edit { prefs ->
+        if (version.isNullOrBlank()) {
+            prefs.remove(KEY_SKIPPED_UPDATE_VERSION)
+        } else {
+            prefs[KEY_SKIPPED_UPDATE_VERSION] = version
+        }
+    }
+
     suspend fun setAiEnabled(enabled: Boolean) = store.edit { it[KEY_AI_ENABLED] = enabled }
 
     suspend fun setAiConsentAccepted(accepted: Boolean) =
@@ -305,6 +327,7 @@ class SettingsRepository(private val store: DataStore<Preferences>) {
         val KEY_DIARY_REMINDER_ENABLED = booleanPreferencesKey("diary_reminder_enabled")
         val KEY_NOTIFICATIONS_ENABLED = booleanPreferencesKey("notifications_enabled")
         val KEY_REMINDER_LAST_SENT_DATE = stringPreferencesKey("reminder_last_sent_local_date")
+        val KEY_SKIPPED_UPDATE_VERSION = stringPreferencesKey("update_skipped_version")
         val KEY_AI_ENABLED = booleanPreferencesKey("ai_enabled")
         val KEY_AI_CONSENT = booleanPreferencesKey("ai_consent_accepted")
         val KEY_AI_PROVIDER = stringPreferencesKey("ai_provider")

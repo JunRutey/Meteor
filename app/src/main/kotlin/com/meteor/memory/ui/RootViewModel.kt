@@ -15,6 +15,7 @@ import com.meteor.memory.feature.settings.AppSettings
 import com.meteor.memory.feature.settings.SettingsRepository
 import com.meteor.memory.system.LegacyInstallDetector
 import com.meteor.memory.update.UpdateService
+import com.meteor.memory.update.UpdateState
 import com.meteor.memory.ui.search.SearchService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -89,6 +90,16 @@ class RootViewModel @Inject constructor(
      */
     private val _noDeviceCredential = MutableStateFlow(false)
     val noDeviceCredential: StateFlow<Boolean> = _noDeviceCredential.asStateFlow()
+
+    /**
+     * The update prompt to show, or null when nothing is being asked (ADR-072).
+     *
+     * Driven by the update service reaching `Available` and suppressed for a
+     * version the person already skipped or already answered once this session;
+     * the dialog itself renders at the shell level in [MeteorRoot].
+     */
+    private val _updatePrompt = MutableStateFlow<UpdatePrompt?>(null)
+    val updatePrompt: StateFlow<UpdatePrompt?> = _updatePrompt.asStateFlow()
 
     /** Guards against re-locking while a biometric check is in flight. */
     @Volatile
@@ -171,6 +182,17 @@ class RootViewModel @Inject constructor(
                     }
                 } catch (failure: IOException) {
                     appLog.warn(UPDATE_TAG, "could not wait for onboarding before update check", failure)
+                }
+            }
+        }
+
+        // Update prompts are shell-level (ADR-072): any check landing on a new
+        // version asks here, unless that exact version was skipped before or
+        // already answered in this session.
+        viewModelScope.launch {
+            updateService.state.collect { state ->
+                if (state is UpdateState.Available) {
+                    askAboutUpdate(state.versionName)
                 }
             }
         }
@@ -428,6 +450,50 @@ class RootViewModel @Inject constructor(
     }
 
     /**
+     * Asks about a newly found version unless it is the one the person already
+     * skipped persistently or already answered since this process started
+     * (ADR-072). A manual re-check that finds the same release therefore lands
+     * on the settings row instead of interrupting with the dialog again.
+     */
+    private suspend fun askAboutUpdate(versionName: String) {
+        if (versionName == lastPromptedVersion) return
+        lastPromptedVersion = versionName
+        val skipped = runCatching { settingsRepository.skippedUpdateVersion() }.getOrNull()
+        if (versionName == skipped) {
+            appLog.info(UPDATE_TAG, "version $versionName is skipped, no prompt")
+            return
+        }
+        appLog.info(UPDATE_TAG, "asking about update $versionName")
+        _updatePrompt.value = UpdatePrompt(versionName)
+    }
+
+    /** 「立即更新」: closes the dialog and hands the download to the service. */
+    fun acceptUpdatePrompt() {
+        val prompt = _updatePrompt.value ?: return
+        _updatePrompt.value = null
+        appLog.info(UPDATE_TAG, "update to ${prompt.versionName} accepted")
+        viewModelScope.launch { updateService.startDownload() }
+    }
+
+    /** 「稍后再说」and outside-tap: ask again the next time a check finds it. */
+    fun dismissUpdatePrompt() {
+        _updatePrompt.value = null
+    }
+
+    /** 「忽略此版本」: persist the version so future checks stay quiet about it. */
+    fun skipUpdatePrompt() {
+        val prompt = _updatePrompt.value ?: return
+        _updatePrompt.value = null
+        appLog.info(UPDATE_TAG, "version ${prompt.versionName} skipped")
+        viewModelScope.launch {
+            runCatching { settingsRepository.setSkippedUpdateVersion(prompt.versionName) }
+                .onFailure { failure ->
+                    appLog.warn(UPDATE_TAG, "could not persist skipped update", failure)
+                }
+        }
+    }
+
+    /**
      * v0.9.0 added the first-launch gate. Installs that already hold archive
      * records predate it, so they skip the introduction instead of being asked
      * for a birth date before they can reach their diary.
@@ -501,6 +567,13 @@ class RootViewModel @Inject constructor(
 
     @Volatile
     private var indexRebuildStarted: Boolean = false
+
+    /** Version the dialog last asked about in this process; blocks repeat prompts. */
+    @Volatile
+    private var lastPromptedVersion: String? = null
 }
+
+/** One pending "a new version exists" question, held until the dialog answers it. */
+data class UpdatePrompt(val versionName: String)
 
 enum class OnboardingGate { LOADING, REQUIRED, COMPLETE, FAILED }
