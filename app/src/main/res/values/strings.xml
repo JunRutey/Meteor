@@ -236,6 +236,7 @@
          这里只放 ViewModel 需要直接 getString 的几条（ViewModel 拿不到 feature 模块的 R）。 -->
     <string name="question_error_save">保存问题失败，请重试。</string>
     <string name="question_error_answer">保存回答失败，请重试。</string>
+    <string name="question_error_answer_delete">删除回答失败，请重试。</string>
     <string name="question_error_delete">删除失败，请重试。</string>
     <string name="question_error_load">读取问题失败，请重试。</string>
 </resources>

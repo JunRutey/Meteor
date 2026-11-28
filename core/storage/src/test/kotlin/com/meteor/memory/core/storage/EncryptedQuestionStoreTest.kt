@@ -117,6 +117,56 @@ class EncryptedQuestionStoreTest {
     }
 
     @Test
+    fun deleteAnswerRemovesOnlyTheChosenAnswer() {
+        val store = store()
+        val question = store.create("今天想通了吗？", emptyList(), created)
+        val first = store.addAnswer(question.id, "第一条", created)!!.answers[0]
+        val second = store.addAnswer(question.id, "第二条", created)!!.answers[1]
+
+        val afterDelete = store.deleteAnswer(question.id, first.id)
+
+        assertEquals(listOf("第二条"), afterDelete?.answers?.map { it.text })
+        assertEquals(listOf(second.id), store.find(question.id)?.answers?.map { it.id })
+        assertTrue(afterDelete!!.isAnswered)
+    }
+
+    @Test
+    fun deletingTheLastAnswerMakesTheQuestionOpenAgain() {
+        val store = store()
+        val question = store.create("问题", emptyList(), created)
+        val only = store.addAnswer(question.id, "唯一的回答", created)!!.answers[0]
+
+        val afterDelete = store.deleteAnswer(question.id, only.id)
+
+        assertTrue(afterDelete?.answers?.isEmpty() == true)
+        assertFalse(afterDelete!!.isAnswered)
+        assertNull(afterDelete.lastAnsweredAt)
+    }
+
+    @Test
+    fun deleteAnswerDoesNotTouchPendingReminders() {
+        val store = store()
+        val reminder = Instant.parse("2026-11-29T09:00:00Z")
+        val question = store.create("问题", listOf(reminder), created)
+        val answer = store.addAnswer(question.id, "回答", created)!!.answers[0]
+
+        val afterDelete = store.deleteAnswer(question.id, answer.id)
+
+        assertEquals(listOf(reminder), afterDelete?.reminders)
+    }
+
+    @Test
+    fun deleteAnswerIsANoOpForUnknownIds() {
+        val store = store()
+        val question = store.create("问题", emptyList(), created)
+        val answer = store.addAnswer(question.id, "回答", created)!!.answers[0]
+
+        assertNull(store.deleteAnswer("c".repeat(32), answer.id))
+        assertNull(store.deleteAnswer(question.id, "d".repeat(32)))
+        assertEquals(1, store.find(question.id)?.answers?.size)
+    }
+
+    @Test
     fun updateRemindersReplacesTheWholeSet() {
         val question = store().create("问题", listOf(Instant.parse("2026-11-28T09:00:00Z")), created)
         val snoozed = Instant.parse("2026-11-28T10:00:00Z")

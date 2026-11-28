@@ -90,6 +90,18 @@ interface QuestionStore {
     ): StoredQuestion?
 
     /**
+     * Removes one answer by its id; returns null when the question or the answer
+     * is unknown, and the updated question otherwise.
+     *
+     * Answers stay append-only *for writing*: this is only a correction path for
+     * an answer written by mistake (ADR-073). Removing the last answer makes
+     * the question open again; pending reminders are deliberately left untouched
+     * — deleting is not a request to be reminded, and the caller decides whether
+     * to re-arm anything.
+     */
+    fun deleteAnswer(id: String, answerId: String): StoredQuestion? = null
+
+    /**
      * Replaces the whole pending-reminder list.
      *
      * Add, consume and clear are all this one call so the caller can never leave
@@ -179,6 +191,15 @@ class EncryptedQuestionStore(
             answeredAt = answeredAt,
         )
         val updated = existing.copy(answers = existing.answers + answer)
+        write(updated)
+        return updated
+    }
+
+    override fun deleteAnswer(id: String, answerId: String): StoredQuestion? {
+        val existing = find(id) ?: return null
+        val remaining = existing.answers.filterNot { it.id == answerId }
+        if (remaining.size == existing.answers.size) return null
+        val updated = existing.copy(answers = remaining)
         write(updated)
         return updated
     }

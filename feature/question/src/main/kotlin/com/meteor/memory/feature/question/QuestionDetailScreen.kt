@@ -62,6 +62,7 @@ fun QuestionDetailScreen(
     onStartAnswer: () -> Unit,
     onCancelAnswer: () -> Unit,
     onSaveAnswer: () -> Unit,
+    onDeleteAnswer: (String) -> Unit,
     onAddReminder: (ReminderPick) -> Unit,
     onRemoveReminder: (Instant) -> Unit,
     onInsertLink: (String, String?) -> Unit,
@@ -72,6 +73,7 @@ fun QuestionDetailScreen(
 ) {
     var confirmingDelete by remember { mutableStateOf(false) }
     var confirmingExit by remember { mutableStateOf(false) }
+    var pendingAnswerDelete by remember { mutableStateOf<String?>(null) }
 
     // 编辑模式里返回 = 退出编辑回到阅读；有没保存的字就先问一句。
     val requestCancel: () -> Unit = {
@@ -119,6 +121,7 @@ fun QuestionDetailScreen(
                         state = state,
                         onAddReminder = onAddReminder,
                         onRemoveReminder = onRemoveReminder,
+                        onRequestDeleteAnswer = { pendingAnswerDelete = it },
                         animationsEnabled = animationsEnabled,
                     )
                 }
@@ -165,6 +168,21 @@ fun QuestionDetailScreen(
         )
     }
 
+    if (pendingAnswerDelete != null) {
+        ConfirmDialog(
+            title = stringResource(R.string.question_answer_delete_confirm_title),
+            body = stringResource(R.string.question_answer_delete_confirm_body),
+            confirmLabel = stringResource(R.string.question_answer_delete_confirm_action),
+            cancelLabel = stringResource(R.string.question_delete_cancel),
+            onDismiss = { pendingAnswerDelete = null },
+            onConfirm = {
+                val answerId = pendingAnswerDelete
+                pendingAnswerDelete = null
+                if (answerId != null) onDeleteAnswer(answerId)
+            },
+        )
+    }
+
     if (confirmingExit) {
         ConfirmDialog(
             title = stringResource(R.string.question_unsaved_title),
@@ -186,6 +204,7 @@ private fun ReadingBody(
     state: QuestionDetailUi,
     onAddReminder: (ReminderPick) -> Unit,
     onRemoveReminder: (Instant) -> Unit,
+    onRequestDeleteAnswer: (String) -> Unit,
     animationsEnabled: Boolean,
 ) {
     val listState = rememberLazyListState()
@@ -259,7 +278,11 @@ private fun ReadingBody(
 
         if (state.hasAnswers) {
             items(state.answers, key = { it.id }) { answer ->
-                AnswerCard(answer = answer)
+                AnswerCard(
+                    answer = answer,
+                    onDelete = { onRequestDeleteAnswer(answer.id) },
+                    enabled = !state.deleting && !state.saving,
+                )
             }
         } else {
             item(key = "answer-empty") {
@@ -416,7 +439,11 @@ private fun QuestionInfoCard(state: QuestionDetailUi) {
 }
 
 @Composable
-private fun AnswerCard(answer: AnswerRow) {
+private fun AnswerCard(
+    answer: AnswerRow,
+    onDelete: () -> Unit,
+    enabled: Boolean,
+) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
@@ -427,12 +454,21 @@ private fun AnswerCard(answer: AnswerRow) {
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(
-                // 回答时间精确到分钟：这是「什么时候想通的」那一半信息。
-                text = stringResource(R.string.question_answered_at, answer.answeredAtLabel),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    // 回答时间精确到分钟：这是「什么时候想通的」那一半信息。
+                    text = stringResource(R.string.question_answered_at, answer.answeredAtLabel),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                TextButton(onClick = onDelete, enabled = enabled) {
+                    Text(text = stringResource(R.string.question_answer_delete))
+                }
+            }
             MarkdownPreview(
                 body = answer.text,
                 modifier = Modifier.fillMaxWidth().heightIn(max = ANSWER_MAX_HEIGHT),

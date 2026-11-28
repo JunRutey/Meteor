@@ -206,6 +206,40 @@ class QuestionDetailViewModel @Inject constructor(
     }
 
     /**
+     * 删除一条回答（ADR-073）。
+     *
+     * 与删除整个问题一样：只有写盘成功才刷新页面；失败时原地显示错误。删掉最后
+     * 一条后问题回到未回答，但**不**自动恢复提醒——删除是纠错，不是「再提醒我」
+     * 的请求（用户在决策中确认）。
+     */
+    fun deleteAnswer(answerId: String) {
+        val current = _state.value
+        if (current.saving || current.deleting || current.answers.none { it.id == answerId }) return
+        _state.update { it.copy(deleting = true, error = null) }
+
+        viewModelScope.launch {
+            val updated = withContext(Dispatchers.IO) {
+                runCatching { questionStore.deleteAnswer(questionId, answerId) }
+                    .onFailure { appLog.warn(TAG, "answer delete failed: $questionId/$answerId", it) }
+                    .getOrNull()
+            }
+            if (updated == null) {
+                _state.update {
+                    it.copy(
+                        deleting = false,
+                        error = context.getString(R.string.question_error_answer_delete),
+                    )
+                }
+                return@launch
+            }
+            question = updated
+            appLog.info(TAG, "answer deleted: $questionId/$answerId")
+            _state.update { it.copy(deleting = false) }
+            load()
+        }
+    }
+
+    /**
      * 删除这个问题。
      *
      * [onDeleted] 只在文件真的消失后才回调，宿主据此 `popBackStack()`；写盘失败时
