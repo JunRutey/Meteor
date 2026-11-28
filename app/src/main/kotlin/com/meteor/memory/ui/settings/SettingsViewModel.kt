@@ -173,14 +173,6 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    /** Persists the home drawer's visible items and display order together. */
-    fun setDrawerConfig(order: List<String>, visibleItems: Set<String>) {
-        viewModelScope.launch {
-            repository.setDrawerConfig(order, visibleItems)
-            appLog.info(TAG, "drawer order=${order.joinToString(",")} visible=${visibleItems.size}")
-        }
-    }
-
     fun setNotificationsEnabled(enabled: Boolean) {
         viewModelScope.launch {
             repository.setNotificationsEnabled(enabled)

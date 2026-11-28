@@ -189,7 +189,7 @@ fun MeteorRoot(versionName: String, onContentReady: () -> Unit = {}) {
                                     mediaPickerMode = settings.mediaPickerMode,
                                     drawerOrder = settings.drawerOrder,
                                     drawerVisibleItems = settings.drawerVisibleItems,
-                                    drawerFullscreen = settings.hideStatusBar,
+                                    onDrawerConfigChanged = viewModel::setDrawerConfig,
                                     onSystemScreenOpened = viewModel::beginSystemTransition,
                                 )
                             }

@@ -336,6 +336,18 @@ class RootViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Persists a drawer change made inside the drawer itself (hide an item,
+     * drag it to another position, or tick items in 「管理功能」). The settings
+     * screen no longer owns this: the drawer is the only editor.
+     */
+    fun setDrawerConfig(order: List<String>, visibleItems: Set<String>) {
+        viewModelScope.launch {
+            settingsRepository.setDrawerConfig(order, visibleItems)
+            appLog.info(TAG, "drawer order=${order.joinToString(",")} visible=${visibleItems.size}")
+        }
+    }
+
     private suspend fun isAuthenticationAvailable(): Boolean =
         withContext(Dispatchers.IO) {
             runCatching { appLock.isAuthenticationAvailable() }.getOrDefault(false)
