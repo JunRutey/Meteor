@@ -6,6 +6,7 @@ import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.storage.Document
 import com.meteor.memory.core.storage.MoodQueries
 import com.meteor.memory.core.storage.PersonQueries
+import com.meteor.memory.core.storage.QuestionStore
 import com.meteor.memory.core.storage.RecordScanner
 import com.meteor.memory.core.storage.RecordSource
 import com.meteor.memory.core.storage.RecordType
@@ -69,6 +70,7 @@ class MeteorAiModule(
     private val personQueries: PersonQueries,
     private val moodQueries: MoodQueries,
     private val diaryQueries: DiaryQueries,
+    private val questionStore: QuestionStore? = null,
     private val attachments: AttachmentStore? = null,
     private val archiveRecordDeleter: ArchiveRecordDeleter? = null,
     private val personaStore: PersonaStore,
@@ -232,7 +234,13 @@ class MeteorAiModule(
                 if (permissions.writePeople) {
                     addAll(listOf("create_person", "update_person", "delete_person"))
                 }
+                // ADR-075: question writing follows the diary grant and needs confirmation.
+                if (permissions.writeQuestion) {
+                    addAll(listOf("add_question", "add_answer"))
+                }
             }
+            append("\n\nDaily questions are the user's own self-questions; treat them as ")
+            append("subjective thoughts, never as objective facts about their life.")
             if (granted.isNotEmpty()) {
                 append("\n\nWrite tools granted this run: ").append(granted.joinToString(", "))
                 append(". Never overwrite a diary, update or delete a person, or delete a diary or mood ")
@@ -308,6 +316,7 @@ class MeteorAiModule(
         personQueries = personQueries,
         moodQueries = moodQueries,
         diaryQueries = diaryQueries,
+        questionStore = questionStore,
         attachments = attachments,
         permissions = permissions,
         archiveRecordDeleter = archiveRecordDeleter,
