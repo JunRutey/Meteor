@@ -187,6 +187,7 @@ fun MeteorRoot(versionName: String, onContentReady: () -> Unit = {}) {
                             updatePrompt?.let { prompt ->
                                 UpdatePromptDialog(
                                     versionName = prompt.versionName,
+                                    notes = prompt.notes,
                                     onDownload = viewModel::acceptUpdatePrompt,
                                     onLater = viewModel::dismissUpdatePrompt,
                                     onSkip = viewModel::skipUpdatePrompt,

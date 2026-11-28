@@ -43,6 +43,17 @@ class ReleaseMetadataTest {
         // the parser must tolerate that instead of inventing a checksum.
         assertEquals(null, release.sha256)
         assertEquals(0L, release.sizeBytes)
+        assertEquals("## 新增\n\n- 更新弹窗显示更新日志", release.notes)
+    }
+
+    @Test
+    fun `release notes drop the badge footer and cap oversized bodies`() {
+        assertEquals("## 新增\n\n- 一条说明", parseReleaseNotes(
+            "## 新增\n\n- 一条说明\n\n[![](https://example.com/badge.svg)](https://example.com)\n",
+        ))
+        assertEquals("", parseReleaseNotes(null))
+        assertEquals("", parseReleaseNotes("   \n"))
+        assertTrue(parseReleaseNotes("x".repeat(20_000)).length <= 12_000)
     }
 
     @Test
@@ -99,6 +110,7 @@ class ReleaseMetadataTest {
               "tag_name": "v0.9.0",
               "draft": false,
               "prerelease": $prerelease,
+              "body": "## 新增\n\n- 更新弹窗显示更新日志",
               "assets": [
                 {
                   "name": "app-release.apk",

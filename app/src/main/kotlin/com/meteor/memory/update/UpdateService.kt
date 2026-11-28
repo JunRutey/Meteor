@@ -104,7 +104,7 @@ class UpdateService(
 
                 val versionName = release.version.toString()
                 appLog.info(TAG, "update available: $versionName (manual=$manual)")
-                _state.value = UpdateState.Available(versionName, manual)
+                _state.value = UpdateState.Available(versionName, manual, release.notes)
             } catch (failure: UpdateException) {
                 appLog.warn(TAG, "update check failed: ${failure.reason}", failure.cause ?: failure)
                 notificationFeature.hideUpdateNotification()
