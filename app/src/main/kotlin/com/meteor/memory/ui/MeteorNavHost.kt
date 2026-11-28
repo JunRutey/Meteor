@@ -306,6 +306,8 @@ fun MeteorNavHost(
     drawerVisibleItems: Set<String> = DEFAULT_DRAWER_VISIBLE_ITEMS,
     /** Writes a drawer change made inside the drawer itself (hide/sort/manage). */
     onDrawerConfigChanged: (order: List<String>, visibleItems: Set<String>) -> Unit = { _, _ -> },
+    /** Drawer covers the hidden status-bar area while the home header stays inset. */
+    drawerFullscreen: Boolean = false,
     onSystemScreenOpened: () -> Unit = {},
 ) {
     val navController = rememberNavController()
@@ -420,6 +422,7 @@ fun MeteorNavHost(
                 drawerOrder = drawerOrder,
                 drawerVisibleItems = drawerVisibleItems,
                 onDrawerConfigChanged = onDrawerConfigChanged,
+                drawerFullscreen = drawerFullscreen,
                 lifeContent = {
                     LifeTab(
                         viewModel = lifeViewModel,
