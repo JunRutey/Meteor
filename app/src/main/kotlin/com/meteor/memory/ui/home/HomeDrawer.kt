@@ -144,14 +144,6 @@ internal fun HomeDrawer(
     val incomingVisible = remember(drawerVisibleItems) {
         normalizedDrawerVisibleItems(drawerVisibleItems)
     }
-    LaunchedEffect(incomingOrder, incomingVisible) {
-        // While sorting, the drawer is the only editor: ignore settings flowing
-        // back so an in-flight write cannot revert a reorder mid-gesture.
-        if (!sortMode && draggingId == null) {
-            if (incomingOrder != order) order = incomingOrder
-            if (incomingVisible != visibleIds) visibleIds = incomingVisible
-        }
-    }
 
     var sortMode by remember { mutableStateOf(false) }
     var menuForId by remember { mutableStateOf<String?>(null) }
@@ -167,6 +159,15 @@ internal fun HomeDrawer(
     // gesture that never completed from silently changing the user's layout.
     var orderBeforeDrag by remember { mutableStateOf(order) }
     val listState = rememberLazyListState()
+
+    LaunchedEffect(incomingOrder, incomingVisible) {
+        // While sorting, the drawer is the only editor: ignore settings flowing
+        // back so an in-flight write cannot revert a reorder mid-gesture.
+        if (!sortMode && draggingId == null) {
+            if (incomingOrder != order) order = incomingOrder
+            if (incomingVisible != visibleIds) visibleIds = incomingVisible
+        }
+    }
 
     // Gesture callbacks outlive the composition that set them up, so they read
     // the newest values through these holders instead of a stale capture.
