@@ -206,9 +206,19 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Manual check (ADR-072): asks GitHub which release is newest and shows
+     * the download dialog at the shell level; nothing downloads from here.
+     */
     fun checkForUpdates() {
         appLog.info(TAG, "manual update check")
-        updateService.checkAndDownload()
+        updateService.checkForUpdate()
+    }
+
+    /** The settings 「下载更新」 button on the available-version row. */
+    fun downloadUpdate() {
+        appLog.info(TAG, "download update requested from settings")
+        updateService.startDownload()
     }
 
     fun installUpdate() {

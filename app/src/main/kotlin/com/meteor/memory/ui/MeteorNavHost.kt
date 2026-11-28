@@ -222,11 +222,27 @@ private fun Context.openInBrowser(url: String, failureMessage: String? = null) {
     }
 }
 
+/**
+ * The version the update rows should name: the release currently pending
+ * (announced / downloading / ready to install), or the running version when
+ * nothing is pending. The rows read the pending release, not the running one.
+ */
+private fun pendingUpdateVersion(state: UpdateState, runningVersionName: String): String =
+    when (state) {
+        is UpdateState.Available -> state.versionName
+        is UpdateState.Downloading -> state.versionName
+        is UpdateState.ReadyToInstall -> state.versionName
+        is UpdateState.InstallPermissionRequired -> state.versionName
+        else -> runningVersionName
+    }
+
 @Composable
 private fun updateStatusText(state: UpdateState): String = when (state) {
     UpdateState.Idle -> stringResource(SettingsR.string.settings_update_idle)
     UpdateState.Checking -> stringResource(SettingsR.string.settings_update_checking)
     UpdateState.UpToDate -> stringResource(SettingsR.string.settings_update_current)
+    is UpdateState.Available ->
+        stringResource(SettingsR.string.settings_update_available_body, state.versionName)
     is UpdateState.Downloading ->
         stringResource(SettingsR.string.settings_update_downloading, state.versionName)
     is UpdateState.ReadyToInstall ->
@@ -238,6 +254,7 @@ private fun updateStatusText(state: UpdateState): String = when (state) {
         UpdateError.INVALID_RELEASE -> stringResource(SettingsR.string.settings_update_error_release)
         UpdateError.NO_APK -> stringResource(SettingsR.string.settings_update_error_asset)
         UpdateError.DOWNLOAD -> stringResource(SettingsR.string.settings_update_error_download)
+        UpdateError.CHECKSUM -> stringResource(SettingsR.string.settings_update_error_checksum)
         UpdateError.INSTALL -> stringResource(SettingsR.string.settings_update_error_install)
     }
 }
@@ -1068,9 +1085,12 @@ fun MeteorNavHost(
                 onAutoCheckForUpdatesChanged = viewModel::setAutoCheckForUpdates,
                 updateStatusText = updateStatusText(updateState),
                 updateBusy = updateState is UpdateState.Checking || updateState is UpdateState.Downloading,
+                updateVersionName = pendingUpdateVersion(updateState, versionName),
+                updateAvailable = updateState is UpdateState.Available,
                 updateCanInstall = updateState is UpdateState.ReadyToInstall ||
                     updateState is UpdateState.InstallPermissionRequired,
                 onCheckUpdates = viewModel::checkForUpdates,
+                onDownloadUpdate = viewModel::downloadUpdate,
                 onInstallUpdate = viewModel::installUpdate,
                 logSizeBytes = logSizeBytes,
                 notificationsAllowed = notificationsAllowed,

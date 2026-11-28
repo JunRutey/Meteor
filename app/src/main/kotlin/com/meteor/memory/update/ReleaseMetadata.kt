@@ -9,6 +9,14 @@ import java.net.URISyntaxException
 internal data class ReleaseMetadata(
     val version: ReleaseVersion,
     val apkUrl: String,
+    /**
+     * SHA-256 of the APK exactly as GitHub computed it at upload time (the
+     * `digest` asset field, `sha256:` prefix stripped), or null when GitHub
+     * has none. This is the checksum every download source is held against —
+     * a mirror serves bytes, GitHub vouches for them (ADR-072).
+     */
+    val sha256: String?,
+    val sizeBytes: Long,
 )
 
 internal enum class UpdateError {
@@ -16,6 +24,7 @@ internal enum class UpdateError {
     INVALID_RELEASE,
     NO_APK,
     DOWNLOAD,
+    CHECKSUM,
     INSTALL,
 }
 
@@ -28,6 +37,9 @@ internal sealed interface UpdateState {
     data object Idle : UpdateState
     data object Checking : UpdateState
     data object UpToDate : UpdateState
+
+    /** A newer release exists but the person has not agreed to download it yet (ADR-072). */
+    data class Available(val versionName: String) : UpdateState
     data class Downloading(val versionName: String) : UpdateState
     data class ReadyToInstall(val versionName: String) : UpdateState
     data class InstallPermissionRequired(val versionName: String) : UpdateState
@@ -51,7 +63,8 @@ internal fun parseReleaseMetadata(json: String): ReleaseMetadata {
             .filter { it.getString("name").endsWith(".apk", ignoreCase = true) }
         if (apkAssets.size != 1) throw UpdateException(UpdateError.NO_APK)
 
-        val apkUrl = apkAssets.single().getString("browser_download_url")
+        val apkAsset = apkAssets.single()
+        val apkUrl = apkAsset.getString("browser_download_url")
         val uri = try {
             URI(apkUrl)
         } catch (failure: URISyntaxException) {
@@ -68,10 +81,32 @@ internal fun parseReleaseMetadata(json: String): ReleaseMetadata {
         ) {
             throw UpdateException(UpdateError.INVALID_RELEASE)
         }
-        return ReleaseMetadata(version, apkUrl)
+        return ReleaseMetadata(
+            version = version,
+            apkUrl = apkUrl,
+            sha256 = parseSha256Digest(apkAsset.optString("digest")),
+            sizeBytes = apkAsset.optLong("size"),
+        )
     } catch (failure: JSONException) {
         throw UpdateException(UpdateError.INVALID_RELEASE, failure)
     }
+}
+
+/**
+ * GitHub stores release-asset digests as `sha256:<hex>`; uploads older than the
+ * 2025 immutable-releases rollout carry no digest at all (JSON null). Anything
+ * not matching that shape is treated as "no checksum" — the download falls back
+ * to size validation instead of comparing against a poisoned value.
+ */
+internal fun parseSha256Digest(raw: String?): String? {
+    val value = raw?.trim().orEmpty()
+    if (!value.startsWith(DIGEST_PREFIX)) return null
+    val hex = value.removePrefix(DIGEST_PREFIX)
+    if (hex.length != SHA256_HEX_LENGTH) return null
+    if (hex.any { char -> char.lowercaseChar() !in '0'..'9' && char.lowercaseChar() !in 'a'..'f' }) {
+        return null
+    }
+    return hex.lowercase()
 }
 
 internal data class ReleaseVersion private constructor(
@@ -141,3 +176,5 @@ internal data class ReleaseVersion private constructor(
 
 private const val RELEASE_HOST = "github.com"
 private const val RELEASE_ASSET_PATH = "/JunRutey/Meteor/releases/download/"
+private const val DIGEST_PREFIX = "sha256:"
+private const val SHA256_HEX_LENGTH = 64

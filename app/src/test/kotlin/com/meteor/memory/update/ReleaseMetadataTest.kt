@@ -39,6 +39,32 @@ class ReleaseMetadataTest {
             "https://github.com/JunRutey/Meteor/releases/download/v0.9.0/app-release.apk",
             release.apkUrl,
         )
+        // Releases uploaded before GitHub started computing digests carry none;
+        // the parser must tolerate that instead of inventing a checksum.
+        assertEquals(null, release.sha256)
+        assertEquals(0L, release.sizeBytes)
+    }
+
+    @Test
+    fun `release parser carries the official digest and size`() {
+        val digest = "15fd4a442499e42fbdb55ecbb9d514b488115cf60567ca1a8394be602e2773c4"
+        val release = parseReleaseMetadata(releaseJson(digest = "sha256:$digest", size = 6_073_579L))
+
+        assertEquals(digest, release.sha256)
+        assertEquals(6_073_579L, release.sizeBytes)
+    }
+
+    @Test
+    fun `digest parser ignores values that are not a sha256 hex digest`() {
+        val digest = "15fd4a442499e42fbdb55ecbb9d514b488115cf60567ca1a8394be602e2773c4"
+
+        assertEquals(digest, parseSha256Digest("sha256:$digest"))
+        assertEquals(digest, parseSha256Digest("sha256:${digest.uppercase()}"))
+        assertEquals(null, parseSha256Digest(null))
+        assertEquals(null, parseSha256Digest(""))
+        assertEquals(null, parseSha256Digest("md5:$digest"))
+        assertEquals(null, parseSha256Digest("sha256:not-hex"))
+        assertEquals(null, parseSha256Digest("sha256:abcd"))
     }
 
     @Test
@@ -64,17 +90,24 @@ class ReleaseMetadataTest {
     private fun releaseJson(
         apkUrl: String = "https://github.com/JunRutey/Meteor/releases/download/v0.9.0/app-release.apk",
         prerelease: Boolean = false,
-    ): String = """
-        {
-          "tag_name": "v0.9.0",
-          "draft": false,
-          "prerelease": $prerelease,
-          "assets": [
+        digest: String? = null,
+        size: Long = 0L,
+    ): String {
+        val digestValue = digest?.let { "\"$it\"" } ?: "null"
+        return """
             {
-              "name": "app-release.apk",
-              "browser_download_url": "$apkUrl"
+              "tag_name": "v0.9.0",
+              "draft": false,
+              "prerelease": $prerelease,
+              "assets": [
+                {
+                  "name": "app-release.apk",
+                  "size": $size,
+                  "digest": $digestValue,
+                  "browser_download_url": "$apkUrl"
+                }
+              ]
             }
-          ]
-        }
-    """.trimIndent()
+        """.trimIndent()
+    }
 }
