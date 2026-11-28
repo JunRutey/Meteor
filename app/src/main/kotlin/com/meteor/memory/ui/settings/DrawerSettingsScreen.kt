@@ -183,6 +183,7 @@ private fun ReorderButton(
 
 @Composable
 private fun DrawerSettingsHeader(onBack: () -> Unit) {
+    val backTint = MaterialTheme.colorScheme.onSurface
     Row(
         modifier = Modifier.fillMaxWidth().height(56.dp).padding(end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -203,7 +204,7 @@ private fun DrawerSettingsHeader(onBack: () -> Unit) {
                 }
                 drawPath(
                     path = path,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = backTint,
                     style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round),
                 )
             }
