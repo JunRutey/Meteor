@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
@@ -94,10 +95,9 @@ fun HomeTabsScreen(
     val density = LocalDensity.current
     // This composable only gets the area inside the root's safe-area padding, so
     // it cannot size the drawer to the window from `maxHeight`. Measure where
-    // this box sits in the window instead: the overlay is then placed at the
-    // window origin (offset) and sized like the window (requiredSize). Order
-    // matters: `offset` must wrap `requiredSize`, otherwise the content is
-    // pushed out of its own layout bounds and gets clipped.
+    // this box sits in the window instead, then give the overlay the window's
+    // height minus the top gap: the sheet stays where it was drawn in 1.7.4 but
+    // its bottom now lands on the real window bottom.
     var windowBounds by remember { mutableStateOf(Rect.Zero) }
 
     Box(
@@ -185,7 +185,10 @@ fun HomeTabsScreen(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .offset(x = overlayOffsetX)
-                .requiredSize(overlayWidth, overlayHeight),
+                // Only the height is forced here: `requiredSize` would also fix
+                // the minimum width to the window, which stretched the 300dp panel
+                // across the whole screen.
+                .requiredHeight(overlayHeight),
             enter = if (animationsEnabled) {
                 slideInHorizontally(animationSpec = MotionTokens.enter()) { -it } +
                     fadeIn(MotionTokens.enter())
