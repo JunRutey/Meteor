@@ -27,6 +27,7 @@ class IndexSearchService @Inject constructor(
     private val index: MeteorIndex,
     private val appLog: AppLog,
     private val attachmentTextIndex: AttachmentTextIndex,
+    private val questionTextIndex: QuestionTextIndex,
     @ApplicationContext private val context: Context,
 ) : SearchService {
 
@@ -53,7 +54,8 @@ class IndexSearchService @Inject constructor(
             )
         }
         val attachmentHits = attachmentTextIndex.search(query, maxHits, snippetChars)
-        return (recordHits + attachmentHits)
+        val questionHits = questionTextIndex.search(query, maxHits, snippetChars)
+        return (recordHits + attachmentHits + questionHits)
             .sortedWith(compareByDescending<SearchMatch> { it.score }.thenByDescending { it.timestamp })
             .take(maxHits.coerceAtLeast(1))
     }
@@ -196,8 +198,9 @@ object SearchModule {
         index: MeteorIndex,
         appLog: AppLog,
         attachmentTextIndex: AttachmentTextIndex,
+        questionTextIndex: QuestionTextIndex,
         @dagger.hilt.android.qualifiers.ApplicationContext context: Context,
-    ): SearchService = IndexSearchService(index, appLog, attachmentTextIndex, context)
+    ): SearchService = IndexSearchService(index, appLog, attachmentTextIndex, questionTextIndex, context)
 
     @dagger.Provides
     @Singleton

@@ -188,6 +188,7 @@
     <string name="search_filter_mood">心情</string>
     <string name="search_filter_profile">档案</string>
     <string name="search_filter_file">文件</string>
+    <string name="search_filter_question">每日一问</string>
     <string name="search_failed">搜索失败：%1$s</string>
 
     <string name="type_diary">日记</string>
@@ -195,6 +196,7 @@
     <string name="type_profile">档案</string>
     <string name="type_chat_log">聊天</string>
     <string name="type_persona">人格</string>
+    <string name="type_question">每日一问</string>
 
     <string name="about_title">关于</string>
     <string name="about_back">返回</string>

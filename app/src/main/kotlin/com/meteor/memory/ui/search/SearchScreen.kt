@@ -57,6 +57,7 @@ fun SearchScreen(
     onOpenDiary: (java.time.LocalDate) -> Unit,
     onOpenMood: (java.time.LocalDate) -> Unit,
     onOpenAttachment: (String) -> Unit,
+    onOpenQuestion: (String) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -186,6 +187,7 @@ fun SearchScreen(
                                         // the album viewer resolves `meteor://file/<id>`
                                         // (ADR-065), so the hit is finally clickable.
                                         RecordType.CHAT_LOG -> onOpenAttachment(row.recordId)
+                                        RecordType.QUESTION -> onOpenQuestion(row.recordId)
                                         else -> Unit
                                     }
                                 },
@@ -204,6 +206,7 @@ private enum class SearchFilter(val labelRes: Int) {
     MOOD(R.string.search_filter_mood),
     PROFILE(R.string.search_filter_profile),
     FILE(R.string.search_filter_file),
+    QUESTION(R.string.search_filter_question),
     ;
 
     fun matches(row: SearchRow): Boolean = when (this) {
@@ -213,6 +216,7 @@ private enum class SearchFilter(val labelRes: Int) {
         PROFILE -> row.type == RecordType.PROFILE || row.type == RecordType.PERSONA
         // Attachment hits are indexed as CHAT_LOG until ADR-029 lands.
         FILE -> row.type == RecordType.CHAT_LOG
+        QUESTION -> row.type == RecordType.QUESTION
     }
 }
 
@@ -371,5 +375,6 @@ private fun RecordType.label(): String = stringResource(
         RecordType.PROFILE -> R.string.type_profile
         RecordType.CHAT_LOG -> R.string.type_chat_log
         RecordType.PERSONA -> R.string.type_persona
+        RecordType.QUESTION -> R.string.type_question
     },
 )
