@@ -833,6 +833,7 @@ interface QuestionStore {
     fun create(text: String, reminders: List<Instant> = emptyList(), createdAt: Instant = Instant.now(),
                askedOn: LocalDate = createdAt.atZone(ZoneId.systemDefault()).toLocalDate()): StoredQuestion
     fun addAnswer(id: String, text: String, answeredAt: Instant = Instant.now()): StoredQuestion?
+    fun deleteAnswer(id: String, answerId: String): StoredQuestion?  // ADR-073，带默认实现的新增方法
     fun updateReminders(id: String, reminders: List<Instant>): StoredQuestion?
     fun delete(id: String): Boolean
     // MAX_QUESTION_CHARS = 500, MAX_ANSWER_CHARS = 20000, MAX_REMINDERS = 8

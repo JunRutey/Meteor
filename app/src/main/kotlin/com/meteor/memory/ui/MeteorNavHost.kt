@@ -535,6 +535,7 @@ fun MeteorNavHost(
                 onStartAnswer = viewModel::startAnswer,
                 onCancelAnswer = viewModel::cancelAnswer,
                 onSaveAnswer = viewModel::saveAnswer,
+                onDeleteAnswer = viewModel::deleteAnswer,
                 onAddReminder = viewModel::addCustomReminder,
                 onRemoveReminder = viewModel::removeReminder,
                 onInsertLink = viewModel::insertLink,

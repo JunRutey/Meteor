@@ -59,6 +59,10 @@
     <string name="question_answer_empty">还没有回答。</string>
     <string name="question_answer_save">保存回答</string>
     <string name="question_answer_saving">保存中…</string>
+    <string name="question_answer_delete">删除这条回答</string>
+    <string name="question_answer_delete_confirm_title">删除这条回答？</string>
+    <string name="question_answer_delete_confirm_body">这条回答会被永久删除，其它回答不受影响。删除不会重新安排提醒。</string>
+    <string name="question_answer_delete_confirm_action">删除</string>
     <string name="question_preview">预览</string>
     <string name="question_edit">编辑</string>
 
