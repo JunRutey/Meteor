@@ -268,6 +268,7 @@ object AppModule {
         personQueries: PersonQueries,
         moodQueries: MoodQueries,
         diaryQueries: DiaryQueries,
+        questionStore: QuestionStore,
         archiveRecordDeleter: ArchiveRecordDeleter,
         storageRouter: StorageRouter,
     ): AiModule = MeteorAiModule(
@@ -280,6 +281,7 @@ object AppModule {
         personQueries = personQueries,
         moodQueries = moodQueries,
         diaryQueries = diaryQueries,
+        questionStore = questionStore,
         archiveRecordDeleter = archiveRecordDeleter,
         // Read-only attachment tools reuse the same store the importer writes to.
         attachments = attachmentStore,

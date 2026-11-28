@@ -74,6 +74,9 @@ data class AiConfig(
         get() = AiToolPermissions(
             writeDiary = writeEnabled && writeDiary,
             writePeople = writeEnabled && writePeople,
+            // ADR-075: question writing follows the diary grant — same class of
+            // act, so no extra preference or backup-format field is needed.
+            writeQuestion = writeEnabled && writeDiary,
         )
 
     private val resolved: Pair<String, String> = AiPresets.resolveProvider(provider, baseUrl, model)

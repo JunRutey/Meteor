@@ -10,6 +10,7 @@ import com.meteor.memory.core.storage.MoodQueries
 import com.meteor.memory.core.storage.PersonDeleteResult
 import com.meteor.memory.core.storage.PersonProfileCodec
 import com.meteor.memory.core.storage.PersonQueries
+import com.meteor.memory.core.storage.QuestionStore
 import com.meteor.memory.core.storage.RecordScanner
 import com.meteor.memory.core.storage.RecordType
 import com.meteor.memory.core.storage.Relation
@@ -47,6 +48,7 @@ class ArchiveTools(
     private val personQueries: PersonQueries,
     private val moodQueries: MoodQueries,
     private val diaryQueries: DiaryQueries,
+    private val questionStore: QuestionStore? = null,
     private val attachments: AttachmentStore? = null,
     private val permissions: AiToolPermissions = AiToolPermissions.READ_ONLY,
     private val zone: ZoneId = ZoneId.systemDefault(),
@@ -120,6 +122,9 @@ class ArchiveTools(
                 allowedPersonId = allowedPersonId,
             )
 
+            TOOL_LIST_QUESTIONS -> listQuestions(allowedPersonId)
+            TOOL_READ_QUESTION -> readQuestion(args.str("question_id"), allowedPersonId)
+
             TOOL_SAVE_DIARY -> saveDiary(args.str("date"), args.str("body"))
             TOOL_APPEND_DIARY -> appendDiary(args.str("date"), args.str("text"))
             TOOL_SET_MOOD -> setMood(args.str("date"), args.str("mood"))
@@ -149,6 +154,15 @@ class ArchiveTools(
             TOOL_DELETE_RECORD -> deleteRecord(
                 recordType = args.str("record_type"),
                 date = args.str("date"),
+            )
+
+            TOOL_ADD_QUESTION -> addQuestion(
+                text = args.str("text"),
+                reminders = args.strList("reminders"),
+            )
+            TOOL_ADD_ANSWER -> addAnswer(
+                questionId = args.str("question_id"),
+                text = args.str("text"),
             )
 
             else -> errorJson("unknown-tool")
@@ -437,6 +451,49 @@ class ArchiveTools(
         return array.toString()
     }
 
+    // --- daily questions (ADR-075) ----------------------------------------
+
+    /** Self-asked questions are personal, never scoped to a persona. */
+    private fun listQuestions(allowedPersonId: String?): String {
+        val store = questionStore ?: return errorJson("tool-unavailable")
+        if (allowedPersonId != null) return errorJson("not-allowed")
+        val array = JSONArray()
+        store.list().take(MAX_QUESTIONS).forEach { question ->
+            array.put(
+                JSONObject()
+                    .put("type", "question")
+                    .put("question_id", question.id)
+                    .put("text", question.text.take(MAX_QUESTION_PREVIEW_CHARS))
+                    .put("answer_count", question.answers.size)
+                    .put("answered", question.isAnswered)
+                    .put("asked_on", question.askedOn.toString()),
+            )
+        }
+        return array.toString()
+    }
+
+    private fun readQuestion(questionId: String, allowedPersonId: String?): String {
+        val store = questionStore ?: return errorJson("tool-unavailable")
+        if (allowedPersonId != null) return errorJson("not-allowed")
+        if (questionId.isBlank()) return errorJson("missing-question-id")
+        if (!QUESTION_ID_PATTERN.matches(questionId)) return errorJson("bad-question-id")
+        val question = store.find(questionId) ?: return errorJson("not-found")
+        // Self-questions are subjective; the `type=question` marker tells the
+        // model not to treat this as an objective fact (ADR-075).
+        return JSONObject()
+            .put("type", "question")
+            .put("question_id", question.id)
+            .put("text", question.text)
+            .put("asked_on", question.askedOn.toString())
+            .put("answers", JSONArray(question.answers.map { answer ->
+                JSONObject()
+                    .put("id", answer.id)
+                    .put("text", answer.text.take(MAX_BODY_CHARS))
+                    .put("answered_at", answer.answeredAt.toString())
+            }))
+            .toString()
+    }
+
     // --- attachments (read-only, metadata and extracted text only) ----------
 
     private fun listAttachments(personId: String, allowedPersonId: String?): String {
@@ -589,11 +646,48 @@ class ArchiveTools(
         }
     }
 
+    // --- question write tools (ADR-075) -----------------------------------
+
+    private fun addQuestion(text: String, reminders: List<String>): String {
+        val store = questionStore ?: return errorJson("tool-unavailable")
+        val body = text.trim()
+        if (body.isBlank()) return errorJson("empty-text")
+        val instants = reminders.mapNotNull { raw ->
+            runCatching { java.time.Instant.parse(raw.trim()) }.getOrNull()
+        }
+        if (instants.size != reminders.size) return errorJson("bad-reminder")
+        return try {
+            val question = store.create(body, instants)
+            JSONObject().put("created", true).put("type", "question")
+                .put("question_id", question.id).toString()
+        } catch (_: IllegalArgumentException) {
+            errorJson("text-too-long")
+        }
+    }
+
+    private fun addAnswer(questionId: String, text: String): String {
+        val store = questionStore ?: return errorJson("tool-unavailable")
+        if (questionId.isBlank()) return errorJson("missing-question-id")
+        if (!QUESTION_ID_PATTERN.matches(questionId)) return errorJson("bad-question-id")
+        val body = text.trim()
+        if (body.isBlank()) return errorJson("empty-text")
+        val updated = try {
+            store.addAnswer(questionId, body)
+        } catch (_: IllegalArgumentException) {
+            return errorJson("text-too-long")
+        } ?: return errorJson("not-found")
+        return JSONObject().put("saved", true).put("type", "question")
+            .put("question_id", questionId)
+            .put("answer_id", updated.answers.lastOrNull()?.id.orEmpty())
+            .toString()
+    }
+
     // --- guards ------------------------------------------------------------
 
     /** Attachment tools exist only when a store was wired in. */
     private fun available(name: String): Boolean = when {
         name in ATTACHMENT_TOOLS -> attachments != null
+        name in QUESTION_TOOLS -> questionStore != null
         name == TOOL_DELETE_RECORD -> archiveRecordDeleter != null
         else -> true
     }
@@ -605,6 +699,19 @@ class ArchiveTools(
      */
     private fun JSONObject.str(name: String): String =
         (opt(name) as? String)?.trim().orEmpty()
+
+    /**
+     * String-list argument: accepts the declared JSON array, and also a
+     * comma-separated string for models that flatten arrays.
+     */
+    private fun JSONObject.strList(name: String): List<String> {
+        if (!has(name)) return emptyList()
+        return when (val value = opt(name)) {
+            is JSONArray -> (0 until value.length()).mapNotNull { index -> value.opt(index) as? String }
+            is String -> value.split(',', '，')
+            else -> emptyList()
+        }.map { it.trim() }.filter { it.isNotEmpty() }
+    }
 
     private fun JSONObject.int(name: String, default: Int): Int {
         val value = opt(name) ?: return default
@@ -684,6 +791,10 @@ class ArchiveTools(
         const val TOOL_UPDATE_PERSON = "update_person"
         const val TOOL_DELETE_PERSON = "delete_person"
         const val TOOL_DELETE_RECORD = "delete_record"
+        const val TOOL_LIST_QUESTIONS = "list_questions"
+        const val TOOL_READ_QUESTION = "read_question"
+        const val TOOL_ADD_QUESTION = "add_question"
+        const val TOOL_ADD_ANSWER = "add_answer"
 
         private const val MAX_PEOPLE = 100
         private const val MAX_RECORDS = 200
@@ -700,16 +811,28 @@ class ArchiveTools(
         private const val MAX_ATTACHMENT_NAME_CHARS = 200
         private const val MAX_ATTACHMENT_TEXT_CHARS = 4000
 
-        /** Same opaque shape the attachment store writes (32 lowercase hex). */
+        private const val MAX_QUESTIONS = 50
+        private const val MAX_QUESTION_PREVIEW_CHARS = 300
+
+        /** Same opaque shape the attachment/question stores write (32 lowercase hex). */
         private val ATTACHMENT_ID_PATTERN = Regex("^[a-f0-9]{32}$")
+        private val QUESTION_ID_PATTERN = Regex("^[a-f0-9]{32}$")
 
         /** Tools that need an [AttachmentStore]; hidden when none was wired. */
         private val ATTACHMENT_TOOLS = setOf(TOOL_LIST_ATTACHMENTS, TOOL_READ_ATTACHMENT_TEXT)
+        /** Tools that need a `QuestionStore`; hidden when none was wired. */
+        private val QUESTION_TOOLS = setOf(
+            TOOL_LIST_QUESTIONS, TOOL_READ_QUESTION,
+            TOOL_ADD_QUESTION, TOOL_ADD_ANSWER,
+        )
         private val APPROVAL_REQUIRED_TOOLS = setOf(
             TOOL_SAVE_DIARY,
             TOOL_UPDATE_PERSON,
             TOOL_DELETE_PERSON,
             TOOL_DELETE_RECORD,
+            // ADR-075: every question write needs a confirmation.
+            TOOL_ADD_QUESTION,
+            TOOL_ADD_ANSWER,
         )
         private val PERSON_SCOPE_DENIED_TOOLS = setOf(
             TOOL_READ_MOODS,
@@ -719,6 +842,11 @@ class ArchiveTools(
             TOOL_CREATE_PERSON,
             TOOL_DELETE_PERSON,
             TOOL_DELETE_RECORD,
+            // ADR-075: self-questions belong to no persona.
+            TOOL_LIST_QUESTIONS,
+            TOOL_READ_QUESTION,
+            TOOL_ADD_QUESTION,
+            TOOL_ADD_ANSWER,
         )
 
         /**
@@ -745,6 +873,10 @@ class ArchiveTools(
             TOOL_UPDATE_PERSON to AiToolCapability.WRITE_PEOPLE,
             TOOL_DELETE_PERSON to AiToolCapability.WRITE_PEOPLE,
             TOOL_DELETE_RECORD to AiToolCapability.WRITE_DIARY,
+            TOOL_LIST_QUESTIONS to AiToolCapability.READ_ARCHIVE,
+            TOOL_READ_QUESTION to AiToolCapability.READ_ARCHIVE,
+            TOOL_ADD_QUESTION to AiToolCapability.WRITE_QUESTION,
+            TOOL_ADD_ANSWER to AiToolCapability.WRITE_QUESTION,
         )
 
         private val READ_SPECS = listOf(
@@ -792,6 +924,16 @@ class ArchiveTools(
                 name = TOOL_SEARCH,
                 description = "在自己的档案里检索关键词，返回最相关的原文片段。",
                 parametersJson = """{"type":"object","properties":{"query":{"type":"string"},"person_id":{"type":"string"}},"required":["query"]}""",
+            ),
+            AiToolSpec(
+                name = TOOL_LIST_QUESTIONS,
+                description = "列出每日一问（问题 id、文本、回答数、归档日）。这些是用户自己的追问，属于主观想法而非客观事实。",
+                parametersJson = """{"type":"object","properties":{},"required":[]}""",
+            ),
+            AiToolSpec(
+                name = TOOL_READ_QUESTION,
+                description = "按 question_id 读取一个每日一问的问题文本与全部回答（含时间）。这是用户的主观自问自答，不要当作事实陈述。",
+                parametersJson = """{"type":"object","properties":{"question_id":{"type":"string"}},"required":["question_id"]}""",
             ),
         )
 
@@ -846,6 +988,19 @@ class ArchiveTools(
             ),
         )
 
-        private val ALL_SPECS = READ_SPECS + ATTACHMENT_SPECS + WRITE_SPECS
+        private val QUESTION_SPECS = listOf(
+            AiToolSpec(
+                name = TOOL_ADD_QUESTION,
+                description = "新建一个每日一问（≤500 字），可附 ISO-8601 提醒时刻数组。需要用户确认。",
+                parametersJson = """{"type":"object","properties":{"text":{"type":"string"},"reminders":{"type":"array","items":{"type":"string"}}},"required":["text"]}""",
+            ),
+            AiToolSpec(
+                name = TOOL_ADD_ANSWER,
+                description = "给一个每日一问追加一条回答（≤20000 字）。需要用户确认。",
+                parametersJson = """{"type":"object","properties":{"question_id":{"type":"string"},"text":{"type":"string"}},"required":["question_id","text"]}""",
+            ),
+        )
+
+        private val ALL_SPECS = READ_SPECS + ATTACHMENT_SPECS + WRITE_SPECS + QUESTION_SPECS
     }
 }

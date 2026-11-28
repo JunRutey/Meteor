@@ -72,6 +72,9 @@ internal fun isSuccessfulSearchableWrite(name: String, result: String): Boolean 
         ArchiveTools.TOOL_CREATE_PERSON -> "created"
         ArchiveTools.TOOL_UPDATE_PERSON -> "updated"
         ArchiveTools.TOOL_DELETE_PERSON -> "deleted"
+        // ADR-074/075: question writes change the searchable corpus.
+        ArchiveTools.TOOL_ADD_QUESTION -> "created"
+        ArchiveTools.TOOL_ADD_ANSWER -> "saved"
         else -> return false
     }
     return try {

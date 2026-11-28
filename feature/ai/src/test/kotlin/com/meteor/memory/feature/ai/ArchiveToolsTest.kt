@@ -11,9 +11,12 @@ import com.meteor.memory.core.storage.PersonDeleteResult
 import com.meteor.memory.core.storage.PersonEntry
 import com.meteor.memory.core.storage.PersonProfile
 import com.meteor.memory.core.storage.PersonQueries
+import com.meteor.memory.core.storage.QuestionStore
 import com.meteor.memory.core.storage.RecordScanner
 import com.meteor.memory.core.storage.Relation
 import com.meteor.memory.core.storage.StoredAttachment
+import com.meteor.memory.core.storage.StoredAnswer
+import com.meteor.memory.core.storage.StoredQuestion
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -184,12 +187,14 @@ class ArchiveToolsTest {
         moods: MoodQueries = NoMoods,
         people: PersonQueries = NoPeople,
         deleter: ArchiveRecordDeleter? = null,
+        questions: QuestionStore? = null,
     ): ArchiveTools = ArchiveTools(
         rootDir = root,
         scanner = RecordScanner { emptyList() },
         personQueries = people,
         moodQueries = moods,
         diaryQueries = diaries,
+        questionStore = questions,
         attachments = attachments,
         permissions = permissions,
         archiveRecordDeleter = deleter,
@@ -566,5 +571,142 @@ class ArchiveToolsTest {
         )
 
         assertEquals("bad-attachment-id", errorOf(result))
+    }
+
+    // --- daily questions (ADR-075) ----------------------------------------
+
+    private class FakeQuestions : QuestionStore {
+        val items = mutableListOf<StoredQuestion>()
+        private var nextId = 0
+
+        private fun newId(): String = (nextId++).toString().padStart(32, '0')
+
+        override fun list(): List<StoredQuestion> =
+            items.sortedByDescending { it.createdAt }
+
+        override fun find(id: String): StoredQuestion? = items.firstOrNull { it.id == id }
+
+        override fun create(
+            text: String,
+            reminders: List<Instant>,
+            createdAt: Instant,
+            askedOn: LocalDate,
+        ): StoredQuestion {
+            val q = StoredQuestion(newId(), text.trim(), createdAt, askedOn, reminders)
+            items.add(q)
+            return q
+        }
+
+        override fun addAnswer(id: String, text: String, answeredAt: Instant): StoredQuestion? {
+            val q = find(id) ?: return null
+            val updated = q.copy(answers = q.answers + StoredAnswer(newId(), text.trim(), answeredAt))
+            items[items.indexOf(q)] = updated
+            return updated
+        }
+
+        override fun updateReminders(id: String, reminders: List<Instant>): StoredQuestion? {
+            val q = find(id) ?: return null
+            val updated = q.copy(reminders = reminders)
+            items[items.indexOf(q)] = updated
+            return updated
+        }
+
+        override fun delete(id: String): Boolean = items.removeIf { it.id == id }
+    }
+
+    private val readWriteQuestions = AiToolPermissions(writeDiary = true, writeQuestion = true)
+
+    @Test
+    fun `question read tools are listed, write tools follow the question grant`() {
+        val q = FakeQuestions()
+        val readOnly = tools(questions = q).specs().map { it.name }
+        assertTrue(readOnly.contains(ArchiveTools.TOOL_LIST_QUESTIONS))
+        assertTrue(readOnly.contains(ArchiveTools.TOOL_READ_QUESTION))
+        assertFalse(readOnly.contains(ArchiveTools.TOOL_ADD_QUESTION))
+        assertFalse(readOnly.contains(ArchiveTools.TOOL_ADD_ANSWER))
+
+        val writable = tools(questions = q, permissions = readWriteQuestions).specs().map { it.name }
+        assertTrue(writable.contains(ArchiveTools.TOOL_ADD_QUESTION))
+        assertTrue(writable.contains(ArchiveTools.TOOL_ADD_ANSWER))
+    }
+
+    @Test
+    fun `question tools are hidden when no store is wired`() {
+        val names = tools(permissions = readWriteQuestions).specs().map { it.name }
+        assertFalse(names.contains(ArchiveTools.TOOL_LIST_QUESTIONS))
+        assertFalse(names.contains(ArchiveTools.TOOL_ADD_QUESTION))
+    }
+
+    @Test
+    fun `question writes require confirmation`() {
+        val t = tools(questions = FakeQuestions(), permissions = readWriteQuestions)
+        assertTrue(t.requiresApproval(ArchiveTools.TOOL_ADD_QUESTION))
+        assertTrue(t.requiresApproval(ArchiveTools.TOOL_ADD_ANSWER))
+        assertFalse(t.requiresApproval(ArchiveTools.TOOL_LIST_QUESTIONS))
+    }
+
+    @Test
+    fun `add question then read it back`() {
+        val store = FakeQuestions()
+        val t = tools(questions = store, permissions = readWriteQuestions)
+        val created = JSONObject(
+            t.execute(ArchiveTools.TOOL_ADD_QUESTION, """{"text":"  为什么想换工作？  "}""", null),
+        )
+        assertTrue(created.getBoolean("created"))
+        assertEquals("question", created.getString("type"))
+        val id = created.getString("question_id")
+
+        val read = JSONObject(t.execute(ArchiveTools.TOOL_READ_QUESTION, """{"question_id":"$id"}""", null))
+        assertEquals("为什么想换工作？", read.getString("text"))
+        assertEquals(0, read.getJSONArray("answers").length())
+    }
+
+    @Test
+    fun `add answer appends and is visible through read and list`() {
+        val store = FakeQuestions()
+        val t = tools(questions = store, permissions = readWriteQuestions)
+        val q = JSONObject(
+            t.execute(ArchiveTools.TOOL_ADD_QUESTION, """{"text":"问题"}""", null),
+        )
+        val id = q.getString("question_id")
+
+        val saved = JSONObject(
+            t.execute(ArchiveTools.TOOL_ADD_ANSWER, """{"question_id":"$id","text":"我的回答"}""", null),
+        )
+        assertTrue(saved.getBoolean("saved"))
+
+        val read = JSONObject(t.execute(ArchiveTools.TOOL_READ_QUESTION, """{"question_id":"$id"}""", null))
+        assertEquals("我的回答", read.getJSONArray("answers").getJSONObject(0).getString("text"))
+        val list = JSONArray(t.execute(ArchiveTools.TOOL_LIST_QUESTIONS, "{}", null))
+        assertEquals(1, list.getJSONObject(0).getInt("answer_count"))
+        assertTrue(list.getJSONObject(0).getBoolean("answered"))
+    }
+
+    @Test
+    fun `question tools are refused for a persona chat`() {
+        val store = FakeQuestions()
+        val t = tools(questions = store, permissions = readWriteQuestions)
+        assertEquals(
+            "not-allowed",
+            errorOf(t.execute(ArchiveTools.TOOL_LIST_QUESTIONS, "{}", "p1")),
+        )
+        assertEquals(
+            "not-allowed",
+            errorOf(t.execute(ArchiveTools.TOOL_ADD_QUESTION, """{"text":"问题"}""", "p1")),
+        )
+    }
+
+    @Test
+    fun `malformed question id and bad reminder are refused`() {
+        val store = FakeQuestions()
+        val t = tools(questions = store, permissions = readWriteQuestions)
+        assertEquals(
+            "bad-question-id",
+            errorOf(t.execute(ArchiveTools.TOOL_READ_QUESTION, """{"question_id":"../../etc/passwd"}""", null)),
+        )
+        assertEquals(
+            "bad-reminder",
+            errorOf(t.execute(ArchiveTools.TOOL_ADD_QUESTION, """{"text":"问题","reminders":["not-a-time"]}""", null)),
+        )
     }
 }
