@@ -74,15 +74,35 @@ class AndroidNotificationFeature @Inject constructor(
     @Volatile
     private var notificationsEnabled: Boolean = true
 
+    /** Fine-grained switches under the master (1.7.3). */
+    @Volatile
+    private var diaryReminderEnabled: Boolean = true
+
+    @Volatile
+    private var questionReminderEnabled: Boolean = true
+
+    @Volatile
+    private var updateNotificationEnabled: Boolean = true
+
     override fun initialize() {
         NotificationChannels.create(context)
         scope.launch {
             settingsRepository.settings
-                .map { it.notificationsEnabled }
+                .map { settings ->
+                    NotificationPrefs(
+                        master = settings.notificationsEnabled,
+                        diary = settings.diaryReminderEnabled,
+                        question = settings.questionReminderEnabled,
+                        update = settings.updateNotificationEnabled,
+                    )
+                }
                 .distinctUntilChanged()
-                .collect { enabled ->
-                    notificationsEnabled = enabled
-                    if (!enabled) hideUpdateNotification()
+                .collect { prefs ->
+                    notificationsEnabled = prefs.master
+                    diaryReminderEnabled = prefs.diary
+                    questionReminderEnabled = prefs.question
+                    updateNotificationEnabled = prefs.update
+                    if (!prefs.master || !prefs.update) hideUpdateNotification()
                     syncReminder()
                 }
         }
@@ -98,6 +118,10 @@ class AndroidNotificationFeature @Inject constructor(
 
     override fun canPostDailyReminder(): Boolean {
         return canPostNotifications() && isDailyReminderChannelEnabled()
+    }
+
+    override fun canPostQuestionReminder(): Boolean {
+        return canPostNotifications() && isQuestionChannelEnabled()
     }
 
     override fun canScheduleExactAlarms(): Boolean = scheduler.canScheduleExactAlarms()
@@ -138,6 +162,9 @@ class AndroidNotificationFeature @Inject constructor(
     override suspend fun syncReminder() {
         val settings = settingsRepository.settings.first()
         notificationsEnabled = settings.notificationsEnabled
+        diaryReminderEnabled = settings.diaryReminderEnabled
+        questionReminderEnabled = settings.questionReminderEnabled
+        updateNotificationEnabled = settings.updateNotificationEnabled
         if (!settings.notificationsEnabled) {
             scheduler.cancel()
             hideUpdateNotification()
@@ -156,18 +183,25 @@ class AndroidNotificationFeature @Inject constructor(
         // idempotent — the scheduler identifies an alarm by its data URI, so
         // scheduling a still-valid instant replaces itself in place.
         //
-        // Deliberately before the daily-reminder channel gate below: questions have
-        // their own channel, so muting the once-a-day diary nudge must not stop
-        // question alarms from being armed.
-        questionReminderController.get().syncAll()
+        // Deliberately before the daily-reminder gate below: questions have
+        // their own switch and channel, so muting the once-a-day diary nudge
+        // must not stop question alarms from being armed.
+        if (settings.questionReminderEnabled) {
+            questionReminderController.get().syncAll()
+        } else {
+            questionReminderController.get().cancelAll()
+        }
+
+        if (!settings.updateNotificationEnabled) hideUpdateNotification()
 
         val notificationsAllowed = canPostNotifications()
         val reminderChannelAllowed = isDailyReminderChannelEnabled()
-        if (!notificationsAllowed || !reminderChannelAllowed) {
+        if (!settings.diaryReminderEnabled || !notificationsAllowed || !reminderChannelAllowed) {
             scheduler.cancel()
             appLog.warn(
                 TAG,
-                "Reminder scheduling skipped: notificationsAllowed=$notificationsAllowed, " +
+                "Reminder scheduling skipped: diaryEnabled=${settings.diaryReminderEnabled}, " +
+                    "notificationsAllowed=$notificationsAllowed, " +
                     "channelAllowed=$reminderChannelAllowed",
             )
             return
@@ -185,10 +219,16 @@ class AndroidNotificationFeature @Inject constructor(
     override suspend fun handleReminderAlarm() {
         val settings = settingsRepository.settings.first()
         notificationsEnabled = settings.notificationsEnabled
-        if (!settings.notificationsEnabled) {
+        diaryReminderEnabled = settings.diaryReminderEnabled
+        questionReminderEnabled = settings.questionReminderEnabled
+        updateNotificationEnabled = settings.updateNotificationEnabled
+        if (!settings.notificationsEnabled || !settings.diaryReminderEnabled) {
             scheduler.cancel()
-            hideUpdateNotification()
-            appLog.info(TAG, "Stale reminder alarm ignored because notifications are disabled")
+            if (!settings.notificationsEnabled) hideUpdateNotification()
+            appLog.info(
+                TAG,
+                "Stale reminder alarm ignored because diary reminders are disabled",
+            )
             return
         }
 
@@ -239,10 +279,16 @@ class AndroidNotificationFeature @Inject constructor(
         logReminderScheduled(nextTrigger, precision)
     }
 
-    private fun isDailyReminderChannelEnabled(): Boolean {
+    private fun isDailyReminderChannelEnabled(): Boolean =
+        isChannelEnabled(NotificationChannels.DAILY_REMINDER)
+
+    private fun isQuestionChannelEnabled(): Boolean =
+        isChannelEnabled(NotificationChannels.QUESTIONS)
+
+    private fun isChannelEnabled(channelId: String): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
         val channel = context.getSystemService(NotificationManager::class.java)
-            .getNotificationChannel(NotificationChannels.DAILY_REMINDER)
+            .getNotificationChannel(channelId)
         return channel != null && channel.importance != NotificationManager.IMPORTANCE_NONE
     }
 
@@ -278,7 +324,7 @@ class AndroidNotificationFeature @Inject constructor(
 
     @SuppressLint("MissingPermission")
     override fun showUpdateDownload(progress: UpdateNotificationProgress) {
-        if (!notificationsEnabled) {
+        if (!notificationsEnabled || !updateNotificationEnabled) {
             hideUpdateNotification()
             return
         }
@@ -312,7 +358,7 @@ class AndroidNotificationFeature @Inject constructor(
 
     @SuppressLint("MissingPermission")
     override fun showUpdateReady(versionName: String) {
-        if (!notificationsEnabled) {
+        if (!notificationsEnabled || !updateNotificationEnabled) {
             hideUpdateNotification()
             return
         }
@@ -343,10 +389,11 @@ class AndroidNotificationFeature @Inject constructor(
      */
     @SuppressLint("MissingPermission")
     override fun showQuestionReminder(questionId: String, questionText: String, trigger: Instant) {
-        // [notificationsEnabled] is the cached master switch: this is called from
-        // the controller's IO coroutine and must not read DataStore synchronously.
-        if (!notificationsEnabled) return
-        if (!canPostNotifications()) return
+        // [notificationsEnabled] and [questionReminderEnabled] are the cached
+        // switches: this is called from the controller's IO coroutine and must
+        // not read DataStore synchronously.
+        if (!notificationsEnabled || !questionReminderEnabled) return
+        if (!canPostQuestionReminder()) return
 
         val flattened = flattenQuestionText(questionText)
         val body = context.getString(R.string.question_notification_body, shorten(flattened))
@@ -493,6 +540,17 @@ class AndroidNotificationFeature @Inject constructor(
             ),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+
+    /**
+     * Snapshot of the four switches. A data class (not four separate flows)
+     * keeps one settings emission from triggering several syncReminder calls.
+     */
+    private data class NotificationPrefs(
+        val master: Boolean,
+        val diary: Boolean,
+        val question: Boolean,
+        val update: Boolean,
+    )
 
     companion object {
         /**

@@ -140,6 +140,28 @@ class SettingsRepositoryTest {
     }
 
     @Test
+    fun notificationSubSwitchesDefaultOnAndPersistIndependently() = runBlocking {
+        val store = FakePreferencesDataStore(mutablePreferencesOf())
+        val repository = SettingsRepository(store)
+
+        val defaults = repository.settings.first()
+        assertTrue(defaults.diaryReminderEnabled)
+        assertTrue(defaults.questionReminderEnabled)
+        assertTrue(defaults.updateNotificationEnabled)
+
+        repository.setDiaryReminderEnabled(false)
+        repository.setQuestionReminderEnabled(false)
+        repository.setUpdateNotificationEnabled(false)
+
+        val updated = repository.settings.first()
+        assertFalse(updated.diaryReminderEnabled)
+        assertFalse(updated.questionReminderEnabled)
+        assertFalse(updated.updateNotificationEnabled)
+        // The master switch is a separate switch, not implied by the sub ones.
+        assertTrue(updated.notificationsEnabled)
+    }
+
+    @Test
     fun albumSortModeDefaultsToImportDate() = runBlocking {
         val store = FakePreferencesDataStore(mutablePreferencesOf())
         val repository = SettingsRepository(store)

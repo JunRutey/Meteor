@@ -83,6 +83,9 @@ fun SettingsScreen(
     canScheduleExactAlarms: Boolean,
     notificationPermissionDenied: Boolean,
     onNotificationsEnabledChanged: (Boolean) -> Unit,
+    onDiaryReminderEnabledChanged: (Boolean) -> Unit,
+    onQuestionReminderEnabledChanged: (Boolean) -> Unit,
+    onUpdateNotificationEnabledChanged: (Boolean) -> Unit,
     onOpenExactAlarmSettings: () -> Unit,
     onOpenNotificationSettings: () -> Unit,
     onDismissNotificationPermissionDenied: () -> Unit,
@@ -210,10 +213,16 @@ fun SettingsScreen(
             SettingsSection(title = stringResource(R.string.settings_section_notifications)) {
                 NotificationSettingsSection(
                     enabled = settings.notificationsEnabled,
+                    diaryReminderEnabled = settings.diaryReminderEnabled,
+                    questionReminderEnabled = settings.questionReminderEnabled,
+                    updateNotificationEnabled = settings.updateNotificationEnabled,
                     notificationsAllowed = notificationsAllowed,
                     canScheduleExactAlarms = canScheduleExactAlarms,
                     permissionDenied = notificationPermissionDenied,
                     onEnabledChange = onNotificationsEnabledChanged,
+                    onDiaryReminderEnabledChanged = onDiaryReminderEnabledChanged,
+                    onQuestionReminderEnabledChanged = onQuestionReminderEnabledChanged,
+                    onUpdateNotificationEnabledChanged = onUpdateNotificationEnabledChanged,
                     onOpenExactAlarmSettings = onOpenExactAlarmSettings,
                     onOpenNotificationSettings = onOpenNotificationSettings,
                     onDismissPermissionDenied = onDismissNotificationPermissionDenied,
@@ -449,10 +458,15 @@ private fun ToggleRow(
     subtitle: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
 ) {
     SettingsRow {
         TitleBlock(title = title, subtitle = subtitle)
-        MeteorSwitch(checked = checked, onCheckedChange = onCheckedChange)
+        MeteorSwitch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
+        )
     }
 }
 
@@ -471,10 +485,15 @@ private fun ChevronRow(
 }
 
 @Composable
-private fun MeteorSwitch(checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+private fun MeteorSwitch(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
+) {
     Switch(
         checked = checked,
         onCheckedChange = onCheckedChange,
+        enabled = enabled,
         colors = SwitchDefaults.colors(
             checkedThumbColor = Color.White,
             checkedTrackColor = MaterialTheme.colorScheme.primary,
@@ -578,10 +597,16 @@ private fun ChevronIcon(previous: Boolean, tint: Color) {
 @Composable
 private fun NotificationSettingsSection(
     enabled: Boolean,
+    diaryReminderEnabled: Boolean,
+    questionReminderEnabled: Boolean,
+    updateNotificationEnabled: Boolean,
     notificationsAllowed: Boolean,
     canScheduleExactAlarms: Boolean,
     permissionDenied: Boolean,
     onEnabledChange: (Boolean) -> Unit,
+    onDiaryReminderEnabledChanged: (Boolean) -> Unit,
+    onQuestionReminderEnabledChanged: (Boolean) -> Unit,
+    onUpdateNotificationEnabledChanged: (Boolean) -> Unit,
     onOpenExactAlarmSettings: () -> Unit,
     onOpenNotificationSettings: () -> Unit,
     onDismissPermissionDenied: () -> Unit,
@@ -591,6 +616,32 @@ private fun NotificationSettingsSection(
         subtitle = stringResource(R.string.settings_notifications_desc),
         checked = enabled,
         onCheckedChange = onEnabledChange,
+    )
+    Hairline()
+    // The fine-grained rows stay visible while the master is off, disabled:
+    // that keeps the hierarchy legible instead of making three rows vanish.
+    ToggleRow(
+        title = stringResource(R.string.settings_diary_reminder),
+        subtitle = stringResource(R.string.settings_diary_reminder_desc),
+        checked = diaryReminderEnabled,
+        onCheckedChange = onDiaryReminderEnabledChanged,
+        enabled = enabled,
+    )
+    Hairline()
+    ToggleRow(
+        title = stringResource(R.string.settings_question_reminder),
+        subtitle = stringResource(R.string.settings_question_reminder_desc),
+        checked = questionReminderEnabled,
+        onCheckedChange = onQuestionReminderEnabledChanged,
+        enabled = enabled,
+    )
+    Hairline()
+    ToggleRow(
+        title = stringResource(R.string.settings_update_notification),
+        subtitle = stringResource(R.string.settings_update_notification_desc),
+        checked = updateNotificationEnabled,
+        onCheckedChange = onUpdateNotificationEnabledChanged,
+        enabled = enabled,
     )
 
     if (enabled) {

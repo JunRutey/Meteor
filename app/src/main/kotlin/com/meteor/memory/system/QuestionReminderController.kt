@@ -55,7 +55,10 @@ interface QuestionReminderController {
      */
     suspend fun snooze(questionId: String, trigger: Instant, kind: SnoozeKind)
 
-    /** Drops every question alarm; used when the master notification switch goes off. */
+    /**
+     * Drops every question alarm and any visible reminder; used when the master
+     * switch or the 每日一问 sub-switch goes off.
+     */
     suspend fun cancelAll()
 
     /** Which action button of the reminder notification was tapped. */
@@ -105,6 +108,10 @@ class AndroidQuestionReminderController @Inject constructor(
 
     override suspend fun syncAll() {
         runCatching {
+            if (!questionRemindersEnabled()) {
+                appLog.info(TAG, "Question reminder sync skipped: switch is off")
+                return@runCatching
+            }
             val now = Instant.now()
             questionStore.list().forEach { question ->
                 val next = question.nextReminder(now) ?: return@forEach
@@ -117,6 +124,10 @@ class AndroidQuestionReminderController @Inject constructor(
 
     override suspend fun sync(questionId: String) {
         runCatching {
+            if (!questionRemindersEnabled()) {
+                appLog.info(TAG, "Question reminder sync skipped: switch is off")
+                return@runCatching
+            }
             val question = questionStore.find(questionId) ?: return@runCatching
             val next = question.nextReminder(Instant.now()) ?: return@runCatching
             arm(questionId, next)
@@ -127,15 +138,20 @@ class AndroidQuestionReminderController @Inject constructor(
 
     override suspend fun handleAlarm(questionId: String, trigger: Instant) {
         runCatching {
-            // The reminder is *not* consumed while the switch is off: it has to
-            // still be in the file when the switch comes back on, otherwise a
-            // temporarily muted app would silently lose the reminder.
-            if (!settingsRepository.settings.first().notificationsEnabled) {
+            // The reminder is *not* consumed while either switch or the system
+            // channel is off: it has to still be in the file when they come
+            // back on, otherwise a temporarily muted app would silently lose
+            // the reminder.
+            val settings = settingsRepository.settings.first()
+            if (!settings.notificationsEnabled || !settings.questionReminderEnabled) {
                 appLog.info(TAG, "Question reminder skipped: notifications are disabled")
                 return@runCatching
             }
-            if (!notificationFeature.canPostNotifications()) {
-                appLog.warn(TAG, "Question reminder skipped: notifications are not allowed")
+            if (!notificationFeature.canPostQuestionReminder()) {
+                appLog.warn(
+                    TAG,
+                    "Question reminder skipped: notifications or the question channel are not allowed",
+                )
                 return@runCatching
             }
 
@@ -206,10 +222,25 @@ class AndroidQuestionReminderController @Inject constructor(
                 question.reminders.forEach { trigger ->
                     scheduler.cancel(question.id, trigger)
                 }
+                // A notification already on screen must not outlive the switch
+                // that muted it; the question itself and its pending instants
+                // stay in the file untouched.
+                notificationFeature.hideQuestionReminder(question.id)
             }
         }.onFailure { failure ->
             appLog.error(TAG, "Failed to cancel question reminders", failure)
         }
+    }
+
+    /**
+     * Both switches must be on. Read here, not only in [NotificationFeature],
+     * because the question screens call [sync]/[syncAll] directly after an
+     * edit — without this guard, disabling reminders and then editing a
+     * question would quietly re-arm its alarm.
+     */
+    private suspend fun questionRemindersEnabled(): Boolean {
+        val settings = settingsRepository.settings.first()
+        return settings.notificationsEnabled && settings.questionReminderEnabled
     }
 
     /** Arms one alarm and records the precision actually obtained. */

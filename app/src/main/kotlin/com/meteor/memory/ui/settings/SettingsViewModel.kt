@@ -182,6 +182,30 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
+    fun setDiaryReminderEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setDiaryReminderEnabled(enabled)
+            notificationFeature.syncReminder()
+            appLog.info(TAG, "diary reminder enabled=$enabled")
+        }
+    }
+
+    fun setQuestionReminderEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setQuestionReminderEnabled(enabled)
+            notificationFeature.syncReminder()
+            appLog.info(TAG, "question reminder enabled=$enabled")
+        }
+    }
+
+    fun setUpdateNotificationEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.setUpdateNotificationEnabled(enabled)
+            notificationFeature.syncReminder()
+            appLog.info(TAG, "update notification enabled=$enabled")
+        }
+    }
+
     fun refreshNotificationPermissions() {
         _notificationsAllowed.value = notificationFeature.canPostDailyReminder()
         _canScheduleExactAlarms.value = notificationFeature.canScheduleExactAlarms()

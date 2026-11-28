@@ -1111,6 +1111,9 @@ fun MeteorNavHost(
                         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                     }
                 },
+                onDiaryReminderEnabledChanged = viewModel::setDiaryReminderEnabled,
+                onQuestionReminderEnabledChanged = viewModel::setQuestionReminderEnabled,
+                onUpdateNotificationEnabledChanged = viewModel::setUpdateNotificationEnabled,
                 onOpenExactAlarmSettings = viewModel::openExactAlarmSettings,
                 onOpenNotificationSettings = viewModel::openNotificationSettings,
                 onDismissNotificationPermissionDenied = { notificationPermissionDenied = false },

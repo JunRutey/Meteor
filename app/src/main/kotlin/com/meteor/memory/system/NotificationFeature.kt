@@ -4,6 +4,13 @@ interface NotificationFeature {
     fun initialize()
     fun canPostNotifications(): Boolean
     fun canPostDailyReminder(): Boolean
+    /**
+     * Whether a 每日一问 reminder can actually become visible: notification
+     * permission plus the 每日一问 system channel not being muted. Delivery
+     * checks this before consuming a pending instant, so a muted channel does
+     * not silently eat the reminder.
+     */
+    fun canPostQuestionReminder(): Boolean
     fun canScheduleExactAlarms(): Boolean
     fun openNotificationSettings()
     fun openExactAlarmSettings()

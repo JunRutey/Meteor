@@ -45,6 +45,16 @@ data class AppSettings(
      */
     val notificationsEnabled: Boolean = true,
     /**
+     * In-app fine-grained switches under [notificationsEnabled] (1.7.3).
+     *
+     * The master switch still mutes everything; these let one reminder be
+     * silenced without giving up the others. All three default to on so an
+     * upgrade keeps the reminders the app already sent.
+     */
+    val diaryReminderEnabled: Boolean = true,
+    val questionReminderEnabled: Boolean = true,
+    val updateNotificationEnabled: Boolean = true,
+    /**
      * AI entry point (ADR-027). Off by default: a fresh install must not ship a
      * networked feature that is already on. Nothing leaves the device unless
      * this is on, [aiConsentAccepted] is true and a provider + API key is

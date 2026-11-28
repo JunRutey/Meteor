@@ -8,6 +8,17 @@
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!--
+        Reminders (1.7.3): Android 13+ requires POST_NOTIFICATIONS to show any
+        notification; without it the permission request could never be granted.
+        RECEIVE_BOOT_COMPLETED re-arms alarms after a reboot, and
+        SCHEDULE_EXACT_ALARM is the revocable grant the settings page already
+        offers to request (1.7.3).
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <!--
         The app lock asks for a biometric or device-credential check. This is a
         normal, install-time permission: it never raises a runtime dialog.
         androidx.biometric pulls it in transitively, but declaring it here keeps
