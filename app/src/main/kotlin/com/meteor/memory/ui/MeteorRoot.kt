@@ -5,11 +5,8 @@ import android.content.Context
 import android.view.View
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
@@ -53,7 +50,6 @@ import com.meteor.memory.ui.theme.MeteorTheme
  * `WindowInsets.safeDrawing` covers status/navigation bars, display cutout and the
  * keyboard. Individual screens must not add their own `imePadding()`.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun MeteorRoot(versionName: String, onContentReady: () -> Unit = {}) {
     val viewModel: RootViewModel = hiltViewModel()
@@ -96,16 +92,6 @@ fun MeteorRoot(versionName: String, onContentReady: () -> Unit = {}) {
     val windowContext = LocalContext.current
     val hideStatusBar = settings.hideStatusBar
     val currentHideStatusBar = rememberUpdatedState(hideStatusBar)
-
-    // With the status bar hidden, its inset must be gone from the root padding
-    // as well: keeping it left a white band above the content, and the drawer's
-    // elevation shadow plus rounded top edge drew a visible seam at that band.
-    // Horizontal and bottom insets (cutout sides, nav bar, IME) stay intact.
-    val rootInsets = if (hideStatusBar) {
-        WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
-    } else {
-        WindowInsets.safeDrawing
-    }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -164,9 +150,10 @@ fun MeteorRoot(versionName: String, onContentReady: () -> Unit = {}) {
                     .fillMaxSize()
                     // safeDrawing = system bars + display cutout + IME: one padding
                     // for everything the system can cover. Applied once here so a
-                    // screen never has to guess how the keyboard was handled; the
-                    // top side drops out only when the person hides the status bar.
-                    .windowInsetsPadding(rootInsets),
+                    // screen never has to guess how the keyboard was handled. The
+                    // drawer escapes this padding on its own when the status bar is
+                    // hidden, so the home header keeps its original offset.
+                    .windowInsetsPadding(WindowInsets.safeDrawing),
             ) {
                 when (locked) {
                     // Show only the app name, never a frame of decrypted content.
@@ -202,6 +189,7 @@ fun MeteorRoot(versionName: String, onContentReady: () -> Unit = {}) {
                                     mediaPickerMode = settings.mediaPickerMode,
                                     drawerOrder = settings.drawerOrder,
                                     drawerVisibleItems = settings.drawerVisibleItems,
+                                    drawerFullscreen = settings.hideStatusBar,
                                     onSystemScreenOpened = viewModel::beginSystemTransition,
                                 )
                             }
