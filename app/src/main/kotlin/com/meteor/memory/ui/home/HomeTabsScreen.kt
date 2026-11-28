@@ -89,16 +89,21 @@ fun HomeTabsScreen(
     }
 
     BoxWithConstraints(modifier.fillMaxSize()) {
-        // The drawer is the only surface allowed to cover the hidden status-bar
-        // area. The home header keeps the root's safeDrawing padding, so it stays
-        // at its original offset; the overlay is extended upward by that inset
-        // and shifted to the window top only while the status bar is hidden.
+        // The drawer is the only surface allowed to cover the system bars. The
+        // home header keeps the root's safeDrawing padding, so it stays at its
+        // original offset; the overlay escapes that padding itself: upward only
+        // while the status bar is hidden, and always down to the window bottom.
+        // The surface is full-bleed, so its content gets the same insets back as
+        // padding below — otherwise the version label sits under the gesture bar
+        // and the panel ends with a visible seam above the navigation bar.
+        val safeDrawingPadding = WindowInsets.safeDrawing.asPaddingValues()
         val drawerTopInset = if (drawerFullscreen) {
-            WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding()
+            safeDrawingPadding.calculateTopPadding()
         } else {
             0.dp
         }
-        val drawerHeight = maxHeight + drawerTopInset
+        val drawerBottomInset = safeDrawingPadding.calculateBottomPadding()
+        val drawerHeight = maxHeight + drawerTopInset + drawerBottomInset
         val drawerOffset = -drawerTopInset
 
         Column(Modifier.fillMaxSize()) {
@@ -188,6 +193,8 @@ fun HomeTabsScreen(
                 onClose = { drawerOpen = false },
                 drawerOrder = drawerOrder,
                 drawerVisibleItems = drawerVisibleItems,
+                contentTopInset = drawerTopInset,
+                contentBottomInset = drawerBottomInset,
             )
         }
     }
