@@ -116,7 +116,6 @@ import com.meteor.memory.ui.question.QuestionOpenEntryPoint
 import com.meteor.memory.ui.search.SearchScreen
 import com.meteor.memory.ui.search.SearchViewModel
 import com.meteor.memory.ui.settings.AiTestState
-import com.meteor.memory.ui.settings.DrawerSettingsScreen
 import com.meteor.memory.ui.settings.SettingsViewModel
 import com.meteor.memory.ui.theme.MotionTokens
 import com.meteor.memory.update.UpdateError
@@ -137,7 +136,6 @@ private const val ROUTE_SETTINGS = "settings"
 private const val SETTINGS_ENTER_SCALE = 0.97f
 private const val ROUTE_BIRTH_DATE = "settings/birth-date"
 private const val ROUTE_SETTINGS_APPEARANCE = "settings/appearance"
-private const val ROUTE_SETTINGS_APPEARANCE_DRAWER = "settings/appearance/drawer"
 private const val ROUTE_SETTINGS_NOTIFICATIONS = "settings/notifications"
 private const val ROUTE_AI_SETTINGS = "settings/ai"
 private const val ROUTE_AI_USAGE = "settings/ai/usage"
@@ -306,8 +304,8 @@ fun MeteorNavHost(
     /** Home drawer visibility and order, persisted in SettingsRepository. */
     drawerOrder: List<String> = DEFAULT_DRAWER_ORDER,
     drawerVisibleItems: Set<String> = DEFAULT_DRAWER_VISIBLE_ITEMS,
-    /** Drawer covers the hidden status-bar area while the home header stays inset. */
-    drawerFullscreen: Boolean = false,
+    /** Writes a drawer change made inside the drawer itself (hide/sort/manage). */
+    onDrawerConfigChanged: (order: List<String>, visibleItems: Set<String>) -> Unit = { _, _ -> },
     onSystemScreenOpened: () -> Unit = {},
 ) {
     val navController = rememberNavController()
@@ -421,7 +419,7 @@ fun MeteorNavHost(
                 animationsEnabled = animationsEnabled,
                 drawerOrder = drawerOrder,
                 drawerVisibleItems = drawerVisibleItems,
-                drawerFullscreen = drawerFullscreen,
+                onDrawerConfigChanged = onDrawerConfigChanged,
                 lifeContent = {
                     LifeTab(
                         viewModel = lifeViewModel,
@@ -1087,9 +1085,6 @@ fun MeteorNavHost(
                 versionName = versionName,
                 onDarkModeChanged = viewModel::setDarkMode,
                 onOpenAppearanceSettings = { navController.navigate(ROUTE_SETTINGS_APPEARANCE) },
-                onOpenDrawerSettings = {
-                    navController.navigate(ROUTE_SETTINGS_APPEARANCE_DRAWER)
-                },
                 onAppLockChanged = viewModel::setAppLockEnabled,
                 appLockUnavailable = appLockUnavailable,
                 onDismissAppLockUnavailable = viewModel::dismissAppLockUnavailable,
@@ -1162,17 +1157,6 @@ fun MeteorNavHost(
                 onDynamicColorChanged = viewModel::setDynamicColor,
                 onAnimationsChanged = viewModel::setAnimationsEnabled,
                 onHideStatusBarChanged = viewModel::setHideStatusBar,
-                onBack = { navController.popBackStack() },
-            )
-        }
-
-        composable(ROUTE_SETTINGS_APPEARANCE_DRAWER) {
-            val viewModel: SettingsViewModel = hiltViewModel()
-            val settings by viewModel.settings.collectAsStateWithLifecycle()
-
-            DrawerSettingsScreen(
-                settings = settings,
-                onConfigChanged = viewModel::setDrawerConfig,
                 onBack = { navController.popBackStack() },
             )
         }

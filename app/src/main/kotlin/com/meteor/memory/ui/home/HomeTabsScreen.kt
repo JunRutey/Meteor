@@ -19,16 +19,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredHeight
-import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -44,10 +41,14 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -76,7 +77,7 @@ fun HomeTabsScreen(
     animationsEnabled: Boolean = true,
     drawerOrder: List<String> = DEFAULT_DRAWER_ORDER,
     drawerVisibleItems: Set<String> = DEFAULT_DRAWER_VISIBLE_ITEMS,
-    drawerFullscreen: Boolean = false,
+    onDrawerConfigChanged: (order: List<String>, visibleItems: Set<String>) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
 ) {
     val tabStateHolder = rememberSaveableStateHolder()
@@ -88,23 +89,33 @@ fun HomeTabsScreen(
         action()
     }
 
-    BoxWithConstraints(modifier.fillMaxSize()) {
-        // The drawer is the only surface allowed to cover the system bars. The
-        // home header keeps the root's safeDrawing padding, so it stays at its
-        // original offset; the overlay escapes that padding itself: upward only
-        // while the status bar is hidden, and always down to the window bottom.
-        // The surface is full-bleed, so its content gets the same insets back as
-        // padding below — otherwise the version label sits under the gesture bar
-        // and the panel ends with a visible seam above the navigation bar.
-        val safeDrawingPadding = WindowInsets.safeDrawing.asPaddingValues()
-        val drawerTopInset = if (drawerFullscreen) {
-            safeDrawingPadding.calculateTopPadding()
-        } else {
-            0.dp
+    val view = LocalView.current
+    val density = LocalDensity.current
+    // The drawer must paint the whole window, but this composable only gets the
+    // area inside the root's safe-area padding. Instead of guessing how much
+    // that padding was (it changes with the status bar and the IME), remember
+    // where this box actually sits inside the window and move the overlay by
+    // exactly that offset. Robust on every device and every bar state.
+    var windowBounds by remember { mutableStateOf(Rect.Zero) }
+
+    BoxWithConstraints(
+        modifier
+            .fillMaxSize()
+            .onGloballyPositioned { coordinates ->
+                val bounds = coordinates.boundsInWindow()
+                if (bounds != windowBounds) windowBounds = bounds
+            },
+    ) {
+        val overlayWidth = with(density) { view.width.toDp() }
+        val overlayHeight = with(density) { view.height.toDp() }
+        val overlayOffsetX = with(density) { (-windowBounds.left).toDp() }
+        val overlayOffsetY = with(density) { (-windowBounds.top).toDp() }
+        // The panel is full-bleed, so its content gets the safe-area amounts
+        // back as padding; they are measured, not re-derived from insets.
+        val contentTopInset = with(density) { windowBounds.top.toDp() }
+        val contentBottomInset = with(density) {
+            (view.height - windowBounds.bottom).coerceAtLeast(0f).toDp()
         }
-        val drawerBottomInset = safeDrawingPadding.calculateBottomPadding()
-        val drawerHeight = maxHeight + drawerTopInset + drawerBottomInset
-        val drawerOffset = -drawerTopInset
 
         Column(Modifier.fillMaxSize()) {
             HomeHeader(
@@ -134,12 +145,14 @@ fun HomeTabsScreen(
         }
 
         // 侧边栏（ADR-071）：遮罩与面板分开动画，遮罩只淡入淡出，面板从左侧滑入。
+        // Both layers are placed in window coordinates so the scrim and the panel
+        // cover the system bars instead of stopping at the safe-area padding.
         AnimatedVisibility(
             visible = drawerOpen,
             modifier = Modifier
-                .fillMaxWidth()
-                .requiredHeight(drawerHeight)
-                .offset(y = drawerOffset),
+                .align(Alignment.TopStart)
+                .requiredSize(overlayWidth, overlayHeight)
+                .offset(x = overlayOffsetX, y = overlayOffsetY),
             enter = if (animationsEnabled) {
                 fadeIn(MotionTokens.enter())
             } else {
@@ -167,8 +180,8 @@ fun HomeTabsScreen(
             visible = drawerOpen,
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .requiredHeight(drawerHeight)
-                .offset(y = drawerOffset),
+                .requiredSize(overlayWidth, overlayHeight)
+                .offset(x = overlayOffsetX, y = overlayOffsetY),
             enter = if (animationsEnabled) {
                 slideInHorizontally(animationSpec = MotionTokens.enter()) { -it } +
                     fadeIn(MotionTokens.enter())
@@ -193,8 +206,10 @@ fun HomeTabsScreen(
                 onClose = { drawerOpen = false },
                 drawerOrder = drawerOrder,
                 drawerVisibleItems = drawerVisibleItems,
-                contentTopInset = drawerTopInset,
-                contentBottomInset = drawerBottomInset,
+                onDrawerConfigChanged = onDrawerConfigChanged,
+                contentTopInset = contentTopInset,
+                contentBottomInset = contentBottomInset,
+                animationsEnabled = animationsEnabled,
             )
         }
     }
