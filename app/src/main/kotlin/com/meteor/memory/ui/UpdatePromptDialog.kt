@@ -1,8 +1,10 @@
 package com.meteor.memory.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -54,6 +56,58 @@ internal fun UpdatePromptDialog(
                     text = stringResource(R.string.update_prompt_later),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+        },
+    )
+}
+
+/**
+ * Foreground download progress (1.7.1).
+ *
+ * Replaces the confirmation dialog in place after 「立即更新」. The same
+ * download keeps running as a notification if the person sends it to the
+ * background with the button, back or by leaving the app; if the dialog is
+ * still in front when the bytes finish, [RootViewModel] opens the installer.
+ */
+@Composable
+internal fun UpdateProgressDialog(
+    progress: UpdateDownloadProgress,
+    onDismiss: () -> Unit,
+) {
+    val determinate = progress.totalBytes > 0
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(text = stringResource(R.string.update_progress_title, progress.versionName)) },
+        text = {
+            Column {
+                if (determinate) {
+                    LinearProgressIndicator(
+                        progress = { progress.percent / 100f },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        text = stringResource(R.string.update_progress_percent, progress.percent),
+                        modifier = Modifier.padding(top = 10.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Text(
+                        text = stringResource(R.string.update_progress_preparing),
+                        modifier = Modifier.padding(top = 10.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Text(
+                    text = stringResource(R.string.update_progress_body),
+                    modifier = Modifier.padding(top = 10.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.update_progress_background))
             }
         },
     )

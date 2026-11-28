@@ -52,6 +52,7 @@ fun MeteorRoot(versionName: String, onContentReady: () -> Unit = {}) {
     val noDeviceCredential by viewModel.noDeviceCredential.collectAsStateWithLifecycle()
     val onboardingGate by viewModel.onboardingGate.collectAsStateWithLifecycle()
     val updatePrompt by viewModel.updatePrompt.collectAsStateWithLifecycle()
+    val updateDownload by viewModel.updateDownload.collectAsStateWithLifecycle()
 
     // Cold-start splash hand-over (ADR-038). The system splash may leave only
     // once the shell knows whether to show the lock gate or the onboarding
@@ -165,6 +166,12 @@ fun MeteorRoot(versionName: String, onContentReady: () -> Unit = {}) {
                                     onDownload = viewModel::acceptUpdatePrompt,
                                     onLater = viewModel::dismissUpdatePrompt,
                                     onSkip = viewModel::skipUpdatePrompt,
+                                )
+                            }
+                            updateDownload?.let { progress ->
+                                UpdateProgressDialog(
+                                    progress = progress,
+                                    onDismiss = viewModel::dismissDownloadProgressToNotification,
                                 )
                             }
                         }

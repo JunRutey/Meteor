@@ -72,11 +72,18 @@ class UpdateService(
     private var downloadedUpdate: Pair<String, File>? = null
 
     fun checkOnLaunch() {
-        if (launchCheckStarted.compareAndSet(false, true)) checkForUpdate()
+        if (launchCheckStarted.compareAndSet(false, true)) checkForUpdate(manual = false)
     }
 
-    /** Phase one: ask GitHub for the latest release, never download anything. */
-    fun checkForUpdate() {
+    /**
+     * Phase one: ask GitHub for the latest release, never download anything.
+     *
+     * [manual] marks a tap on 「检查更新」 in Settings. The shell uses it to ask
+     * again about a version it already prompted for in this process, so a
+     * person who dismissed the launch dialog can still reach the update by
+     * pressing the button instead of finding a permanently parked row.
+     */
+    fun checkForUpdate(manual: Boolean = false) {
         scope.launch {
             if (!checkMutex.tryLock()) {
                 appLog.debug(TAG, "update check already running")
@@ -96,8 +103,8 @@ class UpdateService(
                 }
 
                 val versionName = release.version.toString()
-                appLog.info(TAG, "update available: $versionName")
-                _state.value = UpdateState.Available(versionName)
+                appLog.info(TAG, "update available: $versionName (manual=$manual)")
+                _state.value = UpdateState.Available(versionName, manual)
             } catch (failure: UpdateException) {
                 appLog.warn(TAG, "update check failed: ${failure.reason}", failure.cause ?: failure)
                 notificationFeature.hideUpdateNotification()
@@ -392,6 +399,15 @@ class UpdateService(
                         if (report) {
                             lastPercent = percent
                             lastNotifiedBytes = downloadedBytes
+                            // Same numbers drive the foreground dialog and the
+                            // background notification: the dialog showing a
+                            // different bar than the notification it turns
+                            // into would look like a stalled download.
+                            _state.value = UpdateState.Downloading(
+                                versionName = versionName,
+                                downloadedBytes = downloadedBytes,
+                                totalBytes = expectedSize,
+                            )
                             notificationFeature.showUpdateDownload(
                                 UpdateNotificationProgress(
                                     versionName = versionName,

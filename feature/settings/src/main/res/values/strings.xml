@@ -25,9 +25,7 @@
     <string name="settings_install_update">安装更新</string>
     <string name="settings_update_install_note">安装时需允许 Meteor 安装未知来源应用</string>
     <string name="settings_update_note_short">打开应用时检查新版，发现后弹窗询问</string>
-    <string name="settings_update_available_title">发现新版本</string>
-    <string name="settings_update_available_body">Meteor %1$s 可以更新，确认后开始下载</string>
-    <string name="settings_update_download">下载更新</string>
+    <string name="settings_update_available_body">Meteor %1$s 可以更新，点击「检查更新」重新弹窗</string>
     <string name="settings_update_error_checksum">更新包校验失败，已停止安装，请稍后重试。</string>
     <string name="settings_update_ready_title">新版本已就绪</string>
     <string name="settings_update_ready_body">Meteor %1$s 已下载，点击安装更新</string>

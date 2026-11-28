@@ -212,13 +212,7 @@ class SettingsViewModel @Inject constructor(
      */
     fun checkForUpdates() {
         appLog.info(TAG, "manual update check")
-        updateService.checkForUpdate()
-    }
-
-    /** The settings 「下载更新」 button on the available-version row. */
-    fun downloadUpdate() {
-        appLog.info(TAG, "download update requested from settings")
-        updateService.startDownload()
+        updateService.checkForUpdate(manual = true)
     }
 
     fun installUpdate() {

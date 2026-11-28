@@ -72,13 +72,10 @@ fun SettingsScreen(
     onAutoCheckForUpdatesChanged: (Boolean) -> Unit,
     updateStatusText: String,
     updateBusy: Boolean,
-    /** Version shown by the update rows: the pending release, or the current one when none. */
+    /** Version shown by the install row: the pending release, or the current one when none. */
     updateVersionName: String,
-    updateAvailable: Boolean,
     updateCanInstall: Boolean,
     onCheckUpdates: () -> Unit,
-    /** Downloads the release the dialog announced (ADR-072); requires [updateAvailable]. */
-    onDownloadUpdate: () -> Unit,
     onInstallUpdate: () -> Unit,
     logSizeBytes: Long,
     notificationsAllowed: Boolean,
@@ -243,23 +240,6 @@ fun SettingsScreen(
                         onClick = onCheckUpdates,
                         enabled = !updateBusy,
                     )
-                }
-                if (updateAvailable) {
-                    Hairline()
-                    SettingsRow {
-                        TitleBlock(
-                            title = stringResource(R.string.settings_update_available_title),
-                            subtitle = stringResource(R.string.settings_update_available_body, updateVersionName),
-                        )
-                        Button(
-                            onClick = onDownloadUpdate,
-                            modifier = Modifier.height(48.dp),
-                            shape = RoundedCornerShape(24.dp),
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                        ) {
-                            Text(text = stringResource(R.string.settings_update_download), fontSize = 15.sp)
-                        }
-                    }
                 }
                 if (updateCanInstall) {
                     Hairline()

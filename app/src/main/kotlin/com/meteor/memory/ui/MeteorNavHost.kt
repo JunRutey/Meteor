@@ -1086,11 +1086,9 @@ fun MeteorNavHost(
                 updateStatusText = updateStatusText(updateState),
                 updateBusy = updateState is UpdateState.Checking || updateState is UpdateState.Downloading,
                 updateVersionName = pendingUpdateVersion(updateState, versionName),
-                updateAvailable = updateState is UpdateState.Available,
                 updateCanInstall = updateState is UpdateState.ReadyToInstall ||
                     updateState is UpdateState.InstallPermissionRequired,
                 onCheckUpdates = viewModel::checkForUpdates,
-                onDownloadUpdate = viewModel::downloadUpdate,
                 onInstallUpdate = viewModel::installUpdate,
                 logSizeBytes = logSizeBytes,
                 notificationsAllowed = notificationsAllowed,
