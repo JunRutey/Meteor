@@ -7,7 +7,6 @@
     <string name="settings_more_appearance_desc">动态取色、界面动画与隐藏状态栏</string>
     <string name="settings_drawer_customize">自定义侧边栏</string>
     <string name="settings_drawer_customize_desc">选择显示哪些功能，并调整上下顺序</string>
-    <string name="settings_choice_cancel">取消</string>
     <string name="settings_section_profile">个人资料</string>
     <string name="settings_section_media">媒体</string>
     <string name="settings_media_picker">文件选择器</string>

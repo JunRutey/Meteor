@@ -16,13 +16,19 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredHeight
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -70,6 +76,7 @@ fun HomeTabsScreen(
     animationsEnabled: Boolean = true,
     drawerOrder: List<String> = DEFAULT_DRAWER_ORDER,
     drawerVisibleItems: Set<String> = DEFAULT_DRAWER_VISIBLE_ITEMS,
+    drawerFullscreen: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val tabStateHolder = rememberSaveableStateHolder()
@@ -81,7 +88,19 @@ fun HomeTabsScreen(
         action()
     }
 
-    Box(modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        // The drawer is the only surface allowed to cover the hidden status-bar
+        // area. The home header keeps the root's safeDrawing padding, so it stays
+        // at its original offset; the overlay is extended upward by that inset
+        // and shifted to the window top only while the status bar is hidden.
+        val drawerTopInset = if (drawerFullscreen) {
+            WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding()
+        } else {
+            0.dp
+        }
+        val drawerHeight = maxHeight + drawerTopInset
+        val drawerOffset = -drawerTopInset
+
         Column(Modifier.fillMaxSize()) {
             HomeHeader(
                 appName = appName,
@@ -112,6 +131,10 @@ fun HomeTabsScreen(
         // 侧边栏（ADR-071）：遮罩与面板分开动画，遮罩只淡入淡出，面板从左侧滑入。
         AnimatedVisibility(
             visible = drawerOpen,
+            modifier = Modifier
+                .fillMaxWidth()
+                .requiredHeight(drawerHeight)
+                .offset(y = drawerOffset),
             enter = if (animationsEnabled) {
                 fadeIn(MotionTokens.enter())
             } else {
@@ -137,7 +160,10 @@ fun HomeTabsScreen(
 
         AnimatedVisibility(
             visible = drawerOpen,
-            modifier = Modifier.align(Alignment.CenterStart),
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .requiredHeight(drawerHeight)
+                .offset(y = drawerOffset),
             enter = if (animationsEnabled) {
                 slideInHorizontally(animationSpec = MotionTokens.enter()) { -it } +
                     fadeIn(MotionTokens.enter())

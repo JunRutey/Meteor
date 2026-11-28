@@ -17,14 +17,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -45,6 +47,7 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -99,9 +102,6 @@ fun SettingsScreen(
     onDismissAppLockUnavailable: () -> Unit = {},
     onOpenSecuritySettings: () -> Unit = {},
 ) {
-    var showThemeDialog by rememberSaveable { mutableStateOf(false) }
-    var showMediaDialog by rememberSaveable { mutableStateOf(false) }
-
     Column(modifier = modifier.fillMaxSize()) {
         SettingsHeader(
             onBack = onBack,
@@ -114,10 +114,28 @@ fun SettingsScreen(
                 .padding(bottom = 28.dp),
         ) {
             SettingsSection(title = stringResource(R.string.settings_section_appearance)) {
-                ChevronRow(
+                SettingsChoiceRow(
                     title = stringResource(R.string.settings_dark_mode),
-                    subtitle = themeLabel(settings.darkMode),
-                    onClick = { showThemeDialog = true },
+                    options = listOf(
+                        ChoiceOption(
+                            value = DarkMode.FOLLOW_SYSTEM,
+                            label = stringResource(R.string.settings_dark_follow_system),
+                            description = stringResource(R.string.settings_dark_follow_system_desc),
+                        ),
+                        ChoiceOption(
+                            value = DarkMode.DARK,
+                            label = stringResource(R.string.settings_dark_dark),
+                            description = stringResource(R.string.settings_dark_dark_desc),
+                        ),
+                        ChoiceOption(
+                            value = DarkMode.LIGHT,
+                            label = stringResource(R.string.settings_dark_light),
+                            description = stringResource(R.string.settings_dark_light_desc),
+                        ),
+                    ),
+                    selected = settings.darkMode,
+                    icon = { mode -> ThemeChoiceGlyph(mode) },
+                    onSelect = onDarkModeChanged,
                 )
                 Hairline()
                 ChevronRow(
@@ -144,10 +162,22 @@ fun SettingsScreen(
             // Which picker the editors open (ADR-059). The in-app picker keeps
             // source metadata, which the album's "by source date" ordering needs.
             SettingsSection(title = stringResource(R.string.settings_section_media)) {
-                ChevronRow(
+                SettingsChoiceRow(
                     title = stringResource(R.string.settings_media_picker),
-                    subtitle = mediaPickerLabel(settings.mediaPickerMode),
-                    onClick = { showMediaDialog = true },
+                    options = listOf(
+                        ChoiceOption(
+                            value = MediaPickerMode.IN_APP,
+                            label = stringResource(R.string.settings_media_picker_in_app),
+                            description = stringResource(R.string.settings_media_picker_in_app_desc),
+                        ),
+                        ChoiceOption(
+                            value = MediaPickerMode.SYSTEM,
+                            label = stringResource(R.string.settings_media_picker_system),
+                            description = stringResource(R.string.settings_media_picker_system_desc),
+                        ),
+                    ),
+                    selected = settings.mediaPickerMode,
+                    onSelect = onMediaPickerModeChanged,
                 )
             }
 
@@ -278,53 +308,6 @@ fun SettingsScreen(
                 )
             }
         }
-    }
-
-    if (showThemeDialog) {
-        ChoiceDialog(
-            title = stringResource(R.string.settings_dark_mode),
-            options = listOf(
-                ChoiceOption(
-                    value = DarkMode.FOLLOW_SYSTEM,
-                    label = stringResource(R.string.settings_dark_follow_system),
-                    description = stringResource(R.string.settings_dark_follow_system_desc),
-                ),
-                ChoiceOption(
-                    value = DarkMode.DARK,
-                    label = stringResource(R.string.settings_dark_dark),
-                    description = stringResource(R.string.settings_dark_dark_desc),
-                ),
-                ChoiceOption(
-                    value = DarkMode.LIGHT,
-                    label = stringResource(R.string.settings_dark_light),
-                    description = stringResource(R.string.settings_dark_light_desc),
-                ),
-            ),
-            selected = settings.darkMode,
-            onSelect = onDarkModeChanged,
-            onDismiss = { showThemeDialog = false },
-        )
-    }
-
-    if (showMediaDialog) {
-        ChoiceDialog(
-            title = stringResource(R.string.settings_media_picker),
-            options = listOf(
-                ChoiceOption(
-                    value = MediaPickerMode.IN_APP,
-                    label = stringResource(R.string.settings_media_picker_in_app),
-                    description = stringResource(R.string.settings_media_picker_in_app_desc),
-                ),
-                ChoiceOption(
-                    value = MediaPickerMode.SYSTEM,
-                    label = stringResource(R.string.settings_media_picker_system),
-                    description = stringResource(R.string.settings_media_picker_system_desc),
-                ),
-            ),
-            selected = settings.mediaPickerMode,
-            onSelect = onMediaPickerModeChanged,
-            onDismiss = { showMediaDialog = false },
-        )
     }
 
     if (notificationPermissionDenied) {
@@ -547,80 +530,194 @@ internal data class ChoiceOption<T>(
 )
 
 /**
- * Popup choice used by 主题 and 文件选择器 instead of inline segmented buttons.
- * It follows the delete-person confirmation pattern: a compact AlertDialog with
- * a single-select list and a cancel action, so the settings page stays quiet.
+ * The theme / file-picker row with an anchored dropdown menu (1.7.4).
+ *
+ * Deliberately not an AlertDialog: the current value and the up/down chevrons
+ * stay in place, and the compact menu opens directly under that value, the way
+ * the interface-settings screen does.
  */
 @Composable
-internal fun <T> ChoiceDialog(
+private fun <T> SettingsChoiceRow(
     title: String,
     options: List<ChoiceOption<T>>,
     selected: T,
     onSelect: (T) -> Unit,
-    onDismiss: () -> Unit,
+    icon: (@Composable (T) -> Unit)? = null,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(text = title) },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                options.forEachIndexed { index, option ->
-                    if (index > 0) Hairline()
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                onSelect(option.value)
-                                onDismiss()
-                            }
-                            .padding(vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
-                            Text(
-                                text = option.label,
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                            option.description?.let { description ->
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val selectedLabel = options.firstOrNull { it.value == selected }?.label.orEmpty()
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clickable { expanded = true }
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = title,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        Box(Modifier.weight(1f))
+        Box {
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable { expanded = true }
+                    .padding(start = 8.dp, top = 4.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = selectedLabel,
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.secondary,
+                )
+                ChevronUpDownIcon()
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                offset = DpOffset(0.dp, 4.dp),
+                modifier = Modifier.widthIn(min = 190.dp),
+            ) {
+                options.forEach { option ->
+                    val glyph = icon
+                    DropdownMenuItem(
+                        text = {
+                            Column {
                                 Text(
-                                    text = description,
-                                    modifier = Modifier.padding(top = 2.dp),
-                                    fontSize = 13.sp,
-                                    lineHeight = 18.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    text = option.label,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Medium,
+                                )
+                                option.description?.let { description ->
+                                    Text(
+                                        text = description,
+                                        modifier = Modifier.padding(top = 2.dp),
+                                        fontSize = 12.sp,
+                                        lineHeight = 16.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        },
+                        leadingIcon = if (glyph != null) {
+                            { glyph(option.value) }
+                        } else {
+                            null
+                        },
+                        trailingIcon = if (selected == option.value) {
+                            {
+                                Text(
+                                    text = "✓",
+                                    color = MaterialTheme.colorScheme.primary,
                                 )
                             }
-                        }
-                        RadioButton(
-                            selected = selected == option.value,
-                            onClick = null,
-                        )
-                    }
+                        } else {
+                            null
+                        },
+                        onClick = {
+                            onSelect(option.value)
+                            expanded = false
+                        },
+                    )
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(text = stringResource(R.string.settings_choice_cancel))
+        }
+    }
+}
+
+@Composable
+private fun ChevronUpDownIcon() {
+    val tint = MaterialTheme.colorScheme.secondary
+    Canvas(Modifier.padding(start = 4.dp).size(16.dp)) {
+        val stroke = 1.5.dp.toPx()
+        val unit = size.width / 16f
+        val up = Path().apply {
+            moveTo(4f * unit, 6.5f * unit)
+            lineTo(8f * unit, 2.5f * unit)
+            lineTo(12f * unit, 6.5f * unit)
+        }
+        val down = Path().apply {
+            moveTo(4f * unit, 9.5f * unit)
+            lineTo(8f * unit, 13.5f * unit)
+            lineTo(12f * unit, 9.5f * unit)
+        }
+        drawPath(up, tint, style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round))
+        drawPath(down, tint, style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round))
+    }
+}
+
+/** Small line-art equivalents of the system / light / dark options. */
+@Composable
+private fun ThemeChoiceGlyph(mode: DarkMode) {
+    val tint = MaterialTheme.colorScheme.onSurfaceVariant
+    val menuSurface = MaterialTheme.colorScheme.surfaceContainer
+    Canvas(Modifier.size(20.dp)) {
+        val unit = size.width / 20f
+        val cx = size.width / 2f
+        val cy = size.height / 2f
+        when (mode) {
+            DarkMode.FOLLOW_SYSTEM -> {
+                val stroke = 1.5.dp.toPx()
+                drawCircle(
+                    color = tint,
+                    radius = 5.5f * unit,
+                    center = Offset(cx, cy),
+                    style = Stroke(width = stroke),
+                )
+                for (index in 0 until 8) {
+                    val angle = Math.toRadians((index * 45).toDouble())
+                    drawLine(
+                        color = tint,
+                        start = Offset(
+                            cx + (7f * unit * kotlin.math.cos(angle)).toFloat(),
+                            cy + (7f * unit * kotlin.math.sin(angle)).toFloat(),
+                        ),
+                        end = Offset(
+                            cx + (8.8f * unit * kotlin.math.cos(angle)).toFloat(),
+                            cy + (8.8f * unit * kotlin.math.sin(angle)).toFloat(),
+                        ),
+                        strokeWidth = stroke,
+                        cap = StrokeCap.Round,
+                    )
+                }
             }
-        },
-    )
-}
 
-@Composable
-private fun themeLabel(mode: DarkMode): String = when (mode) {
-    DarkMode.FOLLOW_SYSTEM -> stringResource(R.string.settings_dark_follow_system)
-    DarkMode.DARK -> stringResource(R.string.settings_dark_dark)
-    DarkMode.LIGHT -> stringResource(R.string.settings_dark_light)
-}
+            DarkMode.LIGHT -> {
+                drawCircle(color = tint, radius = 3.6f * unit, center = Offset(cx, cy))
+                val stroke = 1.5.dp.toPx()
+                for (index in 0 until 8) {
+                    val angle = Math.toRadians((index * 45).toDouble())
+                    drawLine(
+                        color = tint,
+                        start = Offset(
+                            cx + (6f * unit * kotlin.math.cos(angle)).toFloat(),
+                            cy + (6f * unit * kotlin.math.sin(angle)).toFloat(),
+                        ),
+                        end = Offset(
+                            cx + (8.8f * unit * kotlin.math.cos(angle)).toFloat(),
+                            cy + (8.8f * unit * kotlin.math.sin(angle)).toFloat(),
+                        ),
+                        strokeWidth = stroke,
+                        cap = StrokeCap.Round,
+                    )
+                }
+            }
 
-@Composable
-private fun mediaPickerLabel(mode: MediaPickerMode): String = when (mode) {
-    MediaPickerMode.IN_APP -> stringResource(R.string.settings_media_picker_in_app)
-    MediaPickerMode.SYSTEM -> stringResource(R.string.settings_media_picker_system)
+            DarkMode.DARK -> {
+                drawCircle(color = tint, radius = 6.4f * unit, center = Offset(cx, cy))
+                drawCircle(
+                    color = menuSurface,
+                    radius = 5.5f * unit,
+                    center = Offset(cx + 3.2f * unit, cy - 2.4f * unit),
+                )
+            }
+        }
+    }
 }
 
 @Composable
