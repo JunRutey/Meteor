@@ -4,18 +4,17 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.MutableTransitionState
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,13 +25,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
@@ -45,18 +43,14 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -67,7 +61,6 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
@@ -87,7 +80,6 @@ import androidx.compose.ui.zIndex
 import com.meteor.memory.R
 import com.meteor.memory.feature.calendar.R as CalendarR
 import com.meteor.memory.ui.theme.MotionTokens
-import kotlin.math.roundToInt
 
 /** Every function row is the same height; the drag maths depends on it. */
 private val DRAWER_ROW_HEIGHT = 54.dp
@@ -99,8 +91,10 @@ private val DRAWER_ROW_HEIGHT = 54.dp
  * 相册、人际关系、AI、搜索、设置都在这里。面板本身不含导航，只把点击
  * 交给宿主的回调；关闭由 [onClose] 与遮罩负责。
  *
- * 侧边栏自己管理可见性与顺序（1.7.6）：长按任意功能可以隐藏它、进入拖动
- * 排序，或打开「管理功能」勾选；设置入口固定在底部，不参与这些操作。
+ * 侧边栏自己的可见性与顺序由 [DrawerReorderState] 持有（1.7.6）：长按任意
+ * 功能可以隐藏它、进入拖动排序，或打开「管理功能」勾选；设置入口固定在底部，
+ * 不参与这些操作。排序模式是抽屉的编辑态，拖动的几何计算与落盘时机都在
+ * `DrawerReorder.kt` 里，这个文件只负责画。
  *
  * 视觉与首页卡片一致：白色面板、右侧 24dp 圆角、40dp 浅色图标方块。
  */
@@ -133,56 +127,28 @@ internal fun HomeDrawer(
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
     val rowHeightPx = with(density) { DRAWER_ROW_HEIGHT.toPx() }
+    // The dragged row is lifted inside its own graphics layer instead of getting
+    // a separate shadow modifier: the elevation is part of the per-frame layer
+    // update, so it appears and disappears with the drag without re-laying out.
+    val draggedRowShape = remember { RoundedCornerShape(14.dp) }
+    val draggedRowElevationPx = with(density) { 8.dp.toPx() }
 
-    var order by remember { mutableStateOf(normalizedDrawerOrder(drawerOrder)) }
-    var visibleIds by remember { mutableStateOf(normalizedDrawerVisibleItems(drawerVisibleItems)) }
-    // DataStore re-emits a fresh AppSettings (and therefore fresh List/Set
-    // instances) on every write, including the write this drawer just made.
-    // Syncing from the incoming *content* instead of using it as a remember key
-    // keeps a mid-drag reorder from being reset by its own save flowing back.
-    val incomingOrder = remember(drawerOrder) { normalizedDrawerOrder(drawerOrder) }
-    val incomingVisible = remember(drawerVisibleItems) {
-        normalizedDrawerVisibleItems(drawerVisibleItems)
-    }
-
-    var sortMode by remember { mutableStateOf(false) }
+    val reorder = rememberDrawerReorderState(
+        persistedOrder = drawerOrder,
+        persistedVisibleItems = drawerVisibleItems,
+        aiAvailable = onOpenAi != null,
+        onPersist = onDrawerConfigChanged,
+    )
+    val listState = rememberLazyListState()
     var menuForId by remember { mutableStateOf<String?>(null) }
     var manageOpen by rememberSaveable { mutableStateOf(false) }
-    var draggingId by remember { mutableStateOf<String?>(null) }
-    var dragDelta by remember { mutableFloatStateOf(0f) }
-    // Display slot that was grabbed. The target slot is always derived from
-    // this fixed value plus the finger travel, so dragging back and forth
-    // cannot accumulate drift. (The gesture helper tracks the finger's grab
-    // position internally and reports absolute travel.)
-    var grabSlot by remember { mutableStateOf(0) }
-    // Order as it was when the drag started: restoring it on cancel keeps a
-    // gesture that never completed from silently changing the user's layout.
-    var orderBeforeDrag by remember { mutableStateOf(order) }
-    val listState = rememberLazyListState()
-
-    LaunchedEffect(incomingOrder, incomingVisible) {
-        // While sorting, the drawer is the only editor: ignore settings flowing
-        // back so an in-flight write cannot revert a reorder mid-gesture.
-        if (!sortMode && draggingId == null) {
-            if (incomingOrder != order) order = incomingOrder
-            if (incomingVisible != visibleIds) visibleIds = incomingVisible
-        }
-    }
-
-    // Gesture callbacks outlive the composition that set them up, so they read
-    // the newest values through these holders instead of a stale capture.
-    val latestOrder by rememberUpdatedState(order)
-    val latestVisibleIds by rememberUpdatedState(visibleIds)
-    val latestDisplayedIds by rememberUpdatedState(
-        displayedDrawerIds(order, visibleIds, onOpenAi != null),
-    )
 
     val aiAvailable = onOpenAi != null
-    val allItems = remember(order, aiAvailable) {
-        order.mapNotNull(DrawerItem::fromId)
+    val rows = reorder.displayedIds().mapNotNull(DrawerItem::fromId)
+    val allItems = remember(reorder.order, aiAvailable) {
+        reorder.order.mapNotNull(DrawerItem::fromId)
             .filter { item -> item != DrawerItem.AI || aiAvailable }
     }
-    val visibleItems = allItems.filter { it.id in visibleIds }
 
     fun open(item: DrawerItem) {
         when (item) {
@@ -194,70 +160,14 @@ internal fun HomeDrawer(
         }
     }
 
-    fun applyVisibility(updated: Set<String>) {
-        visibleIds = updated
-        onDrawerConfigChanged(order, updated)
-    }
-
-    /** Leaves sort mode and persists the current order exactly once. */
-    fun finishSort() {
-        sortMode = false
-        draggingId = null
-        dragDelta = 0f
-        onDrawerConfigChanged(order, visibleIds)
-    }
-
-    /**
-     * Called when a gesture that never completed is cancelled (system
-     * interruption, incoming call, …). Restores the order from before the drag
-     * so an unfinished gesture cannot silently re-order the drawer.
-     */
-    fun cancelDrag() {
-        draggingId = null
-        dragDelta = 0f
-        order = orderBeforeDrag
-    }
-
-    /**
-     * Maps the finger's absolute travel onto a display slot. Both the target
-     * slot and the visual offset are derived from the fixed grab point, so
-     * dragging back and forth or skipping multiple slots stays symmetric.
-     *
-     * Hidden entries are filtered out of the slot maths, so crossing one never
-     * makes the row jump; the offset is derived from the absolute target slot
-     * rather than an accumulated per-step delta, so reversing direction or
-     * re-entering a slot keeps the row glued to the finger.
-     */
-    fun handleSortDrag(dy: Float) {
-        val id = draggingId ?: return
-        val orderNow = latestOrder
-        val visibleNow = latestVisibleIds
-        val displayed = displayedDrawerIds(orderNow, visibleNow, aiAvailable)
-        if (displayed.isEmpty()) return
-
-        val target = (grabSlot + (dy / rowHeightPx).roundToInt())
-            .coerceIn(displayed.indices)
-        val fromSlot = displayed.indexOf(id)
-        if (target != fromSlot) {
-            order = moveDisplayedDrawerId(
-                order = orderNow,
-                visibleItems = visibleNow,
-                aiAvailable = aiAvailable,
-                draggedId = id,
-                targetSlot = target,
-            ) ?: return
-        }
-        // The row now lives at [target] (a display slot). Its un-offset screen
-        // position is target * rowHeight, but the finger is at
-        // grabSlot * rowHeight + dy. The difference keeps the row under the
-        // finger whether or not a swap happened this event, no matter how many
-        // times the direction changes or how far the finger travelled at once.
-        dragDelta = dy - (target - grabSlot) * rowHeightPx
+    fun startSorting() {
+        menuForId = null
+        reorder.startSorting()
     }
 
     // Back leaves the reorder mode first, so a gesture can never be lost by
     // closing the whole drawer.
-    BackHandler(enabled = sortMode) { finishSort() }
+    BackHandler(enabled = reorder.sorting) { reorder.finishSorting() }
 
     val shape = RoundedCornerShape(
         topEnd = if (seamlessTop) 0.dp else 24.dp,
@@ -291,7 +201,7 @@ internal fun HomeDrawer(
                 )
                 Spacer(Modifier.weight(1f))
                 AnimatedContent(
-                    targetState = sortMode,
+                    targetState = reorder.sorting,
                     transitionSpec = {
                         if (animationsEnabled) {
                             fadeIn(MotionTokens.enter()) togetherWith fadeOut(MotionTokens.exit())
@@ -303,14 +213,14 @@ internal fun HomeDrawer(
                     label = "drawer-header-action",
                 ) { sorting ->
                     if (sorting) {
-                        DoneButton(onClick = { finishSort() })
+                        DrawerSortDoneButton(onClick = { reorder.finishSorting() })
                     } else {
                         CloseButton(onClick = onClose)
                     }
                 }
             }
             Crossfade(
-                targetState = sortMode,
+                targetState = reorder.sorting,
                 animationSpec = MotionTokens.enter(),
                 label = "drawer-subtitle",
             ) { sorting ->
@@ -329,44 +239,28 @@ internal fun HomeDrawer(
                 modifier = Modifier
                     .weight(1f)
                     .padding(top = 22.dp)
-                    // The gesture sits on the list, not on a row: LazyColumn
-                    // disposes and re-creates item compositions when their
-                    // index changes, which cancelled the old per-row drag and
-                    // made the order jump. A container-level gesture survives
-                    // every swap.
+                    // The gesture lives on the list, not on a row: LazyColumn
+                    // disposes and re-creates a row's composition when its index
+                    // changes, which would cancel a row-owned drag on the first
+                    // swap. A container-level gesture survives every swap.
                     .then(
-                        if (sortMode) {
-                            Modifier.pointerInput(Unit) {
-                                detectDrawerSortGestures(
-                                    listState = listState,
-                                    itemAtListIndex = { index ->
-                                        latestDisplayedIds.getOrNull(index - 1)
-                                    },
-                                    onDragStarted = { id, startIndex ->
-                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                        draggingId = id
-                                        grabSlot = startIndex
-                                        dragDelta = 0f
-                                        orderBeforeDrag = latestOrder
-                                    },
-                                    onDragMoved = { dy -> handleSortDrag(dy) },
-                                    onDragFinished = {
-                                        // Commit only on a completed gesture; a
-                                        // cancelled one restores orderBeforeDrag.
-                                        draggingId = null
-                                        dragDelta = 0f
-                                        onDrawerConfigChanged(latestOrder, latestVisibleIds)
-                                    },
-                                    onDragCancelled = { cancelDrag() },
-                                )
-                            }
+                        if (reorder.sorting) {
+                            Modifier.drawerReorderDrag(
+                                state = reorder,
+                                listState = listState,
+                                rowHeightPx = rowHeightPx,
+                                animationsEnabled = animationsEnabled,
+                                onGrab = {
+                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                },
+                            )
                         } else {
                             Modifier
                         },
                     ),
                 // While sorting the finger belongs to the drag gesture, not to
                 // the list: a five-row drawer never needs scrolling anyway.
-                userScrollEnabled = !sortMode,
+                userScrollEnabled = !reorder.sorting,
             ) {
                 item(key = "section") {
                     Text(
@@ -378,34 +272,43 @@ internal fun HomeDrawer(
                     Spacer(Modifier.size(6.dp))
                 }
 
-                itemsIndexed(visibleItems, key = { _, item -> item.id }) { _, item ->
-                    val isDragging = draggingId == item.id
+                items(items = rows, key = { item -> item.id }) { item ->
+                    val dragging = reorder.drag?.id == item.id
+                    val clickRow: (() -> Unit)? = if (reorder.sorting) null else ({ open(item) })
 
                     Box(
                         modifier = Modifier
-                            // Freeze the placement animation for the row under the
-                            // finger: it is moved by its own offset, and letting
-                            // the list animate the slot as well made it hop.
+                            // Every row glides to the slot a drag made room in,
+                            // except the dragged row itself: it is placed by its
+                            // own translation, and letting the list animate its
+                            // slot as well would make it hop.
                             .animateItem(
-                                placementSpec = if (isDragging) null else MotionTokens.item(),
-                            )
-                            .zIndex(if (isDragging) 1f else 0f)
-                            .then(
-                                if (isDragging) {
-                                    Modifier
-                                        .offset { IntOffset(0, dragDelta.roundToInt()) }
-                                        .graphicsLayer { scaleX = 1.02f; scaleY = 1.02f }
-                                        .shadow(8.dp, RoundedCornerShape(14.dp))
+                                fadeInSpec = if (animationsEnabled) MotionTokens.enter<Float>() else null,
+                                placementSpec = if (animationsEnabled && !dragging) {
+                                    MotionTokens.item<IntOffset>()
                                 } else {
-                                    Modifier
+                                    null
                                 },
-                            ),
+                                fadeOutSpec = if (animationsEnabled) MotionTokens.exit<Float>() else null,
+                            )
+                            // The dragged row is drawn above its neighbours, and
+                            // its offset is read inside the layer block: a moving
+                            // finger then only re-draws that one row instead of
+                            // recomposing the list.
+                            .zIndex(if (dragging) 1f else 0f)
+                            .graphicsLayer {
+                                translationY = if (dragging) reorder.dragOffsetPx else 0f
+                                scaleX = if (dragging) 1.02f else 1f
+                                scaleY = if (dragging) 1.02f else 1f
+                                shadowElevation = if (dragging) draggedRowElevationPx else 0f
+                                shape = draggedRowShape
+                            },
                     ) {
                         DrawerRow(
                             label = stringResource(item.labelRes),
                             hint = stringResource(item.hintRes),
-                            onClick = { if (!sortMode) open(item) },
-                            onLongClick = if (sortMode) {
+                            onClick = clickRow,
+                            onLongClick = if (reorder.sorting) {
                                 null
                             } else {
                                 {
@@ -413,9 +316,9 @@ internal fun HomeDrawer(
                                     menuForId = item.id
                                 }
                             },
-                            elevated = isDragging,
-                            trailing = if (sortMode) {
-                                { DragHandleGlyph() }
+                            elevated = dragging,
+                            trailing = if (reorder.sorting) {
+                                { DrawerDragHandle(animationsEnabled = animationsEnabled) }
                             } else {
                                 null
                             },
@@ -426,12 +329,9 @@ internal fun HomeDrawer(
                             onDismiss = { menuForId = null },
                             onHide = {
                                 menuForId = null
-                                applyVisibility(visibleIds - item.id)
+                                reorder.hide(item.id)
                             },
-                            onSort = {
-                                menuForId = null
-                                if (!sortMode) sortMode = true
-                            },
+                            onSort = { startSorting() },
                             onManage = {
                                 menuForId = null
                                 manageOpen = true
@@ -440,7 +340,7 @@ internal fun HomeDrawer(
                     }
                 }
 
-                if (visibleItems.isEmpty()) {
+                if (rows.isEmpty()) {
                     item(key = "empty") {
                         EmptyDrawerState(
                             onManage = { manageOpen = true },
@@ -473,63 +373,15 @@ internal fun HomeDrawer(
     if (manageOpen) {
         DrawerManageDialog(
             items = allItems,
-            selected = visibleIds,
+            selected = reorder.visibleItems,
             animationsEnabled = animationsEnabled,
             onCancel = { manageOpen = false },
             onConfirm = { updated ->
                 manageOpen = false
-                applyVisibility(updated)
+                reorder.setVisible(updated)
             },
         )
     }
-}
-
-/**
- * Container-level drag for the reorder mode.
- *
- * The gesture has to live on the list, not on a row: LazyColumn disposes item
- * compositions when their index changes, so a row-owned `pointerInput` was
- * cancelled on the first swap (which is why only one direction ever worked and
- * the order jumped). This reports the finger's absolute travel from the grab
- * point, and the caller turns that into a target slot — symmetric for the up and
- * down direction.
- */
-private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectDrawerSortGestures(
-    listState: androidx.compose.foundation.lazy.LazyListState,
-    itemAtListIndex: (Int) -> String?,
-    onDragStarted: (id: String, startIndex: Int) -> Unit,
-    onDragMoved: (dy: Float) -> Unit,
-    onDragFinished: () -> Unit,
-    onDragCancelled: () -> Unit,
-) {
-    var grabY = 0f
-    detectDragGestures(
-        onDragStart = { start ->
-            // Resolve the hit item and its display slot from the same layout
-            // snapshot. `itemAtListIndex` reads state that a concurrent
-            // recomposition may have changed since the hit test.
-            val displayedIds = mutableListOf<String>()
-            var index = 0
-            while (true) {
-                val id = itemAtListIndex(index) ?: break
-                displayedIds += id
-                index++
-            }
-            val hit = listState.layoutInfo.visibleItemsInfo.firstOrNull { info ->
-                start.y >= info.offset && start.y < info.offset + info.size
-            } ?: return@detectDragGestures
-            val startIndex = hit.index - 1
-            val id = displayedIds.getOrNull(startIndex) ?: return@detectDragGestures
-            grabY = start.y
-            onDragStarted(id, startIndex)
-        },
-        onDrag = { change, _ ->
-            change.consume()
-            onDragMoved(change.position.y - grabY)
-        },
-        onDragEnd = { onDragFinished() },
-        onDragCancel = { onDragCancelled() },
-    )
 }
 
 @Composable
@@ -779,22 +631,25 @@ private fun ManageCheckMark(checked: Boolean) {
     }
 }
 
+/**
+ * One drawer row. [onClick] is null in reorder mode: the row is not a button
+ * then, the list-level drag gesture owns the pointer instead.
+ */
 @Composable
 private fun DrawerRow(
     label: String,
     hint: String,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)?,
     onLongClick: (() -> Unit)? = null,
     elevated: Boolean = false,
     modifier: Modifier = Modifier,
     trailing: (@Composable () -> Unit)? = null,
     icon: @Composable () -> Unit,
 ) {
-    val clickModifier = if (onLongClick != null) {
-        Modifier.combinedClickable(
-            onClick = onClick,
-            onLongClick = onLongClick,
-        )
+    val clickModifier = if (onClick == null) {
+        Modifier
+    } else if (onLongClick != null) {
+        Modifier.combinedClickable(onClick = onClick, onLongClick = onLongClick)
     } else {
         Modifier.clickable(onClick = onClick)
     }
@@ -843,57 +698,6 @@ private fun DrawerRow(
             )
         }
         trailing?.invoke()
-    }
-}
-
-@Composable
-private fun DragHandleGlyph() {
-    val label = stringResource(R.string.home_drawer_sort_handle)
-    val tint = MaterialTheme.colorScheme.onSurfaceVariant
-    Canvas(
-        modifier = Modifier
-            .size(24.dp)
-            .semantics { contentDescription = label },
-    ) {
-        val stroke = 1.6.dp.toPx()
-        val unit = size.width / 24f
-        listOf(8f, 12f, 16f).forEach { y ->
-            drawLine(
-                color = tint,
-                start = Offset(6f * unit, y * unit),
-                end = Offset(18f * unit, y * unit),
-                strokeWidth = stroke,
-                cap = StrokeCap.Round,
-            )
-        }
-    }
-}
-
-@Composable
-private fun DoneButton(onClick: () -> Unit) {
-    val label = stringResource(R.string.home_drawer_sort_done)
-    val tint = MaterialTheme.colorScheme.primary
-    Box(
-        modifier = Modifier
-            .size(40.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .clickable(onClick = onClick)
-            .semantics { contentDescription = label },
-        contentAlignment = Alignment.Center,
-    ) {
-        Canvas(Modifier.size(18.dp)) {
-            val stroke = 2f * (size.minDimension / 18f)
-            val path = Path().apply {
-                moveTo(size.width * 0.12f, size.height * 0.54f)
-                lineTo(size.width * 0.4f, size.height * 0.82f)
-                lineTo(size.width * 0.9f, size.height * 0.2f)
-            }
-            drawPath(
-                path = path,
-                color = tint,
-                style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round),
-            )
-        }
     }
 }
 

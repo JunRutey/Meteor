@@ -62,10 +62,10 @@ val DEFAULT_DRAWER_VISIBLE_ITEMS: Set<String> = DEFAULT_DRAWER_ORDER.toSet()
  * of disappearing because an old preference did not know them.
  */
 fun normalizedDrawerOrder(order: List<String>): List<String> {
-    val knownIds = DrawerItem.entries.map { it.id }
-    val known = knownIds.toSet()
-    val cleaned = order.map { it.trim() }.filter { it in known }.distinct()
-    return cleaned + knownIds.filter { it !in cleaned }
+    val known = DrawerItem.entries.map { it.id }
+    val knownIds = known.toSet()
+    val kept = order.map { it.trim() }.filter { it in knownIds }.distinct()
+    return kept + known.filter { it !in kept }
 }
 
 /** Drops ids this build does not know; an empty set is a valid choice. */
@@ -75,11 +75,12 @@ fun normalizedDrawerVisibleItems(visibleItems: Set<String>): Set<String> {
 }
 
 /**
- * The ids actually shown in the drawer, in their current order. Hidden entries
- * (and AI when this build has no AI entry point) are filtered out of the full
- * persisted order. This is the single source of truth for both the UI list and
- * the drag-to-reorder maths — mixing a stale copy with a fresh [order] is what
- * made a downward drag flip back.
+ * The rows the drawer actually renders, in order: hidden entries are dropped,
+ * and so is AI when this build has no AI entry point.
+ *
+ * Drag targets are counted in **these** slots, never in the persisted order.
+ * Keeping the two apart is what stops a hidden row from adding an invisible
+ * extra step to a drag.
  */
 fun displayedDrawerIds(
     order: List<String>,
@@ -90,37 +91,38 @@ fun displayedDrawerIds(
 }
 
 /**
- * Moves [draggedId] from its current displayed slot to [targetSlot] and returns
- * the new full persisted order. Hidden and unavailable entries stay in place;
- * only the dragged entry is relocated.
+ * Moves [id] to display slot [targetSlot] and returns the new persisted order.
  *
- * The caller works in *display* slots (visible rows only) when deciding the
- * target, and this helper translates that into a move on the full order, so a
- * hidden entry between two visible rows cannot shift the result. Returns null
- * (leaving the order untouched) when the ids do not resolve, so a stale drag
- * event is ignored rather than corrupting the order.
+ * Only the dragged entry moves. It lands on the far side of the row it crossed
+ * (dragging down puts it after that row, dragging up puts it before it), which
+ * is what makes a drag reversible: moving down and back up returns to the same
+ * visible sequence. Returns null when the request is stale — unknown id, slot
+ * out of range, or already there — so a late pointer event is ignored instead
+ * of corrupting the order.
+ *
+ * Hidden entries keep their relative order; which side of them the dragged
+ * entry ends up on follows from how far it travelled.
  */
-fun moveDisplayedDrawerId(
+fun movedDrawerIdToSlot(
     order: List<String>,
     visibleItems: Set<String>,
     aiAvailable: Boolean,
-    draggedId: String,
+    id: String,
     targetSlot: Int,
 ): List<String>? {
-    val displayed = displayedDrawerIds(order, visibleItems, aiAvailable)
-    val fromSlot = displayed.indexOf(draggedId)
-    if (fromSlot < 0 || targetSlot !in displayed.indices || fromSlot == targetSlot) return null
+    val shown = displayedDrawerIds(order, visibleItems, aiAvailable)
+    if (targetSlot !in shown.indices) return null
+    val fromSlot = shown.indexOf(id)
+    if (fromSlot < 0 || fromSlot == targetSlot) return null
+    val fromFull = order.indexOf(id)
+    val toFull = order.indexOf(shown[targetSlot])
+    if (fromFull < 0 || toFull < 0) return null
 
-    val fullFrom = order.indexOf(draggedId)
-    val fullTo = order.indexOf(displayed[targetSlot])
-    if (fullFrom < 0 || fullTo < 0) return null
-    return order.moved(fullFrom, fullTo)
-}
-
-private fun List<String>.moved(from: Int, to: Int): List<String> {
-    if (from == to || from !in indices || to !in indices) return this
-    val copy = toMutableList()
-    val value = copy.removeAt(from)
-    copy.add(to, value)
-    return copy
+    // Remove first, then insert at the target's pre-removal index: when the
+    // target sat after [id] the indices shift down and this lands the entry
+    // after the target, and when it sat before, before it.
+    val next = order.toMutableList()
+    val value = next.removeAt(fromFull)
+    next.add(toFull.coerceIn(0, next.size), value)
+    return next
 }

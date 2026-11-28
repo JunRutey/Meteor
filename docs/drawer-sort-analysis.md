@@ -1,74 +1,61 @@
-# 侧栏功能抽屉拖动排序逻辑分析
+# 侧栏功能抽屉拖动排序逻辑
 
-分析对象：`app/src/main/kotlin/com/meteor/memory/ui/home/HomeDrawer.kt`、`DrawerItems.kt`，以及设置读写链路
-（`RootViewModel.setDrawerConfig` → `SettingsRepository.setDrawerConfig`）。
-相关历史提交：`a1ca640`（面板宽度 + 向下拖动回跳）、`6c0ab9e`（双向拖动排序）。
+实现：`app/src/main/kotlin/com/meteor/memory/ui/home/DrawerReorder.kt`（状态与几何）、
+`DrawerItems.kt`（纯数据整理）。界面只负责画：`HomeDrawer.kt`。
+单元测试：`app/src/test/kotlin/com/meteor/memory/ui/home/DrawerReorderTest.kt`。
 
-## 一、修复前的逻辑
+## 一、数据
 
-1. 进入排序模式：长按任意行 → 弹出菜单 → 选「排序」，`sortMode = true`。
-2. 手势挂在 `LazyColumn` 的容器级 `pointerInput(Unit)` 上（不挂在单行上），避免行重组取消手势。
-3. `detectDrawerSortGestures` 在 `onDragStart` 时按 Y 坐标命中某一行，取 `hit.index - 1` 作为 `dragStartIndex`，
-   记录 `grabY = start.y`；之后 `onDrag` 把手指绝对位移 `dy = change.position.y - grabY` 交给 `handleSortDrag`。
-4. `handleSortDrag` 用 `target = dragStartIndex + round(dy / rowHeightPx)` 计算目标槽位，
-   在**完整 order 列表**（含隐藏项、AI 不可用时被过滤掉的项）上把被拖项 `moved(fullFrom, fullTo)`。
-5. 被拖行的视觉偏移 `dragDelta = dy - (target - dragStartIndex) * rowHeightPx`（若发生换位），
-   配合 `animateItem` 让其它行平滑让位。
-6. 拖动结束/按返回/点完成 → `onDrawerConfigChanged(order, visibleIds)` → DataStore 一次事务写入。
+- 持久顺序 `order`：全部功能 id 的排列，**包含隐藏项**。
+- 可见集合 `visibleItems`：勾选显示的功能 id。
+- 显示顺序 = `order` 过滤掉隐藏项与「本版本没有 AI 入口」的 AI 行，即
+  `displayedDrawerIds()`。**拖动的槽位一律按显示顺序计**，持久顺序里夹着的
+  隐藏行不占槽位。
 
-## 二、发现的问题
+两种顺序分开是这里最关键的一条：只要拖动目标按显示槽位算，隐藏行就不可能
+给一次拖动额外加一步。
 
-### P0 拖动补偿口径不一致（残留「拖动回跳/跳行」的根源）
+## 二、一次拖动
 
-`dragDelta` 的补偿用 `(target - dragStartIndex) * rowHeightPx`，但 `order` 更新后被拖项的
-实际位移是 `(target - from) * fullRowSteps`，其中 `fullRowSteps` 是被拖项与目标之间跨越的
-**完整列表行数**（包括隐藏项）。只有显示项连续、没有隐藏项且方向单一时，二者才相等。
+1. 排序模式下，手势挂在 `LazyColumn` 容器上（不是行上）：行的下标一变，行的
+   组合就会被销毁，挂在行上的 `pointerInput` 会被自己的第一次换位取消。
+2. 起手由列表自己的布局信息命中，`item.key` 就是功能 id，所以分组标题、空
+   状态这些项不会被误当成可拖的行；命中后还要求「该槽位确实停着这个 id」，
+   两者不一致就不开始拖动。
+3. 记录固定坐标系 `DrawerDragGeometry(anchorSlot, anchorPointerY, rowHeightPx)`：
+   - 目标槽位 = 起手槽位 + `round(手指位移 / 行高)`，夹在列表范围内；
+   - 被拖行的偏移 = `(起手槽位 * 行高 + 手指位移) - 目标槽位 * 行高`，夹在半行内。
+4. 目标槽位变化时把 id 移到该槽位。新顺序里被拖行落在它越过的那一行的另一侧
+   （向下落在其后、向上落在其前），因此向下再拖回来会回到原来的可见序列。
+5. 偏移公式只依赖「起手点 + 手指当前位置」，与换过几次位无关，所以手势不会
+   累积漂移；换位只改变「哪个槽位承载同一个屏幕位置」，越过行中点时位置连续，
+   不会跳动。
+6. 手指抬起：顺序立刻落盘；剩下的零头偏移用 `MotionTokens.state()` 动画回零，
+   行滑进槽位。手势被系统取消（来电、切后台）则回滚到起手前的顺序，不落盘。
 
-- **跨隐藏项向下拖**（完整列表 `[A, H(隐藏), B, C, D]`，显示 `[A, B, C, D]`）：
-  长按 A（`dragStartIndex=0`）向下拖两行到 `target=2`（显示项 C）。
-  `moved(0,3)` 实际把 A 移到完整 index 3（A 的真实位移是 3 行），
-  但 `dragDelta` 只补偿 `2 * rowHeightPx`，行瞬间多跳 1 行。
-- **反向拖动**：`dragStartIndex` 是抓取时固定的起点，`from` 会随每次换位改变。
-  当 `target` 回到起点附近时补偿符号按 `target - dragStartIndex` 算、真实位移按 `target - from` 算，
-  符号可能相反，行会瞬移。
-- **不换位但槽位已变**：`target == fromSlot` 时原代码直接 `dragDelta = dy`，
-  忽略行已不在抓取槽位的事实，同样导致整行跳动。
+## 三、状态与落盘
 
-### P1 命中行快照竞态
+`DrawerReorderState` 持有 `order` / `visibleItems` / `sorting` / 当前拖动。
 
-`onDragStart` 里 `hit.index` 来自手势开始时的布局信息，而 `itemAtListIndex` 读的是回调执行时的
-最新 `latestDisplayedIds`；两者之间若发生重组（例如上一次排序落盘回流），`hit.index` 对应的行
-可能已不是同一 id，抓错行。
+- 每次真实变化调用一次 `onPersist`，内容没变的重复写入被吃掉。
+- 外部回写（DataStore 每次 emit 都会造出新的 List/Set）按**内容**而不是实例
+  同步；排序模式或拖动进行中一律不采纳，避免自己的写入回流打断手势。
+- 自己刚写出的值会先记成 `awaitingWrite`，期间收到更旧的值直接忽略——否则
+  落盘前的一次旧 emit 会把刚放下的行弹回原位。
 
-### P1 取消即保存 + 重复写入
+## 四、性能
 
-`onDragCancel` 与 `onDragEnd` 同样调用 `onDragFinished` 落盘，来电/切后台取消手势也会改变顺序；
-完成按钮与 `onDragEnd` 还存在重复写入。
+- 只有被拖的那一行在 `graphicsLayer` 的绘制阶段读 `dragOffsetPx`，手指移动
+  不会触发重组，只让那一行重新摆放。
+- 换位时列表用 item key 识别移动，配合 `Modifier.animateItem()` 让其它行平滑
+  让位；被拖行的 placement 动画在拖动期间关闭（它由自己的偏移决定位置）。
+- 一次拖动只写一次 DataStore（松手时），点「完成」不会重复写。
 
-### P2 外部状态回流重置拖动
+## 五、验证
 
-`HomeDrawer` 的 `remember(drawerOrder)` 以列表实例为 key，而 DataStore 每次 emit 都会构造新
-`AppSettings`（新 List 实例）。抽屉自己的写入回流时本地 `order` 会被重置，覆盖正在进行的拖动。
-另外缺少排序算法的单元测试，多次修复只能靠手工验证。
-
-## 三、已实施的修复
-
-1. **统一显示槽位口径**：在 `DrawerItems.kt` 抽出纯函数 `displayedDrawerIds()` 与
-   `moveDisplayedDrawerId()`。UI 列表与拖拽目标共用同一份显示列表；隐藏项与 AI 不可用时被过滤，
-   不再参与显示槽位计算。
-2. **绝对位移补偿**：`dragDelta = dy - (target - grabSlot) * rowHeightPx`。
-   `target` 由固定抓取槽位 `grabSlot` 加手指绝对位移推导；无论是否发生换位、无论往返多少次、
-   无论一次跨几行，行始终跟手。这同时消除了反向拖动与跨隐藏项的跳变。
-3. **命中快照一致**：`onDragStart` 先快照显示 id 列表，再用同一次快照解析 `hit.index`。
-4. **保存语义**：`onDragEnd` 才落盘；`onDragCancel` 回滚到抓取前的 order；
-   完成按钮是唯一其它保存入口。
-5. **隔离外部回流**：改用 `LaunchedEffect` 按内容同步外部 `order`/`visibleIds`，
-   排序期间完全忽略回流，避免自写自读打断手势。
-6. **单元测试**：新增 `DrawerSortTest`，覆盖隐藏项过滤、AI 不可用、跨隐藏项上下拖、
-   拖出边界再拖回、快速跨行、非法目标忽略等场景。
-
-## 四、验证状态
-
-按仓库 `AGENTS.md` 硬约束，本机不执行 Gradle 构建与测试，最终验收以 GitHub Actions 为准。
+- `DrawerReorderTest` 覆盖：显示顺序过滤、顺序整理、跨隐藏项上下拖、AI 不可用、
+  拖出边界、快速跨行、往返可逆、偏移连续性、外抛半行停靠，以及模拟整段拖动。
+- 按仓库 `AGENTS.md` 硬约束，本机不执行 Gradle 构建与测试，最终验收以
+  GitHub Actions 为准。
 
 [![](https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white)](https://github.com/deepseek-ai/deepseek-harness)
