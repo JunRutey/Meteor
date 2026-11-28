@@ -120,17 +120,14 @@ fun SettingsScreen(
                         ChoiceOption(
                             value = DarkMode.FOLLOW_SYSTEM,
                             label = stringResource(R.string.settings_dark_follow_system),
-                            description = stringResource(R.string.settings_dark_follow_system_desc),
                         ),
                         ChoiceOption(
                             value = DarkMode.DARK,
                             label = stringResource(R.string.settings_dark_dark),
-                            description = stringResource(R.string.settings_dark_dark_desc),
                         ),
                         ChoiceOption(
                             value = DarkMode.LIGHT,
                             label = stringResource(R.string.settings_dark_light),
-                            description = stringResource(R.string.settings_dark_light_desc),
                         ),
                     ),
                     selected = settings.darkMode,
@@ -582,6 +579,10 @@ private fun <T> SettingsChoiceRow(
                 onDismissRequest = { expanded = false },
                 offset = DpOffset(0.dp, 4.dp),
                 modifier = Modifier.widthIn(min = 190.dp),
+                // The 1.7.4 menu reused Material's 4dp default, which read as a
+                // hard rectangle next to the app's 20–24dp cards. Round it to
+                // match the paper surfaces around it.
+                shape = RoundedCornerShape(22.dp),
             ) {
                 options.forEach { option ->
                     val glyph = icon
