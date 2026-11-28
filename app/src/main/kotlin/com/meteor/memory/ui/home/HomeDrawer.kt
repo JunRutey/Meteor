@@ -36,6 +36,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.meteor.memory.R
@@ -63,6 +64,14 @@ internal fun HomeDrawer(
     modifier: Modifier = Modifier,
     drawerOrder: List<String> = DEFAULT_DRAWER_ORDER,
     drawerVisibleItems: Set<String> = DEFAULT_DRAWER_VISIBLE_ITEMS,
+    /**
+     * How far the surface was pushed past the host's safe-area padding. The
+     * panel paints the whole window, but its content must stay clear of the
+     * status bar / cutout and the gesture bar, so those amounts come back as
+     * extra padding here.
+     */
+    contentTopInset: Dp = 0.dp,
+    contentBottomInset: Dp = 0.dp,
 ) {
     // Settings is not in this list on purpose: it is pinned below the scroll
     // area and never moves, even when the person reorders or hides functions.
@@ -82,7 +91,12 @@ internal fun HomeDrawer(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 20.dp, end = 16.dp, top = 16.dp, bottom = 16.dp),
+                .padding(
+                    start = 20.dp,
+                    end = 16.dp,
+                    top = 16.dp + contentTopInset,
+                    bottom = 16.dp + contentBottomInset,
+                ),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
