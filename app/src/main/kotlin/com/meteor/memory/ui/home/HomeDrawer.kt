@@ -13,6 +13,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -398,7 +399,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectRo
     onDragFinished: () -> Unit,
 ) {
     var delta = 0f
-    androidx.compose.foundation.gestures.detectDragGestures(
+    detectDragGestures(
         onDragStart = {
             delta = 0f
             onDragStart()
