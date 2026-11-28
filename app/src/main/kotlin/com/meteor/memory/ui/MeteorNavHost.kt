@@ -1045,6 +1045,8 @@ fun MeteorNavHost(
                 onOpenAttachment = { id ->
                     navController.navigate("media/${Uri.encode("${MediaRef.FILE_SCHEME}$id")}")
                 },
+                // 问答命中：recordId 就是 question id，直接进详情（ADR-074）。
+                onOpenQuestion = { id -> navController.navigate(questionRoute(id)) },
                 onBack = { navController.popBackStack() },
             )
         }
@@ -1480,6 +1482,7 @@ private fun recordTypeLabel(type: RecordType): String = stringResource(
         RecordType.PROFILE -> R.string.type_profile
         RecordType.CHAT_LOG -> R.string.type_chat_log
         RecordType.PERSONA -> R.string.type_persona
+        RecordType.QUESTION -> R.string.type_question
     },
 )
 

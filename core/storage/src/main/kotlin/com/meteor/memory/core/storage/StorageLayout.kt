@@ -34,6 +34,8 @@ class StorageLayout(private val root: File) {
             RecordType.PROFILE -> File(File(root, "$ARCHIVE/${personDir(personId)}"), "profile.md")
             RecordType.CHAT_LOG -> File(root, "$LEGACY/$CHAT/${requirePerson(personId)}/$day.md")
             RecordType.PERSONA -> File(root, "$LEGACY/$PERSONA/${requirePerson(personId)}/persona.md")
+            // 每日一问走 questionsDir() 的加密 JSON，不经过记录路由（ADR-074）。
+            RecordType.QUESTION -> error("question-records-are-not-routed-here")
         }
     }
 

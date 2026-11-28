@@ -9,7 +9,9 @@ enum class RecordType(val wire: String, val labelKey: String) {
     CHAT_LOG("chat_log", "type_chat_log"),
     DIARY("diary", "type_diary"),
     PERSONA("persona", "type_persona"),
-    MOOD("mood", "type_mood");
+    MOOD("mood", "type_mood"),
+    /** 每日一问（ADR-074）：主观自问自答，搜索/AI 中须与事实记录明确区分。 */
+    QUESTION("question", "type_question");
 
     companion object {
         fun fromWire(value: String): RecordType? = entries.firstOrNull { it.wire == value }
