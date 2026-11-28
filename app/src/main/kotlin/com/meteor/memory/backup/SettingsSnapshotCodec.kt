@@ -49,6 +49,8 @@ object SettingsSnapshotCodec {
         put(KEY_ONBOARDING_COMPLETED, settings.onboardingCompleted)
         put(KEY_ALBUM_SORT_MODE, settings.albumSortMode)
         put(KEY_MEDIA_PICKER_MODE, settings.mediaPickerMode.name)
+        put(KEY_DRAWER_ORDER, JSONArray(settings.drawerOrder))
+        put(KEY_DRAWER_VISIBLE_ITEMS, JSONArray(settings.drawerVisibleItems.sorted()))
     }.toString()
 
     fun decode(json: String): AppSettings {
@@ -95,11 +97,30 @@ object SettingsSnapshotCodec {
                 root.optString(KEY_MEDIA_PICKER_MODE, defaults.mediaPickerMode.name),
                 defaults.mediaPickerMode,
             ),
+            drawerOrder = root.optJSONArray(KEY_DRAWER_ORDER).toStringList()
+                .ifEmpty { defaults.drawerOrder },
+            // An empty visible set is a valid choice (hide everything), so the
+            // fallback depends on the key being absent, not on an empty array.
+            drawerVisibleItems = if (root.has(KEY_DRAWER_VISIBLE_ITEMS)) {
+                root.optJSONArray(KEY_DRAWER_VISIBLE_ITEMS).toStringSet()
+            } else {
+                defaults.drawerVisibleItems
+            },
         )
     }
 
     private inline fun <reified T : Enum<T>> enumOrDefault(value: String, fallback: T): T =
         runCatching { enumValueOf<T>(value) }.getOrDefault(fallback)
+
+    private fun JSONArray?.toStringList(): List<String> {
+        if (this == null) return emptyList()
+        val values = ArrayList<String>(length())
+        for (index in 0 until length()) {
+            val value = optString(index).trim()
+            if (value.isNotEmpty()) values += value
+        }
+        return values.distinct()
+    }
 
     private fun JSONArray?.toStringSet(): Set<String> {
         if (this == null) return emptySet()
@@ -143,4 +164,6 @@ object SettingsSnapshotCodec {
     private const val KEY_ONBOARDING_COMPLETED = "onboardingCompleted"
     private const val KEY_ALBUM_SORT_MODE = "albumSortMode"
     private const val KEY_MEDIA_PICKER_MODE = "mediaPickerMode"
+    private const val KEY_DRAWER_ORDER = "drawerOrder"
+    private const val KEY_DRAWER_VISIBLE_ITEMS = "drawerVisibleItems"
 }

@@ -70,6 +70,7 @@ fun SettingsScreen(
     onMediaPickerModeChanged: (MediaPickerMode) -> Unit,
     onVerboseLoggingChanged: (Boolean) -> Unit,
     onOpenAppearanceSettings: () -> Unit,
+    onOpenDrawerSettings: () -> Unit,
     onOpenAbout: () -> Unit,
     onOpenDonate: () -> Unit,
     onOpenBirthDate: () -> Unit,
@@ -123,6 +124,12 @@ fun SettingsScreen(
                     title = stringResource(R.string.settings_more_appearance),
                     subtitle = stringResource(R.string.settings_more_appearance_desc),
                     onClick = onOpenAppearanceSettings,
+                )
+                Hairline()
+                ChevronRow(
+                    title = stringResource(R.string.settings_drawer_customize),
+                    subtitle = stringResource(R.string.settings_drawer_customize_desc),
+                    onClick = onOpenDrawerSettings,
                 )
             }
 

@@ -41,6 +41,8 @@ class SettingsSnapshotCodecTest {
         aiTotalElapsedMs = 55L,
         aiTotalRequests = 6,
         onboardingCompleted = true,
+        drawerOrder = listOf("search", "questions", "album", "people", "ai"),
+        drawerVisibleItems = setOf("search", "questions", "album"),
     )
 
     @Test
@@ -64,6 +66,19 @@ class SettingsSnapshotCodecTest {
         assertTrue(decoded.diaryReminderEnabled)
         assertTrue(decoded.questionReminderEnabled)
         assertTrue(decoded.updateNotificationEnabled)
+        // Drawer defaults are restored for snapshots written before 1.7.4.
+        assertEquals(AppSettings.DEFAULT_DRAWER_ORDER, decoded.drawerOrder)
+        assertEquals(AppSettings.DEFAULT_DRAWER_ORDER.toSet(), decoded.drawerVisibleItems)
+    }
+
+    @Test
+    fun `an empty drawer visibility set stays empty instead of falling back to all`() {
+        val decoded = SettingsSnapshotCodec.decode(
+            """{"version":1,"drawerOrder":["search"],"drawerVisibleItems":[]}""",
+        )
+
+        assertEquals(listOf("search"), decoded.drawerOrder)
+        assertTrue(decoded.drawerVisibleItems.isEmpty())
     }
 
     @Test

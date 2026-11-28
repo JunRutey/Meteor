@@ -162,6 +162,28 @@ class SettingsRepositoryTest {
     }
 
     @Test
+    fun drawerConfigDefaultsToEveryItemAndPersistsOrderAndVisibility() = runBlocking {
+        val store = FakePreferencesDataStore(mutablePreferencesOf())
+        val repository = SettingsRepository(store)
+
+        val defaults = repository.settings.first()
+        assertEquals(AppSettings.DEFAULT_DRAWER_ORDER, defaults.drawerOrder)
+        assertEquals(
+            AppSettings.DEFAULT_DRAWER_ORDER.toSet(),
+            defaults.drawerVisibleItems,
+        )
+
+        repository.setDrawerConfig(
+            order = listOf("search", "album", "questions"),
+            visibleItems = setOf("search", "album"),
+        )
+
+        val updated = repository.settings.first()
+        assertEquals(listOf("search", "album", "questions"), updated.drawerOrder)
+        assertEquals(setOf("search", "album"), updated.drawerVisibleItems)
+    }
+
+    @Test
     fun albumSortModeDefaultsToImportDate() = runBlocking {
         val store = FakePreferencesDataStore(mutablePreferencesOf())
         val repository = SettingsRepository(store)
