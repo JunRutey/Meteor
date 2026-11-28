@@ -48,8 +48,9 @@
 - **备份与恢复**：明文 zip 导出，覆盖日记、心情、人物、图片、附件、AI 会话、出生日期与
   非密钥设置；按新设备密钥重新加密导入。API Key、应用锁与禁止截屏不进入备份。详见
   [加密与安全](docs/SECURITY.md)、[ADR-040](docs/adr/ADR-040-backup-coverage.md)
-- **诊断与更新**：诊断日志可导出；启动时检查 GitHub Release，通知总开关开启时在通知栏
-  显示下载进度。详见 [加密与安全](docs/SECURITY.md)
+- **诊断与更新**：诊断日志可导出；启动时检查 GitHub Release，发现新版本先弹窗询问，确认后
+  在官方地址与内置镜像间按延迟择优下载，并用官方 SHA-256 校验。详见
+  [加密与安全](docs/SECURITY.md)、[ADR-072](docs/adr/ADR-072-app-update-prompt-and-mirror-sources.md)
 
 ## 构建
 
@@ -126,7 +127,8 @@ CI 固定使用 Gradle 8.11.1，并且**同时构建 debug 与 release 变体**�
   也没有任何使用数据上报
 - AI 默认关闭。开启后，问题与被选中的档案片段会经 HTTPS 直接发往官方 DeepSeek API；
   API Key 与档案共用本机 Keystore 密钥加密，不进 DataStore、不进备份、不写日志
-- 更新检查只向 GitHub 查询版本号，不发送日记、档案、设备内容或账号凭据
+- 更新检查只向 GitHub 查询版本号，必要时经社区镜像下载 APK，且 APK 必须匹配官方 SHA-256；
+  不发送日记、档案、设备内容或账号凭据
 
 细节见 [加密与安全](docs/SECURITY.md) 与 [AI 功能与隐私](docs/AI.md)。
 
