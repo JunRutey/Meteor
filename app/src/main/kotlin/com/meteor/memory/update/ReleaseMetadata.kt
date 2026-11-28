@@ -17,6 +17,12 @@ internal data class ReleaseMetadata(
      */
     val sha256: String?,
     val sizeBytes: Long,
+    /**
+     * Release notes authored in GitHub (the Chinese `docs/releases/<tag>.md`
+     * body). Shown as plain, scrollable text in the update prompt; the body is
+     * external data and is never rendered as HTML.
+     */
+    val notes: String,
 )
 
 internal enum class UpdateError {
@@ -46,7 +52,11 @@ internal sealed interface UpdateState {
      * asks again even for a version this process already prompted about, while
      * the automatic launch check stays quiet after 「稍后再说」.
      */
-    data class Available(val versionName: String, val manual: Boolean = false) : UpdateState
+    data class Available(
+        val versionName: String,
+        val manual: Boolean = false,
+        val notes: String = "",
+    ) : UpdateState
 
     /**
      * Live download progress. The foreground dialog and the notification read
@@ -102,11 +112,30 @@ internal fun parseReleaseMetadata(json: String): ReleaseMetadata {
             apkUrl = apkUrl,
             sha256 = parseSha256Digest(apkAsset.optString("digest")),
             sizeBytes = apkAsset.optLong("size"),
+            notes = parseReleaseNotes(release.optString("body")),
         )
     } catch (failure: JSONException) {
         throw UpdateException(UpdateError.INVALID_RELEASE, failure)
     }
 }
+
+/**
+ * Normalises the GitHub release body for the update dialog.
+ *
+ * The body is our own Chinese release note, but it is still external text: it
+ * is capped, the footer badge line is dropped, and the UI renders it as plain
+ * text. Null/blank bodies become an empty string so the dialog can fall back
+ * to its 「暂无更新说明」 copy.
+ */
+internal fun parseReleaseNotes(raw: String?): String =
+    raw.orEmpty()
+        .lineSequence()
+        .filterNot { it.trimStart().startsWith("[![](") }
+        .joinToString("\n")
+        .trim()
+        .take(MAX_RELEASE_NOTES_CHARS)
+
+private const val MAX_RELEASE_NOTES_CHARS = 12_000
 
 /**
  * GitHub stores release-asset digests as `sha256:<hex>`; uploads older than the

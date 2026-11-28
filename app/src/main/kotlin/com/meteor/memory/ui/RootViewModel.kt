@@ -211,7 +211,8 @@ class RootViewModel @Inject constructor(
         viewModelScope.launch {
             updateService.state.collect { state ->
                 when (state) {
-                    is UpdateState.Available -> askAboutUpdate(state.versionName, state.manual)
+                    is UpdateState.Available ->
+                        askAboutUpdate(state.versionName, state.manual, state.notes)
                     is UpdateState.Downloading -> updateDownloadProgress(state)
                     is UpdateState.ReadyToInstall -> finishForegroundDownload(state.versionName)
                     is UpdateState.Failed -> {
@@ -497,7 +498,7 @@ class RootViewModel @Inject constructor(
      * (ADR-072). A manual re-check that finds the same release therefore lands
      * on the settings row instead of interrupting with the dialog again.
      */
-    private suspend fun askAboutUpdate(versionName: String, manual: Boolean) {
+    private suspend fun askAboutUpdate(versionName: String, manual: Boolean, notes: String) {
         // The automatic launch check asks once per process; a manual 「检查更新」
         // must be able to bring the dialog back after 「稍后再说」, otherwise the
         // only visible path would be a parked settings row.
@@ -509,7 +510,7 @@ class RootViewModel @Inject constructor(
             return
         }
         appLog.info(UPDATE_TAG, "asking about update $versionName (manual=$manual)")
-        _updatePrompt.value = UpdatePrompt(versionName)
+        _updatePrompt.value = UpdatePrompt(versionName, notes)
     }
 
     /** 「立即更新」: keeps the dialog open as a foreground progress bar. */
@@ -664,7 +665,11 @@ class RootViewModel @Inject constructor(
 }
 
 /** One pending "a new version exists" question, held until the dialog answers it. */
-data class UpdatePrompt(val versionName: String)
+data class UpdatePrompt(
+    val versionName: String,
+    /** GitHub release body, shown in a fixed scrollable area of the dialog. */
+    val notes: String = "",
+)
 
 /**
  * Foreground download numbers. [totalBytes] is 0 while the source has not
