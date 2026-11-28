@@ -9,6 +9,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -31,11 +33,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -54,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -113,6 +116,13 @@ internal fun HomeDrawer(
     modifier: Modifier = Modifier,
     drawerOrder: List<String> = DEFAULT_DRAWER_ORDER,
     drawerVisibleItems: Set<String> = DEFAULT_DRAWER_VISIBLE_ITEMS,
+    /**
+     * True while the status bar is hidden: the panel is already flush with the
+     * window top, so a rounded top corner plus a shadow would draw a seam
+     * across an otherwise white background. Square it off instead of growing
+     * the panel (see the 1.7.6 design note).
+     */
+    seamlessTop: Boolean = false,
     animationsEnabled: Boolean = true,
 ) {
     val density = LocalDensity.current
@@ -128,6 +138,7 @@ internal fun HomeDrawer(
     var manageOpen by rememberSaveable { mutableStateOf(false) }
     var draggingId by remember { mutableStateOf<String?>(null) }
     var dragDelta by remember { mutableFloatStateOf(0f) }
+    val listState = rememberLazyListState()
 
     // Gesture callbacks outlive the composition that set them up, so they read
     // the newest values through these holders instead of a stale capture.
@@ -168,12 +179,15 @@ internal fun HomeDrawer(
     // closing the whole drawer.
     BackHandler(enabled = sortMode) { finishSort() }
 
-    val shape = RoundedCornerShape(topEnd = 24.dp, bottomEnd = 24.dp)
+    val shape = RoundedCornerShape(
+        topEnd = if (seamlessTop) 0.dp else 24.dp,
+        bottomEnd = 24.dp,
+    )
     Surface(
         modifier = modifier.width(300.dp).fillMaxHeight(),
         shape = shape,
         color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 12.dp,
+        shadowElevation = if (seamlessTop) 0.dp else 12.dp,
     ) {
         Column(
             modifier = Modifier
@@ -226,9 +240,60 @@ internal fun HomeDrawer(
             }
 
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .weight(1f)
-                    .padding(top = 22.dp),
+                    .padding(top = 22.dp)
+                    // The gesture sits on the list, not on a row: LazyColumn
+                    // disposes and re-creates item compositions when their
+                    // index changes, which cancelled the old per-row drag and
+                    // made the order jump. A container-level gesture survives
+                    // every swap.
+                    .then(
+                        if (sortMode) {
+                            Modifier.pointerInput(Unit) {
+                                detectDrawerSortGestures(
+                                    listState = listState,
+                                    rowHeightPx = rowHeightPx,
+                                    itemAtListIndex = { index ->
+                                        latestDisplayedIds.getOrNull(index - 1)
+                                    },
+                                    draggedId = { draggingId },
+                                    onDragStarted = { id ->
+                                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        draggingId = id
+                                        dragDelta = 0f
+                                    },
+                                    onDeltaChange = { delta -> dragDelta = delta },
+                                    onSwap = { id, direction ->
+                                        val displayed = latestDisplayedIds
+                                        val from = displayed.indexOf(id)
+                                        val to = from + direction
+                                        if (from < 0 || to !in displayed.indices) {
+                                            false
+                                        } else {
+                                            val orderNow = latestOrder
+                                            val fullFrom = orderNow.indexOf(displayed[from])
+                                            val fullTo = orderNow.indexOf(displayed[to])
+                                            if (fullFrom < 0 || fullTo < 0) {
+                                                false
+                                            } else {
+                                                order = orderNow.moved(fullFrom, fullTo)
+                                                true
+                                            }
+                                        }
+                                    },
+                                    onDragFinished = {
+                                        draggingId = null
+                                        dragDelta = 0f
+                                        onDrawerConfigChanged(latestOrder, latestVisibleIds)
+                                    },
+                                )
+                            }
+                        } else {
+                            Modifier
+                        },
+                    ),
                 // While sorting the finger belongs to the drag gesture, not to
                 // the list: a five-row drawer never needs scrolling anyway.
                 userScrollEnabled = !sortMode,
@@ -245,34 +310,15 @@ internal fun HomeDrawer(
 
                 itemsIndexed(visibleItems, key = { _, item -> item.id }) { _, item ->
                     val isDragging = draggingId == item.id
-                    val dragModifier = if (!sortMode) {
-                        Modifier
-                    } else {
-                        Modifier.pointerInput(sortMode, item.id) {
-                            detectRowDrag(
-                                item = item,
-                                rowHeightPx = rowHeightPx,
-                                currentOrder = { latestOrder },
-                                currentDisplayed = { latestDisplayedIds },
-                                onDragStart = {
-                                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    draggingId = item.id
-                                    dragDelta = 0f
-                                },
-                                onDeltaChange = { delta -> dragDelta = delta },
-                                onMove = { from, to -> order = latestOrder.moved(from, to) },
-                                onDragFinished = {
-                                    draggingId = null
-                                    dragDelta = 0f
-                                    onDrawerConfigChanged(latestOrder, latestVisibleIds)
-                                },
-                            )
-                        }
-                    }
 
                     Box(
                         modifier = Modifier
-                            .animateItem(placementSpec = MotionTokens.item())
+                            // Freeze the placement animation for the row under the
+                            // finger: it is moved by its own offset, and letting
+                            // the list animate the slot as well made it hop.
+                            .animateItem(
+                                placementSpec = if (isDragging) null else MotionTokens.item(),
+                            )
                             .zIndex(if (isDragging) 1f else 0f)
                             .then(
                                 if (isDragging) {
@@ -298,7 +344,6 @@ internal fun HomeDrawer(
                                 }
                             },
                             elevated = isDragging,
-                            modifier = dragModifier,
                             trailing = if (sortMode) {
                                 { DragHandleGlyph() }
                             } else {
@@ -370,48 +415,51 @@ internal fun HomeDrawer(
 }
 
 /**
- * Row-level drag: the row follows the finger, and every half row it crosses is
- * swapped with its neighbour (then the local offset is rebased so the row does
- * not jump). Persisted on finger-up, not during the drag.
+ * Container-level drag for the reorder mode.
+ *
+ * The gesture has to live on the list, not on a row: LazyColumn disposes item
+ * compositions when their index changes, so a row-owned `pointerInput` was
+ * cancelled on the first swap (which is why only one direction ever worked and
+ * the order jumped). Here the touch is hit-tested against the current layout,
+ * and every half row it crosses swaps the dragged id with its neighbour; the
+ * local offset is rebased so the row stays under the finger.
  */
-private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectRowDrag(
-    item: DrawerItem,
+private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectDrawerSortGestures(
+    listState: androidx.compose.foundation.lazy.LazyListState,
     rowHeightPx: Float,
-    currentOrder: () -> List<String>,
-    currentDisplayed: () -> List<String>,
-    onDragStart: () -> Unit,
+    itemAtListIndex: (Int) -> String?,
+    draggedId: () -> String?,
+    onDragStarted: (String) -> Unit,
     onDeltaChange: (Float) -> Unit,
-    onMove: (from: Int, to: Int) -> Unit,
+    onSwap: (id: String, direction: Int) -> Boolean,
     onDragFinished: () -> Unit,
 ) {
     var delta = 0f
     detectDragGestures(
-        onDragStart = {
+        onDragStart = { start ->
+            val hit = listState.layoutInfo.visibleItemsInfo.firstOrNull { info ->
+                start.y >= info.offset && start.y < info.offset + info.size
+            } ?: return@detectDragGestures
+            val id = itemAtListIndex(hit.index) ?: return@detectDragGestures
             delta = 0f
-            onDragStart()
             onDeltaChange(0f)
+            onDragStarted(id)
         },
         onDrag = { change, amount ->
             change.consume()
+            val id = draggedId() ?: return@detectDragGestures
             delta += amount.y
             onDeltaChange(delta)
-
-            val displayed = currentDisplayed()
-            val from = displayed.indexOf(item.id)
-            if (from < 0) return@detectDragGestures
-            val threshold = rowHeightPx / 2f
-            val to = when {
-                delta > threshold && from < displayed.lastIndex -> from + 1
-                delta < -threshold && from > 0 -> from - 1
-                else -> return@detectDragGestures
+            val half = rowHeightPx / 2f
+            val direction = when {
+                delta > half -> 1
+                delta < -half -> -1
+                else -> 0
             }
-            val order = currentOrder()
-            val fullFrom = order.indexOf(displayed[from])
-            val fullTo = order.indexOf(displayed[to])
-            if (fullFrom < 0 || fullTo < 0) return@detectDragGestures
-            onMove(fullFrom, fullTo)
-            delta -= (to - from) * rowHeightPx
-            onDeltaChange(delta)
+            if (direction != 0 && onSwap(id, direction)) {
+                delta -= direction * rowHeightPx
+                onDeltaChange(delta)
+            }
         },
         onDragEnd = { onDragFinished() },
         onDragCancel = { onDragFinished() },
@@ -521,7 +569,7 @@ private fun DrawerManageDialog(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 32.dp),
+                .padding(horizontal = 30.dp),
             contentAlignment = Alignment.Center,
         ) {
             AnimatedVisibility(
@@ -534,15 +582,16 @@ private fun DrawerManageDialog(
                 },
             ) {
                 Surface(
-                    shape = RoundedCornerShape(24.dp),
+                    shape = RoundedCornerShape(22.dp),
                     color = MaterialTheme.colorScheme.surface,
-                    shadowElevation = 18.dp,
+                    shadowElevation = 10.dp,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 ) {
-                    Column(Modifier.fillMaxWidth().padding(top = 20.dp)) {
+                    Column(Modifier.fillMaxWidth().padding(top = 22.dp)) {
                         Text(
                             text = stringResource(R.string.home_drawer_manage_title),
                             modifier = Modifier.padding(horizontal = 20.dp),
-                            fontSize = 19.sp,
+                            fontSize = 18.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurface,
                         )
@@ -555,9 +604,9 @@ private fun DrawerManageDialog(
                         )
                         Column(
                             modifier = Modifier
-                                .heightIn(max = 352.dp)
+                                .heightIn(max = 336.dp)
                                 .verticalScroll(rememberScrollState())
-                                .padding(top = 10.dp),
+                                .padding(top = 12.dp),
                         ) {
                             items.forEach { item ->
                                 val checked = item.id in draft
@@ -575,48 +624,91 @@ private fun DrawerManageDialog(
                                                 }
                                             },
                                         )
-                                        .heightIn(min = 52.dp)
-                                        .padding(horizontal = 16.dp),
+                                        .heightIn(min = 48.dp)
+                                        .padding(horizontal = 20.dp),
                                     verticalAlignment = Alignment.CenterVertically,
                                 ) {
-                                    Checkbox(checked = checked, onCheckedChange = null)
-                                    Column(Modifier.padding(start = 6.dp)) {
-                                        Text(
-                                            text = stringResource(item.labelRes),
-                                            fontSize = 15.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                        )
-                                        Text(
-                                            text = stringResource(item.hintRes),
-                                            fontSize = 12.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
+                                    ManageCheckMark(checked = checked)
+                                    Text(
+                                        text = stringResource(item.labelRes),
+                                        modifier = Modifier.padding(start = 14.dp),
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
                                 }
                             }
                         }
+                        Spacer(Modifier.size(6.dp))
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
                             horizontalArrangement = Arrangement.End,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             TextButton(onClick = onCancel) {
-                                Text(stringResource(R.string.home_drawer_manage_cancel))
+                                Text(
+                                    text = stringResource(R.string.home_drawer_manage_cancel),
+                                    fontSize = 15.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                             TextButton(onClick = { onConfirm(draft) }) {
                                 Text(
                                     text = stringResource(R.string.home_drawer_manage_confirm),
-                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.primary,
                                 )
                             }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ManageCheckMark(checked: Boolean) {
+    val fill by animateColorAsState(
+        targetValue = if (checked) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            Color.Transparent
+        },
+        animationSpec = MotionTokens.state(),
+        label = "manage-check-fill",
+    )
+    val outline = MaterialTheme.colorScheme.outline
+    Canvas(Modifier.size(22.dp)) {
+        val radius = CornerRadius(6.dp.toPx())
+        val mark = androidx.compose.ui.geometry.Size(size.width, size.height)
+        drawRoundRect(color = fill, size = mark, cornerRadius = radius)
+        drawRoundRect(
+            color = if (checked) fill else outline,
+            size = mark,
+            cornerRadius = radius,
+            style = Stroke(width = 1.6.dp.toPx()),
+        )
+        if (checked) {
+            val unit = size.width / 22f
+            val tick = Path().apply {
+                moveTo(5.5f * unit, 11.5f * unit)
+                lineTo(9.3f * unit, 15.3f * unit)
+                lineTo(16.5f * unit, 7.5f * unit)
+            }
+            drawPath(
+                path = tick,
+                color = Color.White,
+                style = Stroke(
+                    width = 2.1f * unit,
+                    cap = StrokeCap.Round,
+                    join = StrokeJoin.Round,
+                ),
+            )
         }
     }
 }

@@ -190,6 +190,7 @@ fun HomeTabsScreen(
                 drawerOrder = drawerOrder,
                 drawerVisibleItems = drawerVisibleItems,
                 onDrawerConfigChanged = onDrawerConfigChanged,
+                seamlessTop = drawerFullscreen,
             )
         }
     }
