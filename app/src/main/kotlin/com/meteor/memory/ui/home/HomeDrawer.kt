@@ -188,21 +188,32 @@ internal fun HomeDrawer(
      */
     fun handleSortDrag(dy: Float) {
         val id = draggingId ?: return
-        val displayed = latestDisplayedIds
+        // Read order and visibility from the same snapshot: mixing a stale
+        // displayed list with the fresh order made a downward drag flip back.
+        val orderNow = latestOrder
+        val visibleNow = latestVisibleIds
+        val displayed = orderNow.mapNotNull(DrawerItem::fromId)
+            .filter { item -> item.id in visibleNow && (item != DrawerItem.AI || aiAvailable) }
+            .map { it.id }
         if (displayed.isEmpty()) return
         val from = displayed.indexOf(id)
         if (from < 0) return
         val target = (dragStartIndex + (dy / rowHeightPx).roundToInt())
             .coerceIn(0, displayed.lastIndex)
+        var moved = false
         if (target != from) {
-            val orderNow = latestOrder
             val fullFrom = orderNow.indexOf(id)
             val fullTo = orderNow.indexOf(displayed[target])
             if (fullFrom >= 0 && fullTo >= 0) {
                 order = orderNow.moved(fullFrom, fullTo)
+                moved = true
             }
         }
-        dragDelta = dy - (target - dragStartIndex) * rowHeightPx
+        dragDelta = if (moved) {
+            dy - (target - dragStartIndex) * rowHeightPx
+        } else {
+            dy
+        }
     }
 
     // Back leaves the reorder mode first, so a gesture can never be lost by
