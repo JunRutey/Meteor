@@ -73,3 +73,54 @@ fun normalizedDrawerVisibleItems(visibleItems: Set<String>): Set<String> {
     val known = DrawerItem.entries.mapTo(HashSet()) { it.id }
     return visibleItems.filterTo(LinkedHashSet()) { it in known }
 }
+
+/**
+ * The ids actually shown in the drawer, in their current order. Hidden entries
+ * (and AI when this build has no AI entry point) are filtered out of the full
+ * persisted order. This is the single source of truth for both the UI list and
+ * the drag-to-reorder maths — mixing a stale copy with a fresh [order] is what
+ * made a downward drag flip back.
+ */
+fun displayedDrawerIds(
+    order: List<String>,
+    visibleItems: Set<String>,
+    aiAvailable: Boolean,
+): List<String> = order.filter { id ->
+    id in visibleItems && (aiAvailable || id != DrawerItem.AI.id)
+}
+
+/**
+ * Moves [draggedId] from its current displayed slot to [targetSlot] and returns
+ * the new full persisted order. Hidden and unavailable entries stay in place;
+ * only the dragged entry is relocated.
+ *
+ * The caller works in *display* slots (visible rows only) when deciding the
+ * target, and this helper translates that into a move on the full order, so a
+ * hidden entry between two visible rows cannot shift the result. Returns null
+ * (leaving the order untouched) when the ids do not resolve, so a stale drag
+ * event is ignored rather than corrupting the order.
+ */
+fun moveDisplayedDrawerId(
+    order: List<String>,
+    visibleItems: Set<String>,
+    aiAvailable: Boolean,
+    draggedId: String,
+    targetSlot: Int,
+): List<String>? {
+    val displayed = displayedDrawerIds(order, visibleItems, aiAvailable)
+    val fromSlot = displayed.indexOf(draggedId)
+    if (fromSlot < 0 || targetSlot !in displayed.indices || fromSlot == targetSlot) return null
+
+    val fullFrom = order.indexOf(draggedId)
+    val fullTo = order.indexOf(displayed[targetSlot])
+    if (fullFrom < 0 || fullTo < 0) return null
+    return order.moved(fullFrom, fullTo)
+}
+
+private fun List<String>.moved(from: Int, to: Int): List<String> {
+    if (from == to || from !in indices || to !in indices) return this
+    val copy = toMutableList()
+    val value = copy.removeAt(from)
+    copy.add(to, value)
+    return copy
+}

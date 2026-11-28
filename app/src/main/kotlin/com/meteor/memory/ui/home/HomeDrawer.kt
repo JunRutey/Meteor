@@ -45,6 +45,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -133,22 +134,48 @@ internal fun HomeDrawer(
     val haptics = LocalHapticFeedback.current
     val rowHeightPx = with(density) { DRAWER_ROW_HEIGHT.toPx() }
 
-    var order by remember(drawerOrder) { mutableStateOf(normalizedDrawerOrder(drawerOrder)) }
-    var visibleIds by remember(drawerVisibleItems) {
-        mutableStateOf(normalizedDrawerVisibleItems(drawerVisibleItems))
+    var order by remember { mutableStateOf(normalizedDrawerOrder(drawerOrder)) }
+    var visibleIds by remember { mutableStateOf(normalizedDrawerVisibleItems(drawerVisibleItems)) }
+    // DataStore re-emits a fresh AppSettings (and therefore fresh List/Set
+    // instances) on every write, including the write this drawer just made.
+    // Syncing from the incoming *content* instead of using it as a remember key
+    // keeps a mid-drag reorder from being reset by its own save flowing back.
+    val incomingOrder = remember(drawerOrder) { normalizedDrawerOrder(drawerOrder) }
+    val incomingVisible = remember(drawerVisibleItems) {
+        normalizedDrawerVisibleItems(drawerVisibleItems)
     }
+
     var sortMode by remember { mutableStateOf(false) }
     var menuForId by remember { mutableStateOf<String?>(null) }
     var manageOpen by rememberSaveable { mutableStateOf(false) }
     var draggingId by remember { mutableStateOf<String?>(null) }
     var dragDelta by remember { mutableFloatStateOf(0f) }
-    var dragStartIndex by remember { mutableStateOf(0) }
+    // Display slot that was grabbed. The target slot is always derived from
+    // this fixed value plus the finger travel, so dragging back and forth
+    // cannot accumulate drift. (The gesture helper tracks the finger's grab
+    // position internally and reports absolute travel.)
+    var grabSlot by remember { mutableStateOf(0) }
+    // Order as it was when the drag started: restoring it on cancel keeps a
+    // gesture that never completed from silently changing the user's layout.
+    var orderBeforeDrag by remember { mutableStateOf(order) }
     val listState = rememberLazyListState()
+
+    LaunchedEffect(incomingOrder, incomingVisible) {
+        // While sorting, the drawer is the only editor: ignore settings flowing
+        // back so an in-flight write cannot revert a reorder mid-gesture.
+        if (!sortMode && draggingId == null) {
+            if (incomingOrder != order) order = incomingOrder
+            if (incomingVisible != visibleIds) visibleIds = incomingVisible
+        }
+    }
 
     // Gesture callbacks outlive the composition that set them up, so they read
     // the newest values through these holders instead of a stale capture.
     val latestOrder by rememberUpdatedState(order)
     val latestVisibleIds by rememberUpdatedState(visibleIds)
+    val latestDisplayedIds by rememberUpdatedState(
+        displayedDrawerIds(order, visibleIds, onOpenAi != null),
+    )
 
     val aiAvailable = onOpenAi != null
     val allItems = remember(order, aiAvailable) {
@@ -156,7 +183,6 @@ internal fun HomeDrawer(
             .filter { item -> item != DrawerItem.AI || aiAvailable }
     }
     val visibleItems = allItems.filter { it.id in visibleIds }
-    val latestDisplayedIds by rememberUpdatedState(visibleItems.map { it.id })
 
     fun open(item: DrawerItem) {
         when (item) {
@@ -173,6 +199,7 @@ internal fun HomeDrawer(
         onDrawerConfigChanged(order, updated)
     }
 
+    /** Leaves sort mode and persists the current order exactly once. */
     fun finishSort() {
         sortMode = false
         draggingId = null
@@ -181,39 +208,51 @@ internal fun HomeDrawer(
     }
 
     /**
-     * Maps the finger's absolute travel onto an item slot. Using the distance
-     * from the grab point (instead of accumulating per-event deltas and swapping
-     * neighbours) keeps the row glued to the finger in both directions and lets
-     * a fast drag skip several slots at once.
+     * Called when a gesture that never completed is cancelled (system
+     * interruption, incoming call, …). Restores the order from before the drag
+     * so an unfinished gesture cannot silently re-order the drawer.
+     */
+    fun cancelDrag() {
+        draggingId = null
+        dragDelta = 0f
+        order = orderBeforeDrag
+    }
+
+    /**
+     * Maps the finger's absolute travel onto a display slot. Both the target
+     * slot and the visual offset are derived from the fixed grab point, so
+     * dragging back and forth or skipping multiple slots stays symmetric.
+     *
+     * Hidden entries are filtered out of the slot maths, so crossing one never
+     * makes the row jump; the offset is derived from the absolute target slot
+     * rather than an accumulated per-step delta, so reversing direction or
+     * re-entering a slot keeps the row glued to the finger.
      */
     fun handleSortDrag(dy: Float) {
         val id = draggingId ?: return
-        // Read order and visibility from the same snapshot: mixing a stale
-        // displayed list with the fresh order made a downward drag flip back.
         val orderNow = latestOrder
         val visibleNow = latestVisibleIds
-        val displayed = orderNow.mapNotNull(DrawerItem::fromId)
-            .filter { item -> item.id in visibleNow && (item != DrawerItem.AI || aiAvailable) }
-            .map { it.id }
+        val displayed = displayedDrawerIds(orderNow, visibleNow, aiAvailable)
         if (displayed.isEmpty()) return
-        val from = displayed.indexOf(id)
-        if (from < 0) return
-        val target = (dragStartIndex + (dy / rowHeightPx).roundToInt())
-            .coerceIn(0, displayed.lastIndex)
-        var moved = false
-        if (target != from) {
-            val fullFrom = orderNow.indexOf(id)
-            val fullTo = orderNow.indexOf(displayed[target])
-            if (fullFrom >= 0 && fullTo >= 0) {
-                order = orderNow.moved(fullFrom, fullTo)
-                moved = true
-            }
+
+        val target = (grabSlot + (dy / rowHeightPx).roundToInt())
+            .coerceIn(displayed.indices)
+        val fromSlot = displayed.indexOf(id)
+        if (target != fromSlot) {
+            order = moveDisplayedDrawerId(
+                order = orderNow,
+                visibleItems = visibleNow,
+                aiAvailable = aiAvailable,
+                draggedId = id,
+                targetSlot = target,
+            ) ?: return
         }
-        dragDelta = if (moved) {
-            dy - (target - dragStartIndex) * rowHeightPx
-        } else {
-            dy
-        }
+        // The row now lives at [target] (a display slot). Its un-offset screen
+        // position is target * rowHeight, but the finger is at
+        // grabSlot * rowHeight + dy. The difference keeps the row under the
+        // finger whether or not a swap happened this event, no matter how many
+        // times the direction changes or how far the finger travelled at once.
+        dragDelta = dy - (target - grabSlot) * rowHeightPx
     }
 
     // Back leaves the reorder mode first, so a gesture can never be lost by
@@ -306,15 +345,19 @@ internal fun HomeDrawer(
                                     onDragStarted = { id, startIndex ->
                                         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                         draggingId = id
-                                        dragStartIndex = startIndex
+                                        grabSlot = startIndex
                                         dragDelta = 0f
+                                        orderBeforeDrag = latestOrder
                                     },
                                     onDragMoved = { dy -> handleSortDrag(dy) },
                                     onDragFinished = {
+                                        // Commit only on a completed gesture; a
+                                        // cancelled one restores orderBeforeDrag.
                                         draggingId = null
                                         dragDelta = 0f
                                         onDrawerConfigChanged(latestOrder, latestVisibleIds)
                                     },
+                                    onDragCancelled = { cancelDrag() },
                                 )
                             }
                         } else {
@@ -457,23 +500,35 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.detectDr
     onDragStarted: (id: String, startIndex: Int) -> Unit,
     onDragMoved: (dy: Float) -> Unit,
     onDragFinished: () -> Unit,
+    onDragCancelled: () -> Unit,
 ) {
     var grabY = 0f
     detectDragGestures(
         onDragStart = { start ->
+            // Resolve the hit item and its display slot from the same layout
+            // snapshot. `itemAtListIndex` reads state that a concurrent
+            // recomposition may have changed since the hit test.
+            val displayedIds = mutableListOf<String>()
+            var index = 0
+            while (true) {
+                val id = itemAtListIndex(index) ?: break
+                displayedIds += id
+                index++
+            }
             val hit = listState.layoutInfo.visibleItemsInfo.firstOrNull { info ->
                 start.y >= info.offset && start.y < info.offset + info.size
             } ?: return@detectDragGestures
-            val id = itemAtListIndex(hit.index) ?: return@detectDragGestures
+            val startIndex = hit.index - 1
+            val id = displayedIds.getOrNull(startIndex) ?: return@detectDragGestures
             grabY = start.y
-            onDragStarted(id, hit.index - 1)
+            onDragStarted(id, startIndex)
         },
         onDrag = { change, _ ->
             change.consume()
             onDragMoved(change.position.y - grabY)
         },
         onDragEnd = { onDragFinished() },
-        onDragCancel = { onDragFinished() },
+        onDragCancel = { onDragCancelled() },
     )
 }
 
@@ -938,14 +993,6 @@ private fun ManageGlyph() {
         drawCircle(tint, radius = 1.9f * unit, center = Offset(13.5f * unit, 6f * unit), style = Stroke(width = stroke))
         drawCircle(tint, radius = 1.9f * unit, center = Offset(6.5f * unit, 14f * unit), style = Stroke(width = stroke))
     }
-}
-
-private fun List<String>.moved(from: Int, to: Int): List<String> {
-    if (from == to || from !in indices || to !in indices) return this
-    val copy = toMutableList()
-    val value = copy.removeAt(from)
-    copy.add(to, value)
-    return copy
 }
 
 // --- 图标：全部用 Canvas 画，避免给 :app 引入 material-icons ----------------
