@@ -1,9 +1,19 @@
 package com.meteor.memory.ui.home
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,7 +31,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Path
@@ -42,39 +56,110 @@ import com.meteor.memory.ui.theme.MotionTokens
 @Composable
 fun HomeTabsScreen(
     appName: String,
+    versionName: String,
     onOpenSearch: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenQuestions: () -> Unit,
+    onOpenAlbum: () -> Unit,
+    onOpenPeople: () -> Unit,
+    onOpenAi: (() -> Unit)?,
     selectedTab: Int,
     onSelectTab: (Int) -> Unit,
     lifeContent: @Composable () -> Unit,
     diaryContent: @Composable () -> Unit,
+    animationsEnabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val tabStateHolder = rememberSaveableStateHolder()
-    Column(modifier.fillMaxSize()) {
-        HomeHeader(
-            appName = appName,
-            onOpenSearch = onOpenSearch,
-            onOpenSettings = onOpenSettings,
-        )
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            // Crossfade instead of a hard swap: the two tabs are the app's main
-            // navigation and used to cut instantly. The state holder stays keyed
-            // per tab so each side keeps its scroll position.
-            Crossfade(
-                targetState = selectedTab,
-                animationSpec = MotionTokens.enter(),
-                label = "home-tab",
-            ) { tab ->
-                tabStateHolder.SaveableStateProvider(tab) {
-                    if (tab == 0) lifeContent() else diaryContent()
+    var drawerOpen by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = drawerOpen) { drawerOpen = false }
+
+    fun closeThen(action: () -> Unit) {
+        drawerOpen = false
+        action()
+    }
+
+    Box(modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize()) {
+            HomeHeader(
+                appName = appName,
+                onOpenSearch = onOpenSearch,
+                onOpenSettings = onOpenSettings,
+                onOpenDrawer = { drawerOpen = true },
+            )
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                // Crossfade instead of a hard swap: the two tabs are the app's main
+                // navigation and used to cut instantly. The state holder stays keyed
+                // per tab so each side keeps its scroll position.
+                Crossfade(
+                    targetState = selectedTab,
+                    animationSpec = MotionTokens.enter(),
+                    label = "home-tab",
+                ) { tab ->
+                    tabStateHolder.SaveableStateProvider(tab) {
+                        if (tab == 0) lifeContent() else diaryContent()
+                    }
                 }
             }
+            HomeTabBar(
+                selectedTab = selectedTab,
+                onSelect = onSelectTab,
+            )
         }
-        HomeTabBar(
-            selectedTab = selectedTab,
-            onSelect = onSelectTab,
-        )
+
+        // 侧边栏（ADR-071）：遮罩与面板分开动画，遮罩只淡入淡出，面板从左侧滑入。
+        AnimatedVisibility(
+            visible = drawerOpen,
+            enter = if (animationsEnabled) {
+                fadeIn(MotionTokens.enter())
+            } else {
+                EnterTransition.None
+            },
+            exit = if (animationsEnabled) {
+                fadeOut(MotionTokens.exit())
+            } else {
+                ExitTransition.None
+            },
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.32f))
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { drawerOpen = false },
+                    ),
+            )
+        }
+
+        AnimatedVisibility(
+            visible = drawerOpen,
+            modifier = Modifier.align(Alignment.CenterStart),
+            enter = if (animationsEnabled) {
+                slideInHorizontally(animationSpec = MotionTokens.enter()) { -it } +
+                    fadeIn(MotionTokens.enter())
+            } else {
+                EnterTransition.None
+            },
+            exit = if (animationsEnabled) {
+                slideOutHorizontally(animationSpec = MotionTokens.exit()) { -it } +
+                    fadeOut(MotionTokens.exit())
+            } else {
+                ExitTransition.None
+            },
+        ) {
+            HomeDrawer(
+                versionName = versionName,
+                onOpenQuestions = { closeThen(onOpenQuestions) },
+                onOpenAlbum = { closeThen(onOpenAlbum) },
+                onOpenPeople = { closeThen(onOpenPeople) },
+                onOpenSearch = { closeThen(onOpenSearch) },
+                onOpenSettings = { closeThen(onOpenSettings) },
+                onOpenAi = onOpenAi?.let { action -> { closeThen(action) } },
+                onClose = { drawerOpen = false },
+            )
+        }
     }
 }
 
@@ -83,11 +168,13 @@ private fun HomeHeader(
     appName: String,
     onOpenSearch: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenDrawer: () -> Unit,
 ) {
     CalendarHeader(
         appName = appName,
         onOpenSearch = onOpenSearch,
         onOpenSettings = onOpenSettings,
+        onOpenDrawer = onOpenDrawer,
         modifier = Modifier.padding(start = 20.dp, end = 8.dp),
     )
 }

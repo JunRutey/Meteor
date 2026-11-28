@@ -24,6 +24,7 @@
     <string name="question_compose_title">提问</string>
     <string name="question_compose_placeholder">今天你想到什么问题？先写下来，到点我再问你。</string>
     <string name="question_compose_hint">默认明天同一时刻提醒你；也可以不提醒，只保存问题。</string>
+    <string name="question_compose_for_day">为 %1$s 提问</string>
     <string name="question_save">保存问题</string>
     <string name="question_saving">保存中…</string>
     <string name="question_cancel">取消</string>

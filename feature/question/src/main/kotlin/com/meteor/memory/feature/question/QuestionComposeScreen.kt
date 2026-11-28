@@ -78,6 +78,20 @@ fun QuestionComposeScreen(
                 .padding(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 8.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            state.dateLabel?.let { day ->
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                ) {
+                    Text(
+                        text = stringResource(R.string.question_compose_for_day, day),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                }
+            }
+
             OutlinedTextField(
                 value = state.draft,
                 onValueChange = onDraftChange,

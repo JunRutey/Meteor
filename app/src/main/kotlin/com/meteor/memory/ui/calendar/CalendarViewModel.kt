@@ -9,6 +9,7 @@ import com.meteor.memory.core.storage.DiaryQueries
 import com.meteor.memory.core.storage.Document
 import com.meteor.memory.core.storage.Mood
 import com.meteor.memory.core.storage.MoodQueries
+import com.meteor.memory.core.storage.QuestionStore
 import com.meteor.memory.core.storage.RecordType
 import com.meteor.memory.core.storage.StorageLayout
 import com.meteor.memory.core.storage.StorageRouter
@@ -33,6 +34,7 @@ class CalendarViewModel @Inject constructor(
     private val savedStateHandle: SavedStateHandle,
     private val moodQueries: MoodQueries,
     private val diaryQueries: DiaryQueries,
+    private val questionStore: QuestionStore,
     private val appLog: AppLog,
     private val searchService: SearchService,
     private val storageRouter: StorageRouter,
@@ -55,6 +57,15 @@ class CalendarViewModel @Inject constructor(
     /** Days with a diary on disk — drives the ✓✓ next to the selected date. */
     private val _diaryDates = MutableStateFlow<Set<LocalDate>>(emptySet())
     val diaryDates: StateFlow<Set<LocalDate>> = _diaryDates.asStateFlow()
+
+    /**
+     * 每日一问（ADR-070）：每个归档日对应的最新问题 id。
+     *
+     * 日历左按钮据此决定「打开已有问题」还是「按这一天新建」。同一天有多条
+     * 问题时取最后创建的那条；其余条目仍在侧边栏的「每日一问」总览里。
+     */
+    private val _questionDays = MutableStateFlow<Map<LocalDate, String>>(emptyMap())
+    val questionDays: StateFlow<Map<LocalDate, String>> = _questionDays.asStateFlow()
 
     /**
      * Serializes mood read-modify-write cycles. Without it two quick taps read
@@ -141,7 +152,7 @@ class CalendarViewModel @Inject constructor(
     }
 
     /**
-     * 一次性刷新：已写日记的日期 + 本月心情。
+     * 一次性刷新：已写日记的日期、每个归档日的问题、本月心情。
      *
      * 「当天有没有图」不再扫描：ADR-068 把「存张记忆」从日历里拿掉了，图片一律从
      * 相册导入，日历不需要知道哪一天有图片。
@@ -151,7 +162,15 @@ class CalendarViewModel @Inject constructor(
             val diary = withContext(Dispatchers.IO) {
                 runCatching { diaryQueries.dates().toSet() }.getOrDefault(emptySet())
             }
+            val questions = withContext(Dispatchers.IO) {
+                runCatching { questionStore.list() }
+                    .onFailure { appLog.warn(TAG, "question days unreadable", it) }
+                    .getOrDefault(emptyList())
+            }
             _diaryDates.value = diary
+            _questionDays.value = questions
+                .groupBy { it.askedOn }
+                .mapValues { (_, onThatDay) -> onThatDay.maxBy { it.createdAt }.id }
             moodWriteMutex.withLock {
                 // Re-read the month inside the lock: the user may have swiped
                 // while the diary IO above was running.

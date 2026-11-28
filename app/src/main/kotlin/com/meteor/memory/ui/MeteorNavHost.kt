@@ -164,16 +164,26 @@ private const val ROUTE_GALLERY = "gallery?date={date}"
 private const val ROUTE_IMAGE = "gallery/{token}"
 private const val ROUTE_AI = "ai?personId={personId}"
 private const val ROUTE_PERSONA = "ai/persona/{personId}"
-// 每日一问（ADR-068）：列表、独立提问页与单条详情。
+// 每日一问（ADR-068 / ADR-070）：列表、按天新建/补写、单条详情。
 private const val ROUTE_QUESTIONS = "questions"
-private const val ROUTE_QUESTION_NEW = "questions/new"
+private const val ROUTE_QUESTION_NEW = "questions/new?date={date}"
 private const val ROUTE_QUESTION = "questions/{questionId}"
+private const val ARG_QUESTION_DATE = "date"
 
 /** Read-only preview of the diary written for [date]. */
 private fun diaryViewRoute(date: LocalDate): String = "diary/view/$date"
 
 /** 每日一问详情页：与 [ROUTE_QUESTION] 的模板一一对应。 */
 private fun questionRoute(questionId: String): String = "questions/$questionId"
+
+/**
+ * 提问页（ADR-070）：[date] 为空表示今天，非空表示按那一天归档。
+ *
+ * 路由模板带一个可缺省的 query，所以这里要区分「不带参数」与「带日期」两种写法；
+ * 不能直接把 null 拼进 URL。
+ */
+private fun questionComposeRoute(date: LocalDate? = null): String =
+    if (date == null) "questions/new" else "questions/new?date=$date"
 
 private fun changelogVersionRoute(number: String): String =
     "$ROUTE_ABOUT_CHANGELOG/${Uri.encode(number)}"
@@ -355,15 +365,26 @@ fun MeteorNavHost(
             val selectedDate by viewModel.selectedDate.collectAsStateWithLifecycle()
             val homeTab by viewModel.homeTab.collectAsStateWithLifecycle()
             val diaryDates by viewModel.diaryDates.collectAsStateWithLifecycle()
+            val questionDays by viewModel.questionDays.collectAsStateWithLifecycle()
 
             RefreshOnResume { viewModel.refresh() }
 
             HomeTabsScreen(
                 appName = stringResource(R.string.app_name),
+                versionName = versionName,
                 onOpenSearch = { navController.navigate(ROUTE_SEARCH) },
                 onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
+                onOpenQuestions = { navController.navigate(ROUTE_QUESTIONS) },
+                onOpenAlbum = { navController.navigate("album") },
+                onOpenPeople = { navController.navigate(ROUTE_PEOPLE) },
+                onOpenAi = if (aiEnabled) {
+                    { navController.navigate("ai") }
+                } else {
+                    null
+                },
                 selectedTab = homeTab,
                 onSelectTab = viewModel::selectHomeTab,
+                animationsEnabled = animationsEnabled,
                 lifeContent = {
                     LifeTab(
                         viewModel = lifeViewModel,
@@ -392,7 +413,16 @@ fun MeteorNavHost(
                         } else {
                             null
                         },
-                        onOpenQuestions = { navController.navigate(ROUTE_QUESTIONS) },
+                        onOpenQuestions = { date ->
+                            // ADR-070：这一天已有问题就打开它，没有就按这一天补写。
+                            // 同一天有多条时取最新的一条，其余在总览里。
+                            val existing = questionDays[date]
+                            if (existing != null) {
+                                navController.navigate(questionRoute(existing))
+                            } else {
+                                navController.navigate(questionComposeRoute(date))
+                            }
+                        },
                         onOpenAlbum = { navController.navigate("album") },
                         onOpenPeople = { navController.navigate(ROUTE_PEOPLE) },
                         showHeader = false,
@@ -410,7 +440,7 @@ fun MeteorNavHost(
 
             QuestionListScreen(
                 rows = rows,
-                onCompose = { navController.navigate(ROUTE_QUESTION_NEW) },
+                onCompose = { navController.navigate(questionComposeRoute()) },
                 onOpen = { id -> navController.navigate(questionRoute(id)) },
                 onDelete = viewModel::delete,
                 onBack = { navController.popBackStack() },
@@ -418,7 +448,16 @@ fun MeteorNavHost(
             )
         }
 
-        composable(ROUTE_QUESTION_NEW) { entry ->
+        composable(
+            route = ROUTE_QUESTION_NEW,
+            arguments = listOf(
+                navArgument(ARG_QUESTION_DATE) {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+            ),
+        ) { entry ->
             val viewModel: QuestionComposeViewModel = hiltViewModel()
             val state by viewModel.state.collectAsStateWithLifecycle()
 

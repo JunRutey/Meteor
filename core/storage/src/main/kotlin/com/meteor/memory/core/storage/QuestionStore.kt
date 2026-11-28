@@ -7,6 +7,8 @@ import java.io.File
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 import java.util.UUID
 
 /**
@@ -26,6 +28,13 @@ data class StoredAnswer(
 /**
  * One daily question with its pending reminders and its answers (ADR-068).
  *
+ * [askedOn] is the **day the question belongs to** (ADR-070): the calendar opens
+ * that day's question, and a question can be backfilled for a day that has
+ * already passed. It is deliberately separate from [createdAt]: a backfilled
+ * question is written today but belongs to an earlier day. Files written before
+ * ADR-070 have no field, so the decoder derives the day from [createdAt] in the
+ * device zone; new files carry it explicitly.
+ *
  * [reminders] holds only **pending** instants: a reminder is consumed the moment
  * its alarm is delivered, and the notification's snooze actions append a new
  * one. Keeping the list pending-only means the stored file is also the single
@@ -36,6 +45,7 @@ data class StoredQuestion(
     val id: String,
     val text: String,
     val createdAt: Instant,
+    val askedOn: LocalDate = createdAt.atZone(ZoneId.systemDefault()).toLocalDate(),
     val reminders: List<Instant> = emptyList(),
     val answers: List<StoredAnswer> = emptyList(),
 ) {
@@ -69,6 +79,7 @@ interface QuestionStore {
         text: String,
         reminders: List<Instant> = emptyList(),
         createdAt: Instant = Instant.now(),
+        askedOn: LocalDate = createdAt.atZone(ZoneId.systemDefault()).toLocalDate(),
     ): StoredQuestion
 
     /** Appends one answer; returns null when [id] is unknown. */
@@ -143,11 +154,17 @@ class EncryptedQuestionStore(
         return runCatching { readQuestion(file) }.getOrNull()
     }
 
-    override fun create(text: String, reminders: List<Instant>, createdAt: Instant): StoredQuestion {
+    override fun create(
+        text: String,
+        reminders: List<Instant>,
+        createdAt: Instant,
+        askedOn: LocalDate,
+    ): StoredQuestion {
         val question = StoredQuestion(
             id = newId(),
             text = requireText(text),
             createdAt = createdAt,
+            askedOn = askedOn,
             reminders = requireReminders(reminders),
         )
         write(question)
@@ -245,6 +262,7 @@ class EncryptedQuestionStore(
         put("id", question.id)
         put("text", question.text)
         put("createdAt", question.createdAt.toEpochMilli())
+        put("askedOn", question.askedOn.toString())
         put("reminders", JSONArray(question.reminders.map { it.toEpochMilli() }))
         put("answers", JSONArray(question.answers.map { answer ->
             JSONObject()
@@ -282,10 +300,18 @@ class EncryptedQuestionStore(
             }
         }
 
+        val createdAt = Instant.ofEpochMilli(root.getLong("createdAt"))
+        // ADR-070 added askedOn as an optional field. A file written before it
+        // has no field and keeps the old semantics: the creation day.
+        val askedOn = root.optString("askedOn").takeIf { it.isNotBlank() }
+            ?.let { raw -> runCatching { LocalDate.parse(raw) }.getOrNull() }
+            ?: createdAt.atZone(ZoneId.systemDefault()).toLocalDate()
+
         return StoredQuestion(
             id = id,
             text = root.getString("text"),
-            createdAt = Instant.ofEpochMilli(root.getLong("createdAt")),
+            createdAt = createdAt,
+            askedOn = askedOn,
             reminders = reminders,
             answers = answers,
         )

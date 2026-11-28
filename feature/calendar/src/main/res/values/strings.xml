@@ -13,6 +13,7 @@
     <string name="calendar_mood_hint">点击心情记录这一天，最多选 %1$d 个</string>
     <string name="calendar_mood_hint_selected">已选 %1$d/%2$d · 再点一次可取消</string>
     <string name="calendar_open_settings">设置</string>
+    <string name="calendar_open_menu">打开菜单</string>
     <string name="calendar_view_diary">查看当天日记</string>
     <string name="calendar_backfill_diary">补写日记</string>
     <string name="calendar_record_now">记录当下</string>

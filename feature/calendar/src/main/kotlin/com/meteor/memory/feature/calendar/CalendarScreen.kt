@@ -95,10 +95,10 @@ fun CalendarScreen(
     onOpenSearch: () -> Unit,
     onOpenAi: (() -> Unit)?,
     /**
-     * 每日一问（ADR-068）：占的是日卡片左下角原来的「查看当天图片」。
-     * 看某天的图片走相册，不再从日历直达。
+     * 每日一问（ADR-068 / ADR-070）：日卡片左下角。宿主按这一天是否已有问题决定
+     * 打开详情还是带日期的新建页；本屏只把选中的日期交出去。
      */
-    onOpenQuestions: () -> Unit,
+    onOpenQuestions: (LocalDate) -> Unit,
     /**
      * The album hub: photos, video, audio and the imported-record list all live
      * in one place, so the old separate gallery and notes entries are merged
@@ -159,7 +159,7 @@ fun CalendarScreen(
                     onRightClick = {
                         if (date in diaryDates) onOpenDiary(date) else onEditDiary(date)
                     },
-                    onLeftClick = onOpenQuestions,
+                    onLeftClick = { onOpenQuestions(date) },
                 )
             }
 
@@ -200,18 +200,42 @@ fun CalendarHeader(
     onOpenSearch: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * 侧边栏（ADR-071）：非空时标题「Meteor」可点，并出现一个向下的小箭头；
+     * 为空时保持原来的纯标题（嵌入式日历不展示页头）。
+     */
+    onOpenDrawer: (() -> Unit)? = null,
 ) {
+    val menuLabel = stringResource(R.string.calendar_open_menu)
     Row(
         modifier = modifier.fillMaxWidth().height(56.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(
-            text = appName,
-            fontSize = 24.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurface,
-        )
+        Row(
+            modifier = Modifier
+                .height(48.dp)
+                .then(
+                    if (onOpenDrawer != null) {
+                        Modifier
+                            .clickable(onClick = onOpenDrawer)
+                            .semantics { contentDescription = menuLabel }
+                    } else {
+                        Modifier
+                    },
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = appName,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            if (onOpenDrawer != null) {
+                MenuChevron()
+            }
+        }
         Row {
             val searchLabel = stringResource(R.string.calendar_open_search)
             IconAction(
@@ -225,6 +249,30 @@ fun CalendarHeader(
                 onClick = onOpenSettings,
             ) { SlidersIcon(label = settingsLabel) }
         }
+    }
+}
+
+/** 标题右侧的向下小箭头：暗示「Meteor」是一个可展开的菜单入口。 */
+@Composable
+private fun MenuChevron() {
+    val tint = MaterialTheme.colorScheme.onSurfaceVariant
+    Canvas(Modifier.padding(start = 4.dp).size(16.dp)) {
+        val unit = size.minDimension / 16f
+        val stroke = 1.6f * unit
+        drawLine(
+            color = tint,
+            start = Offset(4f * unit, 6.5f * unit),
+            end = Offset(8f * unit, 10.5f * unit),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
+        drawLine(
+            color = tint,
+            start = Offset(8f * unit, 10.5f * unit),
+            end = Offset(12f * unit, 6.5f * unit),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
     }
 }
 

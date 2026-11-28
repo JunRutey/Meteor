@@ -291,13 +291,18 @@ int 0                     ← 结束标记
 | 时间水印 | 正文密文内 | `<!-- meteor-sig: <ISO_OFFSET_DATE_TIME> -->` |
 | AI 会话 | `AI对话/sessions/<id>.bin` | 加密 JSON，`{"version":2,...}` |
 | AI 旧会话 | `AI对话/<scope>.bin` | `v1 \t u\|a \t <epochMillis> \t <Base64(UTF-8)>` |
-| 每日一问 | `每日一问/<id>.bin` | 加密 JSON，`{"version":1,"id","text","createdAt","reminders","answers"}`（ADR-068） |
+| 每日一问 | `每日一问/<id>.bin` | 加密 JSON，`{"version":1,"id","text","createdAt","askedOn","reminders","answers"}`（ADR-068 / ADR-070） |
 | 索引库 | `databases/meteor_index.db` | §9.3 |
 
 **每日一问（`QuestionStore`，ADR-068）**：一问题一文件，随机 32 位十六进制 id，
 用 **Keystore 主密钥**（不是媒体数据密钥——它是几百字节文本，没有并行收益）。
 `reminders` 只存**待触发**的时刻：闹钟投递即移除，通知按钮追加新的。`.bin` 后缀让它
 不进 `RecordScanner`（只认 `.md`），所以问题与回答**不进搜索索引，也不成为 AI 档案证据**。
+
+`askedOn` 是问题**所属的日期**（ADR-070）：日历日卡片按这一天决定打开已有问题还是
+带日期的新建（可补写过去某天），与 `createdAt`（真正写下的时刻）分开。它是 JSON 里
+的可选字段；旧文件没有它，读取时按 `createdAt` 在设备时区派生，写入时补上，**格式版本
+仍是 1**。同一天可以有多条问题：日历入口取最后创建的一条，其余在侧边栏的总览里。
 
 ---
 
@@ -813,10 +818,11 @@ interface DiaryQueries { fun dates(): List<LocalDate>; fun read(date: LocalDate)
 interface MoodQueries  { fun range(from: LocalDate, to: LocalDate): Map<LocalDate, List<Mood>>; fun read(date: LocalDate): List<Mood>; fun save(date: LocalDate, moods: List<Mood>) }
 interface PersonQueries { fun list(): List<PersonEntry>; fun read(personId: String): PersonProfile?; fun create(...): String; fun update(...); fun delete(personId: String): PersonDeleteResult }
 
-// 每日一问（ADR-068）：阻塞式，调用方切 IO。一问题一加密 JSON 文件。
+// 每日一问（ADR-068 / ADR-070）：阻塞式，调用方切 IO。一问题一加密 JSON 文件。
 data class StoredAnswer(val id: String, val text: String, val answeredAt: Instant)
 data class StoredQuestion(
     val id: String, val text: String, val createdAt: Instant,
+    val askedOn: LocalDate = createdAt.atZone(ZoneId.systemDefault()).toLocalDate(), // 归档日
     val reminders: List<Instant> = emptyList(),      // 只存待触发的时刻
     val answers: List<StoredAnswer> = emptyList(),   // 追加式，旧回答永不覆盖
 ) { val isAnswered: Boolean; val lastAnsweredAt: Instant?
@@ -824,7 +830,8 @@ data class StoredQuestion(
 
 interface QuestionStore {
     fun list(): List<StoredQuestion>; fun find(id: String): StoredQuestion?
-    fun create(text: String, reminders: List<Instant> = emptyList(), createdAt: Instant = Instant.now()): StoredQuestion
+    fun create(text: String, reminders: List<Instant> = emptyList(), createdAt: Instant = Instant.now(),
+               askedOn: LocalDate = createdAt.atZone(ZoneId.systemDefault()).toLocalDate()): StoredQuestion
     fun addAnswer(id: String, text: String, answeredAt: Instant = Instant.now()): StoredQuestion?
     fun updateReminders(id: String, reminders: List<Instant>): StoredQuestion?
     fun delete(id: String): Boolean

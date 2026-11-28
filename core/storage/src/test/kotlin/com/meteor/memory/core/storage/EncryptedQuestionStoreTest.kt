@@ -1,6 +1,7 @@
 package com.meteor.memory.core.storage
 
 import com.meteor.memory.core.crypto.FileCrypto
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -11,6 +12,8 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
 import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
 
 class EncryptedQuestionStoreTest {
 
@@ -59,6 +62,35 @@ class EncryptedQuestionStoreTest {
             reloaded?.reminders,
         )
         assertFalse(reloaded!!.isAnswered)
+    }
+
+    @Test
+    fun askedOnPersistsAndDefaultsToTheCreationDay() {
+        val store = store()
+        val backfilledDay = LocalDate.of(2026, 11, 20)
+        val backfilled = store.create("补写的问题", emptyList(), created, backfilledDay)
+        assertEquals(backfilledDay, store.find(backfilled.id)?.askedOn)
+
+        val defaulted = store.create("今天的问题", emptyList(), created)
+        assertEquals(
+            created.atZone(ZoneId.systemDefault()).toLocalDate(),
+            defaulted.askedOn,
+        )
+    }
+
+    @Test
+    fun olderFilesWithoutAskedOnFallBackToTheCreationDay() {
+        val store = store()
+        val question = store.create("旧格式的问题", emptyList(), created)
+        val file = File(tmp.root, "每日一问/${question.id}.bin")
+        val json = JSONObject(String(TestCrypto().decrypt(file.readBytes()), Charsets.UTF_8))
+        json.remove("askedOn")
+        file.writeBytes(TestCrypto().encrypt(json.toString().toByteArray(Charsets.UTF_8)))
+
+        assertEquals(
+            created.atZone(ZoneId.systemDefault()).toLocalDate(),
+            store.find(question.id)?.askedOn,
+        )
     }
 
     @Test

@@ -10,6 +10,16 @@
     <string name="update_notification_ready_body">打开应用，在「设置 → 应用更新」中安装。</string>
     <string name="home_tab_life">生辰</string>
     <string name="home_tab_diary">日记</string>
+
+    <!-- 首页侧边栏（ADR-071）：点顶部 Meteor 打开。 -->
+    <string name="home_drawer_tagline">记录 · 回看 · 被提醒</string>
+    <string name="home_drawer_section">功能</string>
+    <string name="home_drawer_questions_hint">全部问题与回答</string>
+    <string name="home_drawer_ai_hint">和档案对话</string>
+    <string name="home_drawer_search_hint">日记 · 心情 · 记录</string>
+    <string name="home_drawer_settings_hint">主题 · 通知 · 备份</string>
+    <string name="home_drawer_close">关闭侧边栏</string>
+    <string name="home_drawer_version">Meteor v%1$s</string>
     <string name="life_online_status">地球 online · 在线</string>
     <string name="life_elapsed_hours">%1$dh</string>
     <string name="life_birthday_solar">生日 · 公历 %1$s</string>

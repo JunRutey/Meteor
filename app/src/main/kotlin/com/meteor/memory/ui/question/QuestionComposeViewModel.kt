@@ -1,12 +1,14 @@
 package com.meteor.memory.ui.question
 
 import android.content.Context
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.meteor.memory.R
 import com.meteor.memory.core.log.AppLog
 import com.meteor.memory.core.storage.QuestionStore
 import com.meteor.memory.feature.question.QuestionComposerState
+import com.meteor.memory.feature.question.QuestionFormat
 import com.meteor.memory.feature.question.QuestionSchedule
 import com.meteor.memory.feature.question.ReminderPick
 import com.meteor.memory.feature.question.ReminderRow
@@ -35,11 +37,22 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class QuestionComposeViewModel @Inject constructor(
+    savedStateHandle: SavedStateHandle,
     private val questionStore: QuestionStore,
     private val questionReminders: QuestionReminderController,
     private val appLog: AppLog,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
+
+    /**
+     * The day this question is being written for (ADR-070).
+     *
+     * `null` / absent (or an unparsable route value) means today. The calendar
+     * passes an explicit date when a past day is being backfilled.
+     */
+    private val askedOn: LocalDate = savedStateHandle.get<String>(ARG_DATE)
+        ?.let { raw -> runCatching { LocalDate.parse(raw) }.getOrNull() }
+        ?: LocalDate.now()
 
     private val _state = MutableStateFlow(newComposer())
     val state: StateFlow<QuestionComposerState> = _state.asStateFlow()
@@ -98,6 +111,7 @@ class QuestionComposeViewModel @Inject constructor(
                         text = text,
                         reminders = reminders,
                         createdAt = now.toInstant(),
+                        askedOn = askedOn,
                     )
                 }
             }
@@ -132,10 +146,17 @@ class QuestionComposeViewModel @Inject constructor(
         val now = ZonedDateTime.now()
         return QuestionComposerState(
             reminders = questionReminderRows(QuestionSchedule.initialReminders(now), now),
+            dateLabel = if (askedOn == now.toLocalDate()) {
+                null
+            } else {
+                QuestionFormat.dayLabel(askedOn, now)
+            },
         )
     }
 
     private companion object {
+        /** Route argument shared with `MeteorNavHost`'s `questions/new?date=`. */
+        const val ARG_DATE = "date"
         const val TAG = "QuestionCompose"
     }
 }

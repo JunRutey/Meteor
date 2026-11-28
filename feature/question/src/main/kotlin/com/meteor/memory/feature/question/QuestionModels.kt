@@ -49,15 +49,19 @@ data class AnswerRow(
 )
 
 /**
- * State of the compose sheet on the list page.
+ * State of the compose page.
  *
  * [reminders] is the set the question will be created with. It starts with one
  * entry (tomorrow, same clock time) so a person who writes a thought and taps
  * 保存 immediately still gets a reminder without configuring anything.
+ *
+ * [dateLabel] is non-null only when the question is being backfilled for a day
+ * other than today (ADR-070), so the page can say "为 11月20日 提问".
  */
 data class QuestionComposerState(
     val draft: String = "",
     val reminders: List<ReminderRow> = emptyList(),
+    val dateLabel: String? = null,
     val submitting: Boolean = false,
     val error: String? = null,
 ) {
@@ -135,6 +139,18 @@ object QuestionFormat {
             today.plusDays(1) -> "$TOMORROW $time"
             else -> stamp(instant, now)
         }
+    }
+
+    /**
+     * Day-only label used by the backfill compose page (ADR-070).
+     *
+     * `今天` / `11月20日` / `2025年11月20日` — the same relative vocabulary the
+     * reminder labels use, without a clock time.
+     */
+    fun dayLabel(date: LocalDate, now: ZonedDateTime): String = when {
+        date == now.toLocalDate() -> TODAY
+        date.year == now.year -> MONTH_DAY.format(date)
+        else -> YEAR_MONTH_DAY.format(date)
     }
 
     // Fixed Chinese patterns rather than locale-derived ones: the default
